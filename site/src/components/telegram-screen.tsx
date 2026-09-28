@@ -3,10 +3,12 @@ import { Copy, QrCode, Search, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { LatencyRange } from '@/components/latency-range'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
-import { flagEmoji, formatStamp, latencyClass, latencyText, stabilityText } from '@/lib/format'
+import { displayedLatencyBounds, flagEmoji, formatStamp, latencyClass, latencyText, stabilityText } from '@/lib/format'
+import { formatCount } from '@/lib/plural'
 import { kindLabel, ru, statusLabel } from '@/lib/ru'
 import { openExternal } from '@/lib/clients'
 import type { HubData, ProxyRecord } from '@/lib/types'
@@ -45,15 +47,16 @@ export function TelegramScreen({ data }: { data: HubData }) {
   }, [country, kind, pool, query])
 
   const best = filtered[0]
+  const latency = displayedLatencyBounds(data.proxies)
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
       <SiteHeader updated={formatStamp(data.generated_at)} />
-      <p className="mb-3 text-[13px] text-muted-foreground">
-        {ru.kinds.mtproto} {stats?.mtproto ?? 0} · {ru.kinds.socks} {stats?.socks ?? 0} · средний пинг{' '}
-        <span className={cn('font-medium', latencyClass(stats?.median_latency_ms))}>
-          {latencyText(stats?.median_latency_ms)}
-        </span>
+      <p className="text-[13px] text-muted-foreground">
+        {ru.telegramCounts(stats?.mtproto ?? 0, stats?.socks ?? 0)}
+      </p>
+      <p className="mb-3 mt-1">
+        <LatencyRange min={latency.min} max={latency.max} />
       </p>
       {best && (
         <Button className="mb-4 w-full" onClick={() => openExternal(best.tg)}>
@@ -71,7 +74,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
             )}
             onClick={() => setShowUnstable((value) => !value)}
           >
-            {ru.showUnstable} · {data.unstable_proxies?.length}
+            {ru.showUnstable} · {formatCount(data.unstable_proxies?.length ?? 0)}
           </button>
         )}
         {(['all', 'mtproto', 'socks'] as const).map((item) => (

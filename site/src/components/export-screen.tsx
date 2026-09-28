@@ -14,6 +14,7 @@ import {
 import { copyText } from '@/lib/copy'
 import { publicFileUrl } from '@/lib/data'
 import { flagEmoji, formatStamp, protocolLabel, securityLabel, transportLabel } from '@/lib/format'
+import { formatCount } from '@/lib/plural'
 import { ru } from '@/lib/ru'
 import { useSettings } from '@/lib/settings'
 import type { CatalogEntry, HubData } from '@/lib/types'
@@ -52,7 +53,7 @@ export function ExportScreen({ data }: { data: HubData }) {
     if (entry.kind === 'all') return 'Все проверенные'
     if (entry.kind === 'unstable') return 'Вместе с нестабильными'
     if (entry.kind === 'unverified') return 'Только открытый порт'
-    if (entry.kind === 'top') return `Топ ${entry.top ?? entry.count}`
+    if (entry.kind === 'top') return ru.top(entry.top ?? entry.count)
     if (entry.kind === 'clash') return 'Clash'
     if (entry.kind === 'singbox') return 'sing-box'
     if (entry.kind === 'country') {
@@ -86,7 +87,7 @@ export function ExportScreen({ data }: { data: HubData }) {
             key={entry.path}
             divided={index > 0}
             title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
+            detail={`${formatCount(entry.count)} · ${entry.path}`}
             onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
             onQr={() => openQr(entry)}
             onClient={
@@ -111,7 +112,7 @@ export function ExportScreen({ data }: { data: HubData }) {
               key={entry.path}
               divided={index > 0}
               title={titleOf(entry)}
-              detail={`${entry.count} · ${entry.path}`}
+              detail={`${formatCount(entry.count)} · ${entry.path}`}
               onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
               onQr={() => openQr(entry)}
               onClient={() => {
@@ -132,7 +133,7 @@ export function ExportScreen({ data }: { data: HubData }) {
             key={entry.path}
             divided={index > 0}
             title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
+            detail={`${formatCount(entry.count)} · ${entry.path}`}
             onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
             onQr={() => openQr(entry)}
             onClient={() => {
@@ -152,7 +153,7 @@ export function ExportScreen({ data }: { data: HubData }) {
             key={entry.path}
             divided={index > 0}
             title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
+            detail={`${formatCount(entry.count)} · ${entry.path}`}
             onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
             onQr={() => openQr(entry)}
             onClient={() => {
@@ -178,7 +179,7 @@ export function ExportScreen({ data }: { data: HubData }) {
               key={String(path)}
               divided={index > 0}
               title={String(title)}
-              detail={`${count} · ${path}`}
+              detail={`${formatCount(Number(count))} · ${path}`}
               onCopy={() => void copyText(publicFileUrl(settings.publicBase, String(path)), 'Ссылка скопирована')}
               onQr={() =>
                 setQr({

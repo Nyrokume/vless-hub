@@ -128,6 +128,18 @@ export function latencyText(ms: number | null | undefined): string {
   return `${Math.round(ms)} мс`
 }
 
+/** Working pings when any exist, otherwise every finite ping in the list. */
+export function displayedLatencyBounds(
+  items: Array<{ status?: string | null; latency_ms: number | null | undefined }>,
+): { min: number | null; max: number | null } {
+  const working = items.map((item) => {
+    if (item.status && item.status !== 'working') return null
+    if (item.latency_ms == null || Number.isNaN(item.latency_ms)) return null
+    return item.latency_ms
+  })
+  return latencyBounds(working.some((value) => value != null) ? working : items.map((item) => item.latency_ms))
+}
+
 export function latencyBounds(values: Array<number | null | undefined>): { min: number | null; max: number | null } {
   let min: number | null = null
   let max: number | null = null

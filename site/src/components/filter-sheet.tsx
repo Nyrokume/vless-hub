@@ -4,6 +4,7 @@ import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { protocolLabel, securityLabel, transportLabel } from '@/lib/format'
+import { formatCount } from '@/lib/plural'
 import { ru } from '@/lib/ru'
 import { SORTS, THRESHOLDS, VIEWS, thresholdKey, type SortKey, type ViewMode } from '@/lib/settings'
 import { cn } from '@/lib/utils'
@@ -178,7 +179,7 @@ export function FilterSheet({
                   active={protocol === item.id}
                   onClick={() => onProtocol(item.id)}
                 >
-                  {`${protocolLabel(item.id)} · ${item.count}`}
+                  {`${protocolLabel(item.id)} · ${formatCount(item.count)}`}
                 </Chip>
               ))}
             </div>
@@ -197,7 +198,7 @@ export function FilterSheet({
                   active={transport === item.id}
                   onClick={() => onTransport(item.id)}
                 >
-                  {`${transportLabel(item.id)} · ${item.count}`}
+                  {`${transportLabel(item.id)} · ${formatCount(item.count)}`}
                 </Chip>
               ))}
             </div>
@@ -216,7 +217,7 @@ export function FilterSheet({
                   active={security === item.id}
                   onClick={() => onSecurity(item.id)}
                 >
-                  {`${securityLabel(item.id)} · ${item.count}`}
+                  {`${securityLabel(item.id)} · ${formatCount(item.count)}`}
                 </Chip>
               ))}
             </div>
@@ -248,7 +249,7 @@ export function FilterSheet({
                         <span className="text-muted-foreground">{item.code}</span>
                       </span>
                       <span className="text-sm text-muted-foreground">
-                        {country === item.code ? '●' : item.count}
+                        {country === item.code ? '●' : formatCount(item.count)}
                       </span>
                     </button>
                   </div>

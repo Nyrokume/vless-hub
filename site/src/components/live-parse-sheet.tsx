@@ -10,6 +10,7 @@ import { useHub } from '@/lib/hub'
 import { collectFresh, type LiveProgress } from '@/lib/live-collect'
 import { CHECK_WORKFLOW_URL, fetchLatestRun, runLine, runPhase, type RunSnapshot } from '@/lib/live-sources'
 import type { ParsedProxy } from '@/lib/parse-proxy'
+import { formatCount } from '@/lib/plural'
 import { ru } from '@/lib/ru'
 import { cn } from '@/lib/utils'
 
@@ -26,10 +27,6 @@ type LiveGroup = {
 type LiveRow =
   | { kind: 'group'; key: string; group: LiveGroup; open: boolean }
   | { kind: 'config'; key: string; item: ParsedProxy }
-
-function countText(count: number): string {
-  return count.toLocaleString('ru-RU')
-}
 
 function rowTitle(item: ParsedProxy): { flag: string; name: string } {
   const code = flagCode(item.remark)
@@ -250,7 +247,7 @@ export function LiveParseSheet({
           )}
 
           {searched && !running && (
-            <p className="text-[15px]">{ru.live.found(countText(found.length))}</p>
+            <p className="text-[15px]">{ru.live.found(found.length)}</p>
           )}
 
           {searched && !running && (progress?.skips.length ?? 0) > 0 && (
@@ -329,7 +326,7 @@ export function LiveParseSheet({
                         {flagEmoji(row.group.code) || <Globe className="size-5 text-muted-foreground" />}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{row.group.name}</span>
-                      <Badge variant="secondary">{row.group.items.length}</Badge>
+                      <Badge variant="secondary">{formatCount(row.group.items.length)}</Badge>
                     </button>
                   ) : (
                     <button

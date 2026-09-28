@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
+import { LatencyRange } from '@/components/latency-range'
 import { FilterSheet } from '@/components/filter-sheet'
 import { LiveParseSheet } from '@/components/live-parse-sheet'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
@@ -29,16 +30,16 @@ import {
 import { copyText } from '@/lib/copy'
 import {
   configTitle,
+  displayedLatencyBounds,
   flagEmoji,
   formatStamp,
-  latencyBounds,
   latencyClass,
-  latencyRange,
   latencyText,
   protocolLine,
   speedText,
   stabilityText,
 } from '@/lib/format'
+import { formatCount } from '@/lib/plural'
 import { ru, statusLabel } from '@/lib/ru'
 import { useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
@@ -64,14 +65,6 @@ type ListRow =
   | { kind: 'group'; key: string; group: CountryGroup; open: boolean }
   | { kind: 'config'; key: string; config: ConfigRecord }
 
-function ruNoun(count: number, one: string, few: string, many: string): string {
-  const mod10 = count % 10
-  const mod100 = count % 100
-  if (mod10 === 1 && mod100 !== 11) return `${count} ${one}`
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} ${few}`
-  return `${count} ${many}`
-}
-
 function latencyRank(ms: number | null, desc = false): number {
   if (ms == null) return desc ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY
   return ms
@@ -93,12 +86,6 @@ function compareConfigs(sort: SortKey, left: ConfigRecord, right: ConfigRecord):
   return latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id)
 }
 
-function workingPing(config: ConfigRecord): number | null {
-  if (config.status && config.status !== 'working') return null
-  if (config.latency_ms == null || Number.isNaN(config.latency_ms)) return null
-  return config.latency_ms
-}
-
 function groupByCountry(configs: ConfigRecord[]): CountryGroup[] {
   const map = new Map<string, ConfigRecord[]>()
   for (const config of configs) {
@@ -116,8 +103,7 @@ function groupByCountry(configs: ConfigRecord[]): CountryGroup[] {
       (left, right) => latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id),
     )
     const name = items.find((item) => item.country)?.country || (code === 'ZZ' ? ru.noCountry : code)
-    const working = items.map(workingPing)
-    const bounds = latencyBounds(working.some((value) => value != null) ? working : items.map((item) => item.latency_ms))
+    const bounds = displayedLatencyBounds(items)
     groups.push({ code, name, count: items.length, min: bounds.min, max: bounds.max, configs: items })
   }
   groups.sort(
@@ -390,7 +376,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  const statsLine = `${ruNoun(data.stats.published, ...ru.noun.config)} · ${ruNoun(data.stats.countries, ...ru.noun.country)}`
+  const statsLine = ru.listSummary(data.stats.published, data.stats.countries)
   const filtersOn = sessionFilters > 0 || settings.latencyThreshold != null
   const knownIds = useMemo(() => {
     const ids = new Set<string>()
@@ -599,27 +585,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   )
 }
 
-function GroupLatency({ min, max }: { min: number | null; max: number | null }) {
-  const range = latencyRange(min, max)
-  if (range.kind === 'empty') {
-    return <span className="shrink-0 text-[13px] font-semibold text-muted-foreground">—</span>
-  }
-  if (range.kind === 'single') {
-    return (
-      <span className={cn('shrink-0 text-[13px] font-semibold tabular-nums whitespace-nowrap', latencyClass(range.ms))}>
-        {latencyText(range.ms)}
-      </span>
-    )
-  }
-  return (
-    <span className="shrink-0 text-[13px] font-semibold tabular-nums whitespace-nowrap">
-      <span className={latencyClass(range.min)}>{latencyText(range.min)}</span>
-      <span className="font-normal text-muted-foreground"> ~ </span>
-      <span className={latencyClass(range.max)}>{latencyText(range.max)}</span>
-    </span>
-  )
-}
-
 function CountryHeader({
   group,
   open,
@@ -642,8 +607,8 @@ function CountryHeader({
         {flag || <Globe className="size-5 text-muted-foreground" />}
       </span>
       <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{group.name}</span>
-      <Badge variant="secondary">{group.count}</Badge>
-      <GroupLatency min={group.min} max={group.max} />
+      <Badge variant="secondary">{formatCount(group.count)}</Badge>
+      <LatencyRange min={group.min} max={group.max} />
     </button>
   )
 }

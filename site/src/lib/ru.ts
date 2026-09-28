@@ -1,5 +1,7 @@
 /** Every string the site shows. Protocol names stay as VLESS, TCP, WS, gRPC, Reality. */
 
+import { formatCount, plural, pluralCategory, type PluralForms } from './plural.ts'
+
 export const RAW_KEYS = [
   'parse_error',
   'invalid_field',
@@ -45,6 +47,23 @@ const probes = {
   'xray-http': 'Через прокси',
 } as const
 
+const noun = {
+  config: ['конфиг', 'конфига', 'конфигов'],
+  country: ['страна', 'страны', 'стран'],
+  link: ['ссылка', 'ссылки', 'ссылок'],
+  uniqueLink: ['уникальная ссылка', 'уникальные ссылки', 'уникальных ссылок'],
+  port: ['порт', 'порта', 'портов'],
+  proxyCheck: ['проверка через прокси', 'проверки через прокси', 'проверок через прокси'],
+  working: ['рабочий', 'рабочих', 'рабочих'],
+  checked: ['проверенного', 'проверенных', 'проверенных'],
+  newOne: ['новый', 'новых', 'новых'],
+  source: ['источник', 'источника', 'источников'],
+} as const satisfies Record<string, PluralForms>
+
+function pluralFormUnchecked(count: number): string {
+  return pluralCategory(count) === 'one' ? 'не проверен' : 'не проверены'
+}
+
 export const ru = {
   brand: 'V2Hub',
   loading: 'Загружаем список…',
@@ -55,7 +74,7 @@ export const ru = {
   refreshFailed: 'Не удалось обновить',
   alreadyFresh: 'Уже актуально',
   refreshed: 'Обновлено',
-  refreshedNew: (count: number) => `Обновлено · +${count} новых`,
+  refreshedNew: (count: number) => `Обновлено · +${plural(count, noun.newOne)}`,
   updateAvailable: 'Есть обновление',
   refresh: 'Обновить',
   themeDark: 'Тёмная тема',
@@ -86,7 +105,7 @@ export const ru = {
   showUnverified: 'Показать непроверенные',
   showUnstable: 'Показать нестабильные',
   selectShown: 'Выбрать показанные',
-  selected: (count: number) => `Выбрано ${count}`,
+  selected: (count: number) => `Выбрано ${plural(count, noun.config)}`,
   clear: 'Снять',
   text: 'Текст',
   encoded: 'Код',
@@ -99,7 +118,7 @@ export const ru = {
   qrLong: 'Ссылка длинная, код получится плотным. Надёжнее скопировать её текстом.',
   qrHint: 'Код чёрный на белом, чтобы его можно было сканировать. Сайт не поднимает туннель.',
   qrTooLong: 'Для QR выберите короткую подборку. Длинный список скачивается файлом.',
-  copiedCount: (count: number) => `Скопировано: ${count}`,
+  copiedCount: (count: number) => `Скопировано ${plural(count, noun.config)}`,
   picture: 'Картинка',
   share: 'Поделиться',
   copy: 'Копировать',
@@ -131,11 +150,12 @@ export const ru = {
   expandGroups: 'Развернуть все',
   collapseGroups: 'Свернуть все',
   noCountry: 'Без страны',
+  listSummary: (configs: number, countries: number) =>
+    `${plural(configs, noun.config)} · ${plural(countries, noun.country)}`,
+  telegramCounts: (mtproto: number, socks: number) =>
+    `${plural(mtproto, ['MTProto', 'MTProto', 'MTProto'])} · ${plural(socks, ['SOCKS', 'SOCKS', 'SOCKS'])}`,
   portOpen: 'только открытый порт',
-  noun: {
-    config: ['конфиг', 'конфига', 'конфигов'] as const,
-    country: ['страна', 'страны', 'стран'] as const,
-  },
+  noun,
   fields: {
     address: 'Адрес',
     port: 'Порт',
@@ -172,21 +192,21 @@ export const ru = {
   securityAndConnection: 'Защита и соединение',
   allVerified: 'Все проверенные',
   withUnstable: 'Вместе с нестабильными',
-  top: (count: number) => `Топ ${count}`,
+  top: (count: number) => `Топ ${formatCount(count)}`,
   linkForClientOnly: 'Для этого клиента есть только ссылка',
   subscriptionCopied: 'Ссылка скопирована',
   buildSubscription: 'Собрать подписку',
-  inListNow: (count: number) => `В списке сейчас: ${count}`,
+  inListNow: (count: number) => `Сейчас в списке ${plural(count, noun.config)}`,
   copySelection: 'Ссылка подборки скопирована',
   selection: 'Подборка',
-  downloadCount: (count: number) => `Скачать ${count}`,
+  downloadCount: (count: number) => `Скачать ${plural(count, noun.config)}`,
   any: 'все',
   copySubscription: 'Ссылка подписки скопирована',
   copySubscriptionUrl: 'Скопировать ссылку',
   copyEncodedUrl: 'Скопировать ссылку на код',
   encodedUrlCopied: 'Ссылка на код скопирована',
   copyAllLinks: 'Скопировать все ссылки',
-  copiedConfigs: (count: number) => `Скопировано конфигов: ${count}`,
+  copiedConfigs: (count: number) => `Скопировано ${plural(count, noun.config)}`,
   subscriptionQr: 'QR подписки',
   allSubscriptions: 'Все подписки',
   settings: {
@@ -198,10 +218,11 @@ export const ru = {
     check: (value: string) => `Проверка: ${value}`,
     lastRun: (value: string) => `Последний запуск: ${value}`,
     pingMeaning: 'Пинг — время ответа сайта, без времени подключения',
-    inList: (published: number, tested: number) => `В списке: ${published} прокси из ${tested} проверок`,
-    inListEmpty: 'В списке: —',
-    countryLine: (countries: number, median: string) => `Стран: ${countries} · средний пинг ${median}`,
-    countryEmpty: 'Стран: —',
+    inList: (published: number, tested: number) =>
+      `${plural(published, noun.working)} из ${plural(tested, noun.checked)}`,
+    inListEmpty: '—',
+    countryLine: (countries: number) => plural(countries, noun.country),
+    countryEmpty: '—',
     guide: 'Инструкции',
     sources: 'Источники',
     sourceError: 'ошибка',
@@ -217,11 +238,14 @@ export const ru = {
     dash: '—',
     logs: 'Логи',
     dropped: 'Отброшено',
-    collected: 'Собрано ссылок',
-    unique: 'Уникальных',
-    portsChecked: 'Проверено портов',
-    proxyChecked: 'Проверено через прокси',
-    published: 'В списке',
+    collected: (count: number) => `Собрано ${plural(count, noun.link)}`,
+    unique: (count: number) => plural(count, noun.uniqueLink),
+    portsChecked: (count: number) =>
+      pluralCategory(count) === 'one'
+        ? `Проверен ${formatCount(count)} порт`
+        : `Проверено ${plural(count, noun.port)}`,
+    proxyChecked: (count: number) => plural(count, noun.proxyCheck),
+    published: (count: number) => `${plural(count, noun.working)} в списке`,
     duration: (seconds: number) => {
       const whole = Math.max(0, Math.round(seconds))
       const minutes = Math.floor(whole / 60)
@@ -230,7 +254,7 @@ export const ru = {
       return `${minutes} мин ${rest} с`
     },
     sourceMeta: (links: number, kept: number, verified: number, yieldPct: string) =>
-      `ссылок ${links} · разобрано ${kept} · рабочих ${verified} · выход ${yieldPct}`,
+      `${plural(links, noun.link)} · разобрано ${formatCount(kept)} · ${plural(verified, noun.working)} · выход ${yieldPct}`,
   },
   guideItems: [
     {
@@ -286,10 +310,14 @@ export const ru = {
   live: {
     title: 'Живой парс',
     find: 'Найти новые',
-    sources: (done: number, total: number) => `Источники ${done} из ${total}`,
+    sources: (done: number, total: number) => `Источники ${formatCount(done)} из ${formatCount(total)}`,
     cancel: 'Отмена',
-    found: (count: string) => `Найдено ${count} новых · не проверены`,
-    skipped: (count: number) => `Пропущено ${count}`,
+    found: (count: number) =>
+      `Найдено ${plural(count, noun.newOne)} · ${pluralFormUnchecked(count)}`,
+    skipped: (count: number) =>
+      pluralCategory(count) === 'one'
+        ? `Пропущен ${plural(count, noun.source)}`
+        : `Пропущено ${plural(count, noun.source)}`,
     copy: 'Скопировать',
     copied: 'Ссылки скопированы',
     download: 'Скачать',

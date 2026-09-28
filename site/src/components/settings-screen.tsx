@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { IconTile } from '@/components/icon-tile'
 import { InspectScreen } from '@/components/inspect-screen'
+import { LatencyRange } from '@/components/latency-range'
 import { SiteHeader } from '@/components/site-header'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
@@ -33,7 +34,8 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { CLIENTS, clientName, type ClientId } from '@/lib/clients'
-import { formatStamp, latencyText } from '@/lib/format'
+import { displayedLatencyBounds, formatStamp } from '@/lib/format'
+import { formatCount } from '@/lib/plural'
 import { probeLabel, reasonLabel, ru } from '@/lib/ru'
 import {
   DEFAULT_PUBLIC_BASE,
@@ -147,18 +149,18 @@ function RunLogs({ data }: { data: HubData | null }) {
             {ru.settings.duration(data.duration_sec)}
           </p>
           <div className="mt-2">
-            <LogLine label={ru.settings.collected} value={String(data.stats.fetched)} />
-            <LogLine label={ru.settings.unique} value={String(data.stats.unique)} />
-            <LogLine label={ru.settings.portsChecked} value={String(data.stats.tested)} />
-            <LogLine label={ru.settings.proxyChecked} value={String(data.stats.proxy_tested ?? data.stats.tested)} />
-            <LogLine label={ru.settings.published} value={String(data.stats.published)} />
+            <p className="py-1 text-foreground">{ru.settings.collected(data.stats.fetched)}</p>
+            <p className="py-1 text-foreground">{ru.settings.unique(data.stats.unique)}</p>
+            <p className="py-1 text-foreground">{ru.settings.portsChecked(data.stats.tested)}</p>
+            <p className="py-1 text-foreground">{ru.settings.proxyChecked(data.stats.proxy_tested ?? data.stats.tested)}</p>
+            <p className="py-1 text-foreground">{ru.settings.published(data.stats.published)}</p>
           </div>
           {reasons.length > 0 && (
             <>
               <p className="mt-3 font-medium text-foreground">{ru.settings.dropped}</p>
               <div>
                 {reasons.map((row) => (
-                  <LogLine key={row.key} label={row.label} value={String(row.count)} />
+                  <LogLine key={row.key} label={row.label} value={formatCount(row.count)} />
                 ))}
               </div>
             </>
@@ -191,6 +193,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
   const dark = resolvedTheme !== 'light'
   const [picker, setPicker] = useState<'sort' | 'threshold' | 'client' | 'base' | null>(null)
   const [baseDraft, setBaseDraft] = useState(settings.publicBase)
+  const latency = data ? displayedLatencyBounds(data.configs) : { min: null, max: null }
 
   function openBase() {
     setBaseDraft(settings.publicBase)
@@ -297,19 +300,19 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
           icon={<Server className="size-4" />}
           text={
             data
-              ? `В списке: ${data.stats.published} прокси из ${data.stats.proxy_tested ?? data.stats.tested} проверок`
-              : 'В списке: —'
+              ? ru.settings.inList(data.stats.published, data.stats.proxy_tested ?? data.stats.tested)
+              : ru.settings.inListEmpty
           }
         />
         <Separator />
         <InfoRow
           icon={<Globe className="size-4" />}
-          text={
-            data
-              ? ru.settings.countryLine(data.stats.countries, latencyText(data.stats.median_latency_ms))
-              : 'Стран: —'
-          }
+          text={data ? ru.settings.countryLine(data.stats.countries) : ru.settings.countryEmpty}
         />
+        <Separator />
+        <InfoRow icon={<Gauge className="size-4" />}>
+          <LatencyRange className="text-[16px]" min={latency.min} max={latency.max} />
+        </InfoRow>
       </Group>
 
       <Collapsible className="mb-6">
@@ -464,11 +467,11 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
   )
 }
 
-function InfoRow({ icon, text }: { icon: ReactNode; text: string }) {
+function InfoRow({ icon, text, children }: { icon: ReactNode; text?: string; children?: ReactNode }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <IconTile>{icon}</IconTile>
-      <span className="min-w-0 flex-1 text-[16px] leading-snug break-words">{text}</span>
+      <span className="min-w-0 flex-1 text-[16px] leading-snug break-words">{children ?? text}</span>
     </div>
   )
 }
