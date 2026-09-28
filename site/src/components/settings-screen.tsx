@@ -15,6 +15,7 @@ import {
   Square,
 } from 'lucide-react'
 import { IconTile } from '@/components/icon-tile'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -124,15 +125,6 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
     setPicker('base')
   }
 
-  const sourceLine =
-    data?.sources
-      .map((source) => {
-        const fail = source.ok ? '' : ' (ошибка)'
-        const share = source.yield == null ? '' : ` · ${Math.round(source.yield * 100)}%`
-        const low = source.deprioritized ? ' · низкий выход' : ''
-        return `${source.name}${fail}: ${source.fetched}${share}${low}`
-      })
-      .join(' · ') ?? 'нет данных'
   const rejected = data?.stats.rejected
   const rejectedLine = rejected
     ? `Отброшено: разбор ${rejected.parse_error}, поля ${rejected.invalid_field}, мёртвые ${rejected.dead}, таймаут ${rejected.timeout}`
@@ -250,9 +242,40 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
             <InfoRow icon={<Gauge className="size-4" />} text={rejectedLine} />
           </>
         )}
-        <Separator />
-        <InfoRow icon={<Link2 className="size-4" />} text={sourceLine} />
       </Group>
+
+      <Collapsible className="mb-6">
+        <div className="overflow-hidden rounded-2xl bg-card">
+          <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left">
+            <IconTile>
+              <Server className="size-4" />
+            </IconTile>
+            <span className="flex-1 text-[17px]">Источники</span>
+            <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {(data?.sources ?? []).map((source) => (
+              <div key={source.id}>
+                <Separator />
+                <div className="px-4 py-2.5">
+                  <p className="text-[15px]">{source.name}</p>
+                  <p className="text-[13px] text-muted-foreground">
+                    {source.ok ? source.fetched : 'ошибка'}
+                    {source.yield == null ? '' : ` · ${Math.round(source.yield * 100)}%`}
+                    {source.deprioritized ? ' · низкий выход' : ''}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {(!data || data.sources.length === 0) && (
+              <>
+                <Separator />
+                <p className="px-4 py-3 text-[14px] text-muted-foreground">Нет данных</p>
+              </>
+            )}
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       <ChoiceSheet
         open={picker === 'sort'}
