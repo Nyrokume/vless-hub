@@ -62,6 +62,8 @@ def collect_all(
                     url=source.url or source.channel,
                     ok=False,
                     error=str(exc),
+                    kind=source.kind,
+                    source_type=source.type,
                 )
                 parsed = []
             reports.append(report)
@@ -88,7 +90,13 @@ def collect_all(
 def _fetch_source(settings: Settings, source: Source) -> tuple[SourceReport, list[VlessConfig]]:
     started = time.perf_counter()
     url = _source_url(source)
-    report = SourceReport(name=source.name, url=url, ok=False)
+    report = SourceReport(
+        name=source.name,
+        url=url,
+        ok=False,
+        kind=source.kind,
+        source_type=source.type,
+    )
     try:
         if source.type == "telegram":
             status, text = _fetch_telegram(source.channel, settings)
@@ -99,6 +107,7 @@ def _fetch_source(settings: Settings, source: Source) -> tuple[SourceReport, lis
         report.parse_error = doc_reasons["parse_error"]
         report.invalid_field = doc_reasons["invalid_field"]
         report.links = report.parse_error + report.invalid_field + len(parsed)
+        report.parsed = len(parsed)
         report.kept = min(len(parsed), settings.max_links_per_source)
         report.ok = True
         report.elapsed_ms = round((time.perf_counter() - started) * 1000, 1)

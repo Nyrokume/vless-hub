@@ -58,7 +58,11 @@ export type SourceReport = {
   name: string
   url: string
   ok: boolean
+  type?: string
+  kind?: string
   fetched: number
+  parsed?: number
+  passed?: number
   kept?: number
   tested?: number
   verified?: number

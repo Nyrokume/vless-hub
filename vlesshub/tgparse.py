@@ -27,6 +27,8 @@ _LINK = re.compile(
     re.IGNORECASE,
 )
 _HOST = re.compile(r"^[A-Za-z0-9._:-]{1,253}$")
+# Public SOCKS dumps (TheSpeedX, monosans) are `ip:port` or `ip:port:country`.
+_BARE_SOCKS = re.compile(r"^(?P<host>(?:\d{1,3}\.){3}\d{1,3}):(?P<port>\d{2,5})(?::\S+)?$")
 
 
 @dataclass(slots=True)
@@ -79,7 +81,34 @@ def parse_many(text: str, source: str = "") -> list[TgProxy]:
         if source:
             proxy.sources.append(source)
         found.append(proxy)
+    for line in (text or "").splitlines():
+        match = _BARE_SOCKS.match(line.strip())
+        if match is None:
+            continue
+        host = match.group("host")
+        if not _ipv4(host):
+            continue
+        port = int(match.group("port"))
+        if port < 1 or port > 65535:
+            continue
+        proxy = TgProxy(kind="socks", host=host, port=port)
+        if proxy.fingerprint in seen:
+            continue
+        seen.add(proxy.fingerprint)
+        if source:
+            proxy.sources.append(source)
+        found.append(proxy)
     return found
+
+
+def _ipv4(host: str) -> bool:
+    parts = host.split(".")
+    if len(parts) != 4:
+        return False
+    for part in parts:
+        if not part.isdigit() or int(part) > 255:
+            return False
+    return True
 
 
 def dedup(proxies: list[TgProxy]) -> list[TgProxy]:

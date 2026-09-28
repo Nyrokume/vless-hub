@@ -97,8 +97,9 @@ export function ExportScreen({ data }: { data: HubData }) {
   ]
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 pt-4 pb-8">
-      <SiteHeader updated={formatStamp(data.generated_at)} />
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pt-4 pb-8">
+      <SiteHeader />
+      <p className="-mt-3 text-xs text-muted-foreground">{formatStamp(data.generated_at)}</p>
 
       {groups.map(
         (group) =>
@@ -189,7 +190,7 @@ function FileRow({
   return (
     <div>
       {divided && <Separator />}
-      <div className="flex items-center gap-2 px-3 py-3 sm:px-4">
+      <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium sm:text-[16px]">{title}</p>
           <p className="truncate text-[12px] text-muted-foreground sm:text-[13px]">{detail}</p>

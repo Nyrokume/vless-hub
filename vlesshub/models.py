@@ -56,6 +56,9 @@ class SourceReport:
     tested: int = 0
     yield_ratio: float | None = None
     deprioritized: bool = False
+    kind: str = ""
+    source_type: str = ""
+    parsed: int = 0
 
 
 @dataclass(slots=True)

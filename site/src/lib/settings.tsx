@@ -10,6 +10,7 @@ export type Settings = {
   latencyThreshold: number | null
   client: ClientId
   publicBase: string
+  autoRefresh: boolean
 }
 
 export const DEFAULT_PUBLIC_BASE = 'https://nyrokume.github.io/vless-hub'
@@ -43,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   latencyThreshold: null,
   client: 'happ',
   publicBase: DEFAULT_PUBLIC_BASE,
+  autoRefresh: false,
 }
 
 function isSort(value: unknown): value is SortKey {
@@ -99,6 +101,7 @@ function loadSettings(): Settings {
         typeof parsed.publicBase === 'string' && parsed.publicBase.trim()
           ? parsed.publicBase.trim().replace(/\/+$/, '')
           : DEFAULT_PUBLIC_BASE,
+      autoRefresh: parsed.autoRefresh === true,
     }
   } catch {
     return DEFAULT_SETTINGS

@@ -25,14 +25,22 @@ const HELP = [
   },
 ]
 
-export function GuideScreen({ data }: { data: HubData | null }) {
+export function GuideScreen({
+  data,
+  onRefresh,
+}: {
+  data: HubData | null
+  onRefresh?: () => Promise<void>
+}) {
   const [help, setHelp] = useState(false)
   if (help) return <HelpScreen onBack={() => setHelp(false)} />
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-      <SiteHeader updated={data ? formatStamp(data.generated_at) : undefined} />
-      <h1 className="px-1 pb-5 text-[28px] leading-none font-semibold tracking-tight">Настройки</h1>
-      <SettingsScreen data={data} embedded onOpenHelp={() => setHelp(true)} />
+      <SiteHeader />
+      <p className="mb-3 text-xs text-muted-foreground">
+        {data ? formatStamp(data.generated_at) : 'Настройки'}
+      </p>
+      <SettingsScreen data={data} embedded onOpenHelp={() => setHelp(true)} onRefresh={onRefresh} />
     </div>
   )
 }

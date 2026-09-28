@@ -6,12 +6,15 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
 import { FilterSheet } from '@/components/filter-sheet'
@@ -35,7 +38,7 @@ import {
   protocolLine,
   uptimeText,
 } from '@/lib/format'
-import { SORTS, VIEWS, sortLabel, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
+import { SORTS, VIEWS, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
 import { useMediaQuery } from '@/lib/use-media'
 import { cn } from '@/lib/utils'
@@ -361,11 +364,9 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  const viewLabel = VIEWS.find((item) => item.value === settings.view)?.label ?? 'По странам'
-  const layoutNote =
-    settings.view === 'country'
-      ? `${viewLabel} · ${countryOrder === 'count' ? 'по числу' : 'по лучшему пингу'} · ${sortLabel(settings.sort)}`
-      : `${viewLabel} · ${sortLabel(settings.sort)}`
+  const median =
+    data.stats.median_latency_ms == null ? '—' : Math.round(data.stats.median_latency_ms)
+  const meta = `${formatStamp(data.generated_at)} · ${data.stats.published} в списке · ${data.stats.countries} стран · медиана HTTP ${median} мс`
 
   const sortMenu = (
     <DropdownMenu>
@@ -386,82 +387,82 @@ export function ConfigsScreen({ data }: { data: HubData }) {
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Вид</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={settings.view}
+          onValueChange={(value) => update({ view: value as ViewMode })}
+        >
+          {VIEWS.map((item) => (
+            <DropdownMenuRadioItem key={item.value} value={item.value}>
+              {item.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        {settings.view === 'country' && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Порядок стран</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={countryOrder}
+              onValueChange={(value) => setCountryOrder(value as CountryOrder)}
+            >
+              <DropdownMenuRadioItem value="count">По числу</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="ping">По лучшему пингу</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </>
+        )}
+        {data.unverified.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setShowUnverified((value) => !value)}>
+              {showUnverified ? 'Скрыть непроверенные' : `Непроверенные · ${data.unverified.length}`}
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
 
   return (
     <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', chosen.length > 0 && 'pb-36')}>
-      <SiteHeader updated={formatStamp(data.generated_at)} menu={sortMenu} />
-      <p className="mb-3 text-[13px] text-muted-foreground">
-        {data.stats.published} в списке · {data.stats.countries} стран · медиана HTTP{' '}
-        {data.stats.median_latency_ms == null ? '—' : data.stats.median_latency_ms} мс
-      </p>
-
-      <div className="mb-3 flex flex-col gap-2">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+      <SiteHeader menu={sortMenu} />
+      <p className="mb-2 text-xs text-muted-foreground">{meta}</p>
+      <div className="mb-3 flex items-center gap-2">
+        <InputGroup className="min-w-0 flex-1 bg-card">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Страна, адрес, транспорт"
             aria-label="Поиск конфигураций Vless"
-            className="h-10 rounded-xl border-0 bg-card pl-9"
           />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setFiltersOpen(true)}>
-            <SlidersHorizontal />
-            Фильтры
-            {sessionFilters > 0 && <Badge variant="secondary">{sessionFilters}</Badge>}
-          </Button>
-          {VIEWS.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className={cn(
-                'rounded-full px-3 py-1.5 text-[13px]',
-                settings.view === item.value ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-              )}
-              onClick={() => update({ view: item.value })}
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              size="icon-xs"
+              aria-label="Фильтры"
+              onClick={() => setFiltersOpen(true)}
             >
-              {item.label}
-            </button>
-          ))}
-          {settings.view === 'country' && (
-            <label className="text-[13px] text-muted-foreground">
-              <span className="sr-only">Порядок стран</span>
-              <select
-                aria-label="Порядок стран"
-                className="h-8 rounded-lg bg-secondary px-2 text-[13px]"
-                value={countryOrder}
-                onChange={(event) => setCountryOrder(event.target.value as CountryOrder)}
-              >
-                <option value="count">По числу</option>
-                <option value="ping">По лучшему пингу</option>
-              </select>
-            </label>
-          )}
-          {data.unverified.length > 0 && (
-            <button
-              type="button"
-              className={cn(
-                'rounded-full px-3 py-1.5 text-[13px]',
-                showUnverified ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-              )}
-              onClick={() => setShowUnverified((value) => !value)}
-            >
-              Непроверенные · {data.unverified.length}
-            </button>
-          )}
-        </div>
-        <p className="text-[12px] text-muted-foreground">
-          {layoutNote}
-          {settings.latencyThreshold != null ? ` · до ${settings.latencyThreshold} мс` : ''}
-          {showUnverified ? ' · с непроверенными' : ''}
-          {' · '}
-          {filtered.length}
-        </p>
+              <SlidersHorizontal />
+              {sessionFilters > 0 && <span className="sr-only">{sessionFilters}</span>}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          spacing={0}
+          value={settings.view === 'country' || settings.view === 'flat' ? settings.view : ''}
+          onValueChange={(value) => {
+            if (value === 'country' || value === 'flat') update({ view: value })
+          }}
+          aria-label="Вид списка"
+        >
+          <ToggleGroupItem value="country">По странам</ToggleGroupItem>
+          <ToggleGroupItem value="flat">Список</ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <div className={settings.view === 'cards' ? '' : 'overflow-hidden rounded-2xl bg-card'}>

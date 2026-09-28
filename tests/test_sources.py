@@ -13,6 +13,23 @@ def test_starter_sources_are_editable_yaml():
     assert settings.drop_after_failures >= 1
     names = {source.name for source in sources if source.enabled}
     assert "epodonios-vless" in names
+    for name in (
+        "taheri-vless",
+        "taheri-ss",
+        "taheri-trojan",
+        "radikal-trojan",
+        "radikal-hysteria2",
+        "ermaozi-mix",
+        "kamaji-mix",
+        "mahdibland-ss",
+        "proxifly-socks5",
+        "speedx-socks5",
+    ):
+        assert name in names
+    proxifly = next(source for source in sources if source.name == "proxifly-socks5")
+    assert proxifly.kind == "telegram-proxy" and proxifly.limit == 80
+    speedx = next(source for source in sources if source.name == "speedx-socks5")
+    assert speedx.kind == "telegram-proxy"
     assert any(source.type == "telegram" and source.channel for source in sources if source.enabled)
     assert any(source.type == "subscription" and source.url.startswith("https://") for source in sources)
     tg = [source for source in sources if source.enabled and source.kind == "telegram-proxy"]

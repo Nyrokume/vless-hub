@@ -65,6 +65,25 @@ def test_mtproto_forms_normalize_and_dedup():
     assert ee_b64_key.startswith("ee")
 
 
+def test_bare_socks_host_port_lists():
+    text = "\n".join(
+        [
+            "159.65.233.169:54321",
+            "10.0.0.1:1080:Germany",
+            "not a proxy",
+            "999.1.1.1:1080",
+            "1.2.3.4:70000",
+            "socks5://1.2.3.4:1080",
+        ]
+    )
+    parsed = parse_many(text, source="speedx")
+    hosts = {item.host: item for item in parsed}
+    assert set(hosts) == {"159.65.233.169", "10.0.0.1", "1.2.3.4"}
+    assert all(item.kind == "socks" and item.sources == ["speedx"] for item in parsed)
+    assert hosts["159.65.233.169"].port == 54321
+    assert hosts["10.0.0.1"].port == 1080
+
+
 def test_secret_prefixes_and_base64():
     mode, key, domain = decode_secret(EE_DOMAIN)
     assert mode == "ee" and domain == "google.com" and key.hex() == SECRET

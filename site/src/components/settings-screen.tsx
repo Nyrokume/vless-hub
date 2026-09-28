@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import {
   Activity,
@@ -6,11 +7,11 @@ import {
   BookOpen,
   Check,
   ChevronRight,
-  Clock,
   Gauge,
   Globe,
   Link2,
   Moon,
+  RefreshCw,
   Server,
   Smartphone,
   Square,
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { CLIENTS, clientName, type ClientId } from '@/lib/clients'
+import { WORKFLOW_PAGE, loadCollectorRun, nextScheduledRun, runStatusLabel, type CollectorRun } from '@/lib/collector-run'
 import { formatStamp } from '@/lib/format'
 import {
   DEFAULT_PUBLIC_BASE,
@@ -40,7 +42,7 @@ import {
   thresholdLabel,
   useSettings,
 } from '@/lib/settings'
-import type { HubData } from '@/lib/types'
+import type { HubData, SourceReport } from '@/lib/types'
 import { SITE_VERSION } from '@/version'
 
 function Group({
@@ -51,7 +53,7 @@ function Group({
   children: ReactNode
 }) {
   return (
-    <section className="mb-6">
+    <section className="mb-4">
       {title && (
         <h2 className="px-4 pb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
           {title}
@@ -118,16 +120,43 @@ export function SettingsScreen({
   data,
   embedded = false,
   onOpenHelp,
+  onRefresh,
 }: {
   data: HubData | null
   embedded?: boolean
   onOpenHelp?: () => void
+  onRefresh?: () => Promise<void>
 }) {
   const { settings, update } = useSettings()
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
   const [picker, setPicker] = useState<'sort' | 'threshold' | 'client' | 'base' | null>(null)
   const [baseDraft, setBaseDraft] = useState(settings.publicBase)
+  const [run, setRun] = useState<CollectorRun | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void loadCollectorRun(data?.generated_at ?? null).then((next) => {
+      if (!cancelled) setRun(next)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [data?.generated_at])
+
+  async function refreshLists() {
+    if (!onRefresh) return
+    setRefreshing(true)
+    try {
+      await onRefresh()
+      toast.success('Списки обновлены')
+    } catch (reason) {
+      toast.error(reason instanceof Error ? reason.message : 'Не удалось обновить списки')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   function openBase() {
     setBaseDraft(settings.publicBase)
@@ -213,6 +242,79 @@ export function SettingsScreen({
         </button>
       </Group>
 
+      <Group title="Обновление">
+        <div className="flex items-center gap-3 px-4 py-2.5">
+          <IconTile>
+            <RefreshCw className="size-4" />
+          </IconTile>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px]">Последний запуск</span>
+            <span className="block text-[13px] text-muted-foreground">
+              {run?.at ? formatStamp(run.at) : data ? formatStamp(data.generated_at) : '—'}
+              {' · '}
+              {run ? runStatusLabel(run.status) : '…'}
+            </span>
+          </span>
+        </div>
+        <Separator />
+        <div className="px-4 py-2.5 text-[13px] text-muted-foreground">
+          Следующий: {formatStamp(nextScheduledRun().toISOString())}
+          {run?.source === 'data' ? ' · время из файла данных' : ''}
+        </div>
+        <Separator />
+        <div className="flex flex-wrap gap-2 px-4 py-2.5">
+          <Button size="sm" disabled={!onRefresh || refreshing} onClick={() => void refreshLists()}>
+            Обновить списки
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => window.open(WORKFLOW_PAGE, '_blank', 'noopener,noreferrer')}>
+            Запустить проверку
+          </Button>
+        </div>
+        <p className="px-4 pb-2.5 text-[12px] text-muted-foreground">
+          Проверку может запустить только владелец репозитория.
+        </p>
+        <Separator />
+        <div className="flex items-center gap-3 px-4 py-2.5">
+          <Label htmlFor="auto-refresh" className="flex-1 text-[15px] font-normal">
+            Обновлять списки
+          </Label>
+          <Switch
+            id="auto-refresh"
+            checked={settings.autoRefresh}
+            onCheckedChange={(checked) => update({ autoRefresh: checked })}
+          />
+        </div>
+        <p className="px-4 pb-2.5 text-[12px] text-muted-foreground">При возврате на вкладку и каждые 15 минут.</p>
+        <Separator />
+        <Collapsible>
+          <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-2.5 text-left">
+            <span className="flex-1 text-[15px]">Источники</span>
+            <span className="text-[13px] text-muted-foreground">{data?.sources.length ?? 0}</span>
+            <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {(data?.sources ?? []).map((source) => (
+              <div key={source.id}>
+                <Separator />
+                <div className="px-4 py-2">
+                  <p className="text-[14px]">{source.name}</p>
+                  <p className="text-[12px] text-muted-foreground">
+                    {sourceKindLabel(source)}
+                    {source.ok ? ` · прошло ${source.passed ?? source.verified ?? 0}` : ' · ошибка'}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {(!data || data.sources.length === 0) && (
+              <>
+                <Separator />
+                <p className="px-4 py-2.5 text-[13px] text-muted-foreground">Нет данных</p>
+              </>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+      </Group>
+
       <Group title="Информация">
         <InfoRow icon={<Square className="size-4" />} text={`Версия: ${SITE_VERSION}`} />
         <Separator />
@@ -222,13 +324,8 @@ export function SettingsScreen({
         />
         <Separator />
         <InfoRow
-          icon={<Clock className="size-4" />}
-          text={`Последний запуск: ${data ? formatStamp(data.generated_at) : '—'}`}
-        />
-        <Separator />
-        <InfoRow
           icon={<Gauge className="size-4" />}
-          text="Задержка: один HTTP-запрос через прокси, без старта Xray"
+          text="Задержка: HTTP через прокси"
         />
         <Separator />
         <InfoRow
@@ -244,7 +341,7 @@ export function SettingsScreen({
           icon={<Globe className="size-4" />}
           text={
             data
-              ? `Стран: ${data.stats.countries} · медиана HTTP ${data.stats.median_latency_ms ?? '—'} мс`
+              ? `Стран: ${data.stats.countries} · медиана HTTP ${data.stats.median_latency_ms == null ? '—' : Math.round(data.stats.median_latency_ms)} мс`
               : 'Стран: —'
           }
         />
@@ -262,44 +359,20 @@ export function SettingsScreen({
         </Group>
       )}
 
-      <Collapsible className="mb-6">
-        <div className="overflow-hidden rounded-2xl bg-card">
-          <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left">
-            <IconTile>
-              <Server className="size-4" />
-            </IconTile>
-            <span className="flex-1 text-[17px]">Подробнее</span>
-            <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            {rejectedLine && (
-              <>
-                <Separator />
-                <div className="px-4 py-3 text-[15px] leading-snug">{rejectedLine}</div>
-              </>
-            )}
-            {(data?.sources ?? []).map((source) => (
-              <div key={source.id}>
-                <Separator />
-                <div className="px-4 py-2.5">
-                  <p className="text-[15px]">{source.name}</p>
-                  <p className="text-[13px] text-muted-foreground">
-                    {source.ok ? source.fetched : 'ошибка'}
-                    {source.yield == null ? '' : ` · ${Math.round(source.yield * 100)}%`}
-                    {source.deprioritized ? ' · низкий выход' : ''}
-                  </p>
-                </div>
-              </div>
-            ))}
-            {!rejectedLine && (!data || data.sources.length === 0) && (
-              <>
-                <Separator />
-                <p className="px-4 py-3 text-[14px] text-muted-foreground">Нет данных</p>
-              </>
-            )}
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
+      {rejectedLine && (
+        <Collapsible className="mb-4">
+          <div className="overflow-hidden rounded-2xl bg-card">
+            <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-2.5 text-left">
+              <span className="flex-1 text-[15px]">Подробнее</span>
+              <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <Separator />
+              <div className="px-4 py-2.5 text-[14px] leading-snug">{rejectedLine}</div>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
+      )}
 
       <Group title="Об авторе">
         <div className="px-4 py-3">
@@ -406,6 +479,12 @@ export function SettingsScreen({
       </Sheet>
     </div>
   )
+}
+
+function sourceKindLabel(source: SourceReport): string {
+  if (source.kind === 'telegram-proxy' || /socks|mtproto|proxy/i.test(source.name)) return 'прокси'
+  if (source.type === 'telegram' || source.name.startsWith('tg-')) return 'Telegram'
+  return 'подписка'
 }
 
 function InfoRow({ icon, text }: { icon: ReactNode; text: string }) {
