@@ -283,37 +283,35 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
             <IconTile>
               <BookOpen className="size-4" />
             </IconTile>
-            <span className="flex-1 text-[17px]">Инструкции</span>
+            <span className="flex-1 text-[17px]">{ru.settings.guide}</span>
             <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="flex flex-col gap-4 px-4 pb-4 text-[14px] leading-relaxed text-muted-foreground">
-              <p>{ru.guide.intro}</p>
-              <div>
-                <p className="font-medium text-foreground">{ru.guide.readTitle}</p>
-                <p className="mt-1">{ru.guide.read}</p>
-              </div>
-              <div>
-                <p className="font-medium text-foreground">{ru.guide.takeTitle}</p>
-                <p className="mt-1">{ru.guide.take}</p>
-              </div>
-              <div>
-                <p className="font-medium text-foreground">{ru.guide.checkTitle}</p>
-                <p className="mt-1">{ru.guide.check}</p>
-                <div className="mt-3">
-                  <FailureCounts data={data} />
-                </div>
-              </div>
-              <div>
-                <p className="font-medium text-foreground">{ru.guide.telegramTitle}</p>
-                <p className="mt-1">{ru.guide.telegram}</p>
-              </div>
-              <div>
-                <p className="font-medium text-foreground">{ru.guide.inspectTitle}</p>
-                <div className="mt-2">
-                  <InspectScreen embedded />
-                </div>
-              </div>
+            <div className="flex flex-col pb-2">
+              {ru.guideItems.map((item) => (
+                <Collapsible key={item.id}>
+                  <Separator />
+                  <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left">
+                    <span className="flex-1 text-[16px]">{item.title}</span>
+                    <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-4 pb-3 text-[14px] leading-relaxed text-muted-foreground">
+                      <p>{item.body}</p>
+                      {item.id === 'check' && (
+                        <div className="mt-3">
+                          <FailureCounts data={data} />
+                        </div>
+                      )}
+                      {item.id === 'inspect' && (
+                        <div className="mt-3">
+                          <InspectScreen embedded />
+                        </div>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
             </div>
           </CollapsibleContent>
         </div>
