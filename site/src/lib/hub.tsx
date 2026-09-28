@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { loadHub } from '@/lib/data'
+import { ru } from '@/lib/ru'
 import type { HubData } from '@/lib/types'
 
 const CHECK_MS = 3 * 60 * 1000
@@ -35,10 +36,10 @@ export function HubProvider({ children }: { children: ReactNode }) {
     const previous = dataRef.current
     if (announce) {
       if (previous && next.generated_at === previous.generated_at) {
-        toast.success('Уже актуально')
+        toast.success(ru.alreadyFresh)
       } else {
         const added = newConfigCount(previous, next)
-        toast.success(added > 0 ? `Обновлено · +${added} новых` : 'Обновлено')
+        toast.success(added > 0 ? ru.refreshedNew(added) : ru.refreshed)
       }
     }
     setData(next)
@@ -52,7 +53,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
     try {
       apply(await loadHub(true), true)
     } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : 'Не удалось обновить')
+      toast.error(reason instanceof Error ? reason.message : ru.refreshFailed)
     } finally {
       setRefreshing(false)
     }
@@ -65,7 +66,7 @@ export function HubProvider({ children }: { children: ReactNode }) {
         if (!cancelled) apply(next, false)
       })
       .catch((reason) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : 'Ошибка загрузки')
+        if (!cancelled) setError(reason instanceof Error ? reason.message : ru.loadFailed)
       })
       .finally(() => {
         if (!cancelled) setLoading(false)

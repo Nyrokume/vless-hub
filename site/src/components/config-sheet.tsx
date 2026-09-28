@@ -25,6 +25,7 @@ import {
   transportLabel,
   uptimeText,
 } from '@/lib/format'
+import { ru, statusLabel } from '@/lib/ru'
 import type { ConfigRecord, SourceReport } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -58,34 +59,41 @@ export function ConfigSheet({
   const deepLink = config ? configDeepLink(client, config.uri) : null
   const rows = config
     ? [
-        ['Адрес', config.host],
-        ['Порт', String(config.port)],
-        ['Тип соединения', transportLabel(config.transport)],
-        ['Защита', securityLabel(config.security)],
-        ['Имя сервера', config.sni],
-        ['Поток', config.flow],
-        ['Путь', config.path],
-        ['Host', config.host_header],
-        ['Имя службы', config.service_name],
-        ['Отпечаток TLS', config.fingerprint],
-        ['UUID', config.uuid],
-        ['Название', config.remark],
-        ['Страна IP', config.ip_country ?? ''],
+        [ru.fields.address, config.host],
+        [ru.fields.port, String(config.port)],
+        [ru.fields.connection, transportLabel(config.transport)],
+        [ru.fields.security, securityLabel(config.security)],
+        [ru.fields.serverName, config.sni],
+        [ru.fields.flow, config.flow],
+        [ru.fields.path, config.path],
+        [ru.fields.headerName, config.host_header],
+        [ru.fields.service, config.service_name],
+        [ru.fields.tlsPrint, config.fingerprint],
+        [ru.fields.id, config.uuid],
+        [ru.fields.name, config.remark],
+        [ru.fields.ipCountry, config.ip_country ?? ''],
         [
-          'Метка страны',
+          ru.fields.countryMark,
           config.country_source === 'remark'
-            ? 'Флаг в названии'
+            ? ru.fields.fromName
             : config.country_source === 'geoip'
-              ? 'GeoIP адреса'
+              ? ru.fields.fromAddress
               : '',
         ],
-        ['Стабильность', stabilityText(config.stability) || uptimeText(config.uptime)],
-        ['Скорость', speedText(config.speed_kbps)],
-        ['Рукопожатие', config.handshake_ms != null ? latencyText(config.handshake_ms) : ''],
-        ['Статус', config.status === 'working' ? 'Рабочий' : config.status === 'unstable' ? 'Нестабильный' : config.verified === 'tcp' ? 'Только открытый порт' : ''],
-        ['Список', sourceName ?? ''],
+        [ru.fields.stability, stabilityText(config.stability) || uptimeText(config.uptime)],
+        [ru.fields.speed, speedText(config.speed_kbps)],
+        [ru.fields.handshake, config.handshake_ms != null ? latencyText(config.handshake_ms) : ''],
         [
-          'Проверено',
+          ru.fields.status,
+          config.status === 'working' || config.status === 'unstable' || config.status === 'dead'
+            ? statusLabel(config.status)
+            : config.verified === 'tcp'
+              ? ru.portOpen
+              : '',
+        ],
+        [ru.fields.list, sourceName ?? ''],
+        [
+          ru.fields.checked,
           config.tested_at ? `${formatStamp(config.tested_at)} · ${checkedAge(config.tested_at)}` : '',
         ],
       ].filter(([, value]) => value)
@@ -117,9 +125,9 @@ export function ConfigSheet({
               </SheetDescription>
             </SheetHeader>
             <div className="flex flex-col gap-2 px-4 pb-2">
-              <Button onClick={() => void copyText(config.uri, 'Ссылка конфига скопирована')}>
+              <Button onClick={() => void copyText(config.uri, ru.copyConfig)}>
                 <Copy />
-                Скопировать ссылку
+                {ru.copyLink}
               </Button>
               <div className="grid grid-cols-2 gap-2">
                 <Button
@@ -134,7 +142,7 @@ export function ConfigSheet({
                   }
                 >
                   <QrCode />
-                  QR-код
+                  {ru.qr}
                 </Button>
                 <Button
                   variant="secondary"
@@ -142,7 +150,7 @@ export function ConfigSheet({
                   onClick={() => deepLink && openExternal(deepLink)}
                 >
                   <ExternalLink />
-                  {deepLink ? clientName(client) : 'Только ссылка'}
+                  {deepLink ? clientName(client) : ru.linkOnly}
                 </Button>
               </div>
             </div>

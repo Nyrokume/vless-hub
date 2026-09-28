@@ -32,7 +32,8 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { CLIENTS, clientName, type ClientId } from '@/lib/clients'
-import { FAILURE_LABELS, formatStamp, latencyText } from '@/lib/format'
+import { formatStamp, latencyText } from '@/lib/format'
+import { probeLabel, reasonLabel, ru } from '@/lib/ru'
 import {
   DEFAULT_PUBLIC_BASE,
   SORTS,
@@ -119,8 +120,8 @@ function ChoiceSheet<T extends string>({
 function FailureCounts({ data }: { data: HubData | null }) {
   const rejected = data?.stats.rejected
   if (!rejected) return null
-  const rows = Object.keys(FAILURE_LABELS)
-    .map((key) => ({ key, label: FAILURE_LABELS[key], count: rejected[key] ?? 0 }))
+  const rows = Object.entries(rejected)
+    .map(([key, count]) => ({ key, label: reasonLabel(key), count }))
     .filter((row) => row.count > 0)
   if (rows.length === 0) return null
   return (
@@ -149,10 +150,9 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
 
   const rejected = data?.stats.rejected
   const rejectedParts = rejected
-    ? Object.entries(FAILURE_LABELS)
-        .map(([key, label]) => [label, rejected[key] ?? 0] as const)
+    ? Object.entries(rejected)
         .filter(([, count]) => count > 0)
-        .map(([label, count]) => `${label} ${count}`)
+        .map(([key, count]) => `${reasonLabel(key)} ${count}`)
     : []
   const rejectedLine = rejectedParts.length ? `Отброшено: ${rejectedParts.join(', ')}` : ''
 
@@ -235,7 +235,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         <Separator />
         <InfoRow
           icon={<Activity className="size-4" />}
-          text={`Проверка: ${data?.collector_version ?? '—'}`}
+          text={ru.settings.check(data ? probeLabel(data.probe) : ru.settings.dash)}
         />
         <Separator />
         <InfoRow
@@ -245,7 +245,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         <Separator />
         <InfoRow
           icon={<Gauge className="size-4" />}
-          text="Пинг — время ответа сайта, без времени подключения"
+          text={ru.settings.pingMeaning}
         />
         <Separator />
         <InfoRow
@@ -261,7 +261,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
           icon={<Globe className="size-4" />}
           text={
             data
-              ? `Стран: ${data.stats.countries} · медиана HTTP ${latencyText(data.stats.median_latency_ms)}`
+              ? ru.settings.countryLine(data.stats.countries, latencyText(data.stats.median_latency_ms))
               : 'Стран: —'
           }
         />
@@ -284,50 +284,28 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="flex flex-col gap-4 px-4 pb-4 text-[14px] leading-relaxed text-muted-foreground">
-              <p>
-                V2Hub собирает публичные конфиги VLESS и прокси Telegram, проверяет их и отдаёт списками.
-                Сайт не поднимает туннель и не подключается к серверу за вас.
-              </p>
+              <p>{ru.guide.intro}</p>
               <div>
-                <p className="font-medium text-foreground">Как читать результат</p>
-                <p className="mt-1">
-                  Точка на строке — рабочий или нестабильный конфиг. Пинг — медиана нескольких HTTP-запросов
-                  через уже запущенный Xray или sing-box, без прогрева. Рядом доля успешных прогонов и
-                  скорость. «Порт открыт» значит, что TCP ответил, а полный проход в этом запуске не
-                  выполнялся.
-                </p>
+                <p className="font-medium text-foreground">{ru.guide.readTitle}</p>
+                <p className="mt-1">{ru.guide.read}</p>
               </div>
               <div>
-                <p className="font-medium text-foreground">Как забрать конфиги</p>
-                <p className="mt-1">
-                  «Экспорт» — файлы по срезу, стране, защите и типу соединения, Clash, sing-box и конструктор
-                  подписки. На «Конфигах» отметьте строки и выгрузите текст, base64, файл, QR, Clash или
-                  sing-box. QR и кнопки клиента используют только проверенные схемы: Happ, v2rayNG,
-                  Hiddify, v2RayTun для VLESS; Clash Meta, Mihomo, NekoBox и sing-box — для своих файлов.
-                </p>
+                <p className="font-medium text-foreground">{ru.guide.takeTitle}</p>
+                <p className="mt-1">{ru.guide.take}</p>
               </div>
               <div>
-                <p className="font-medium text-foreground">Проверка</p>
-                <p className="mt-1">
-                  Сначала разбор ссылки, затем TCP, рукопожатие ядра, большинство из трёх HTTP-адресов,
-                  короткая загрузка и чужой адрес выхода. Рабочий — прошёл сейчас и держится хотя бы в 70%
-                  последних прогонов. Нестабильный прошёл сейчас, но реже. Мёртвый в список не попадает, а
-                  после нескольких провалов подряд выбывает из пула. Проверка идёт с серверов GitHub Actions
-                  вне России, поэтому местный провайдер может закрыть то, что здесь открылось.
-                </p>
+                <p className="font-medium text-foreground">{ru.guide.checkTitle}</p>
+                <p className="mt-1">{ru.guide.check}</p>
                 <div className="mt-3">
                   <FailureCounts data={data} />
                 </div>
               </div>
               <div>
-                <p className="font-medium text-foreground">Telegram</p>
-                <p className="mt-1">
-                  Кнопка «В Telegram» открывает tg:// и подставляет прокси. Если клиент не открылся, рядом
-                  есть HTTPS-ссылка и QR.
-                </p>
+                <p className="font-medium text-foreground">{ru.guide.telegramTitle}</p>
+                <p className="mt-1">{ru.guide.telegram}</p>
               </div>
               <div>
-                <p className="font-medium text-foreground">Разбор ссылки</p>
+                <p className="font-medium text-foreground">{ru.guide.inspectTitle}</p>
                 <div className="mt-2">
                   <InspectScreen embedded />
                 </div>
@@ -462,7 +440,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
                 setPicker(null)
               }}
             >
-              Вернуть адрес Pages
+              {ru.settings.restoreAddress}
             </Button>
           </form>
         </SheetContent>

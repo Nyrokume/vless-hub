@@ -1,3 +1,5 @@
+import { reasonLabel, statusLabel } from '@/lib/ru'
+
 const TRANSPORTS: Record<string, string> = {
   tcp: 'TCP',
   ws: 'WS',
@@ -45,17 +47,20 @@ export function speedText(kbps: number | null | undefined): string {
 }
 
 export const FAILURE_LABELS: Record<string, string> = {
-  parse_error: 'не разобралось',
-  invalid_field: 'ошибка в поле',
-  tcp_refused: 'отказали',
-  timeout: 'нет ответа',
-  tls_fail: 'ошибка защиты',
-  reality_fail: 'ошибка Reality',
-  handshake_fail: 'не подключилось',
-  http_fail: 'сайт не открылся',
-  no_data: 'пустой ответ',
-  exit_ip_leak: 'свой адрес',
+  parse_error: reasonLabel('parse_error'),
+  invalid_field: reasonLabel('invalid_field'),
+  tcp_refused: reasonLabel('tcp_refused'),
+  timeout: reasonLabel('timeout'),
+  tls_fail: reasonLabel('tls_fail'),
+  reality_fail: reasonLabel('reality_fail'),
+  handshake_fail: reasonLabel('handshake_fail'),
+  http_fail: reasonLabel('http_fail'),
+  no_data: reasonLabel('no_data'),
+  exit_ip_leak: reasonLabel('exit_ip_leak'),
+  dead: reasonLabel('dead'),
 }
+
+export { reasonLabel, statusLabel }
 
 export function flagEmoji(code: string | null | undefined): string {
   if (!code || !/^[a-z]{2}$/i.test(code)) return ''

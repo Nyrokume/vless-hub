@@ -1,6 +1,8 @@
 import { toast } from 'sonner'
 
-export async function copyText(text: string, message = 'Скопировано') {
+import { ru } from '@/lib/ru'
+
+export async function copyText(text: string, message: string = ru.copied) {
   try {
     await navigator.clipboard.writeText(text)
   } catch {
@@ -14,7 +16,7 @@ export async function copyText(text: string, message = 'Скопировано')
     const ok = document.execCommand('copy')
     area.remove()
     if (!ok) {
-      toast.error('Не удалось скопировать')
+      toast.error(ru.copyFailed)
       return
     }
   }

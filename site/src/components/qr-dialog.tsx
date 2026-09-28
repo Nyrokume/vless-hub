@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { openExternal, type ImportAction } from '@/lib/clients'
 import { copyText } from '@/lib/copy'
+import { ru } from '@/lib/ru'
 
 export type QrRequest = {
   title: string
@@ -29,7 +30,7 @@ async function shareValue(title: string, value: string, mode: 'text' | 'url') {
       if (error instanceof DOMException && error.name === 'AbortError') return
     }
   }
-  await copyText(value, 'Скопировано')
+  await copyText(value, ru.copied)
 }
 
 export function QrDialog({
@@ -86,23 +87,21 @@ export function QrDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{request?.title ?? 'QR-код'}</DialogTitle>
+          <DialogTitle>{request?.title ?? ru.qr}</DialogTitle>
           <DialogDescription>
-            {value && value.length > 900
-              ? 'Ссылка длинная, код получится плотным. Надёжнее скопировать её текстом.'
-              : 'Код чёрный на белом, чтобы его можно было сканировать. Сайт не поднимает туннель.'}
+            {value && value.length > 900 ? ru.qrLong : ru.qrHint}
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col items-center gap-4">
           {image ? (
             <img
               src={image}
-              alt={request?.title ? `QR-код: ${request.title}` : 'QR-код'}
+              alt={request?.title ? `${ru.qr}: ${request.title}` : ru.qr}
               className="size-64 rounded-xl bg-white p-2"
             />
           ) : (
             <div className="grid size-64 place-items-center rounded-xl bg-secondary text-sm text-muted-foreground">
-              {failed ? 'Не удалось построить QR' : 'Строим QR…'}
+              {failed ? ru.qrFailed : ru.qrBuilding}
             </div>
           )}
           {value && (
@@ -113,14 +112,14 @@ export function QrDialog({
           <div className="grid w-full grid-cols-2 gap-2">
             <Button
               disabled={!value}
-              onClick={() => value && void copyText(value, 'Ссылка скопирована')}
+              onClick={() => value && void copyText(value, ru.linkCopied)}
             >
               <Copy />
-              Копировать
+              {ru.copy}
             </Button>
             <Button variant="secondary" disabled={!image} onClick={download}>
               <Download />
-              PNG
+              {ru.picture}
             </Button>
           </div>
           <Button
@@ -128,11 +127,11 @@ export function QrDialog({
             className="w-full"
             disabled={!value}
             onClick={() =>
-              value && void shareValue(request?.title ?? 'V2Hub', value, request?.share ?? 'text')
+              value && void shareValue(request?.title ?? ru.brand, value, request?.share ?? 'text')
             }
           >
             <Share2 />
-            Поделиться
+            {ru.share}
           </Button>
           {request?.actions && request.actions.length > 0 && (
             <div className="grid w-full grid-cols-2 gap-2">

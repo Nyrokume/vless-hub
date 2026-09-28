@@ -37,6 +37,7 @@ import {
   speedText,
   stabilityText,
 } from '@/lib/format'
+import { ru, statusLabel } from '@/lib/ru'
 import { useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
 import { useMediaQuery } from '@/lib/use-media'
@@ -109,7 +110,7 @@ function groupByCountry(
   const groups: CountryGroup[] = []
   for (const [code, items] of map) {
     items.sort(compare)
-    const name = items.find((item) => item.country)?.country || (code === 'ZZ' ? 'Без страны' : code)
+    const name = items.find((item) => item.country)?.country || (code === 'ZZ' ? ru.noCountry : code)
     let best: number | null = null
     for (const item of items) {
       if (item.latency_ms == null) continue
@@ -377,7 +378,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   function openQrFor(configs: ConfigRecord[], title: string) {
     const value = configsToText(configs)
     if (new TextEncoder().encode(value).length > 1200) {
-      toast.error('Для QR выберите короткую подборку. Длинный список скачивается файлом.')
+      toast.error(ru.qrTooLong)
       return
     }
     setQr({
@@ -388,7 +389,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  const statsLine = `${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')}`
+  const statsLine = `${ruNoun(data.stats.published, ...ru.noun.config)} · ${ruNoun(data.stats.countries, ...ru.noun.country)}`
   const filtersOn = sessionFilters > 0 || settings.latencyThreshold != null
   const knownIds = useMemo(() => {
     const ids = new Set<string>()
@@ -405,20 +406,20 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuItem onSelect={() => (selecting ? exitSelect() : enterSelect())}>
-          {selecting ? 'Закончить выбор' : 'Выбрать'}
+          {selecting ? ru.doneSelecting : ru.select}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setLiveOpen(true)}>Живой парс</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setLiveOpen(true)}>{ru.liveParse}</DropdownMenuItem>
         {data.unverified.length > 0 && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuCheckboxItem checked={showUnverified} onCheckedChange={setShowUnverified}>
-              Показать непроверенные
+              {ru.showUnverified}
             </DropdownMenuCheckboxItem>
           </>
         )}
         {(data.unstable?.length ?? 0) > 0 && (
           <DropdownMenuCheckboxItem checked={showUnstable} onCheckedChange={setShowUnstable}>
-            Показать нестабильные
+            {ru.showUnstable}
           </DropdownMenuCheckboxItem>
         )}
       </DropdownMenuContent>
@@ -441,8 +442,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Страна, адрес, соединение"
-            aria-label="Поиск конфигов"
+            placeholder={ru.searchConfigsPlaceholder}
+            aria-label={ru.searchConfigs}
             className="h-10 rounded-xl border-0 bg-card pl-9"
           />
         </div>
@@ -470,7 +471,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           </div>
         )}
         {filtered.length === 0 ? (
-          <p className="px-4 pb-6 text-sm text-muted-foreground">Ничего не найдено.</p>
+          <p className="px-4 pb-6 text-sm text-muted-foreground">{ru.nothingFound}</p>
         ) : (
           <div ref={listRef} style={{ height: totalHeight, position: 'relative' }}>
             <div style={{ height: prefix[start] ?? 0 }} />
@@ -512,20 +513,20 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         <div className="fixed inset-x-0 bottom-[4.6rem] z-30 border-t border-border bg-background/95 px-3 py-2 backdrop-blur-md">
           <div className="mx-auto flex max-w-3xl flex-col gap-2">
             <div className="flex items-center justify-between text-[13px]">
-              <span>Выбрано {chosen.length}</span>
+              <span>{ru.selected(chosen.length)}</span>
               <button type="button" className="text-muted-foreground" onClick={exitSelect}>
-                Снять
+                {ru.clear}
               </button>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <Button size="sm" variant="secondary" onClick={() => void copyText(configsToText(chosen), `Скопировано: ${chosen.length}`)}>
-                Текст
+              <Button size="sm" variant="secondary" onClick={() => void copyText(configsToText(chosen), ru.copiedCount(chosen.length))}>
+                {ru.text}
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => void copyText(configsToBase64(chosen), 'Base64 скопирован')}>
-                Base64
+              <Button size="sm" variant="secondary" onClick={() => void copyText(configsToBase64(chosen), ru.encodedCopied)}>
+                {ru.encoded}
               </Button>
               <Button size="sm" variant="secondary" onClick={() => downloadText('v2hub.txt', `${configsToText(chosen)}\n`)}>
-                Файл
+                {ru.file}
               </Button>
               <Button size="sm" variant="secondary" onClick={() => openQrFor(chosen, `V2Hub · ${chosen.length}`)}>
                 QR
@@ -636,8 +637,8 @@ function StatusDot({ status }: { status?: string }) {
         'inline-block size-2 shrink-0 rounded-full',
         unstable ? 'border border-foreground' : 'bg-foreground',
       )}
-      title={unstable ? 'Нестабильный' : 'Рабочий'}
-      aria-label={unstable ? 'Нестабильный' : 'Рабочий'}
+      title={statusLabel(status)}
+      aria-label={statusLabel(status)}
     />
   )
 }
@@ -648,7 +649,7 @@ function rowMeta(config: ConfigRecord): string {
   const speed = speedText(config.speed_kbps)
   if (stability) parts.push(stability)
   if (speed) parts.push(speed)
-  if (config.verified === 'tcp') parts.push('порт открыт')
+  if (config.verified === 'tcp') parts.push(ru.portOpen)
   return parts.join(' · ')
 }
 

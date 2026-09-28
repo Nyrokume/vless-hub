@@ -1,3 +1,5 @@
+import { ru } from '@/lib/ru'
+
 export type LiveSource = {
   name: string
   url?: string
@@ -20,13 +22,13 @@ export const LIVE_SOURCES: LiveSource[] = [
   { name: 'ebrasha-hysteria2', url: 'https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/hysteria2_configs.txt' },
   { name: 'matinghanbari-mix', url: 'https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/v2ray/all_sub.txt' },
   { name: 'mahdibland-base64', url: 'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge_base64.txt' },
-  { name: 'tg-v2rayng3', skip: 'страница Telegram' },
-  { name: 'tg-vlessconfig', skip: 'страница Telegram' },
-  { name: 'tg-vlessvpnfree', skip: 'страница Telegram' },
-  { name: 'tg-vlesstrojan', skip: 'страница Telegram' },
-  { name: 'tg-proxymtproto', skip: 'страница Telegram' },
-  { name: 'tg-proxy-pub', skip: 'страница Telegram' },
-  { name: 'tg-mtpro-xyz', skip: 'страница Telegram' },
+  { name: 'tg-v2rayng3', skip: ru.live.skipTelegram },
+  { name: 'tg-vlessconfig', skip: ru.live.skipTelegram },
+  { name: 'tg-vlessvpnfree', skip: ru.live.skipTelegram },
+  { name: 'tg-vlesstrojan', skip: ru.live.skipTelegram },
+  { name: 'tg-proxymtproto', skip: ru.live.skipTelegram },
+  { name: 'tg-proxy-pub', skip: ru.live.skipTelegram },
+  { name: 'tg-mtpro-xyz', skip: ru.live.skipTelegram },
 ]
 
 export const CHECK_WORKFLOW_URL = 'https://github.com/Nyrokume/vless-hub/actions/workflows/update.yml'
@@ -41,14 +43,14 @@ export type RunSnapshot = {
 }
 
 export function runLabel(run: RunSnapshot | null, limited: boolean): string {
-  if (limited) return 'Лимит GitHub, статус позже'
-  if (!run) return 'Статус проверки неизвестен'
-  if (run.status === 'queued' || run.status === 'waiting' || run.status === 'pending') return 'Проверка в очереди'
-  if (run.status === 'in_progress') return 'Проверка идёт'
-  if (run.conclusion === 'success') return 'Проверка завершилась'
-  if (run.conclusion === 'failure') return 'Проверка остановилась с ошибкой'
-  if (run.conclusion === 'cancelled') return 'Проверка отменена'
-  return 'Проверка на GitHub'
+  if (limited) return ru.live.rateLimit
+  if (!run) return ru.live.unknown
+  if (run.status === 'queued' || run.status === 'waiting' || run.status === 'pending') return ru.live.queued
+  if (run.status === 'in_progress') return ru.live.running
+  if (run.conclusion === 'success') return ru.live.done
+  if (run.conclusion === 'failure') return ru.live.failed
+  if (run.conclusion === 'cancelled') return ru.live.cancelled
+  return ru.live.onGithub
 }
 
 export async function fetchLatestRun(signal?: AbortSignal): Promise<{ run: RunSnapshot | null; limited: boolean }> {

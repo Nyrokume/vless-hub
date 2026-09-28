@@ -3,24 +3,25 @@ import { QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { configImportActions } from '@/lib/clients'
+import { ru } from '@/lib/ru'
 import { parseVless, type ParsedVless } from '@/lib/vless'
 
 const FIELDS: { key: keyof ParsedVless; label: string }[] = [
-  { key: 'uuid', label: 'UUID' },
-  { key: 'host', label: 'Адрес' },
-  { key: 'port', label: 'Порт' },
-  { key: 'network', label: 'Тип соединения' },
-  { key: 'security', label: 'Защита' },
-  { key: 'sni', label: 'SNI' },
-  { key: 'fp', label: 'Fingerprint' },
-  { key: 'pbk', label: 'Public key' },
-  { key: 'sid', label: 'Short ID' },
-  { key: 'flow', label: 'Flow' },
-  { key: 'path', label: 'Путь' },
-  { key: 'hostHeader', label: 'Host' },
-  { key: 'serviceName', label: 'gRPC' },
-  { key: 'remark', label: 'Название' },
-  { key: 'fingerprint', label: 'Отпечаток' },
+  { key: 'uuid', label: ru.fields.id },
+  { key: 'host', label: ru.fields.address },
+  { key: 'port', label: ru.fields.port },
+  { key: 'network', label: ru.fields.connection },
+  { key: 'security', label: ru.fields.security },
+  { key: 'sni', label: ru.fields.serverName },
+  { key: 'fp', label: ru.fields.tlsPrint },
+  { key: 'pbk', label: ru.fields.publicKey },
+  { key: 'sid', label: ru.fields.shortId },
+  { key: 'flow', label: ru.fields.flow },
+  { key: 'path', label: ru.fields.path },
+  { key: 'hostHeader', label: ru.fields.headerName },
+  { key: 'serviceName', label: ru.fields.service },
+  { key: 'remark', label: ru.fields.name },
+  { key: 'fingerprint', label: ru.fields.fingerprint },
 ]
 
 export function InspectScreen({ embedded = false }: { embedded?: boolean }) {
@@ -33,7 +34,7 @@ export function InspectScreen({ embedded = false }: { embedded?: boolean }) {
     const result = await parseVless(text.trim())
     if (!result) {
       setParsed(null)
-      setError('Это не VLESS-ссылка')
+      setError(ru.inspect.notVless)
       return
     }
     setError('')
@@ -42,19 +43,17 @@ export function InspectScreen({ embedded = false }: { embedded?: boolean }) {
 
   return (
     <div className={embedded ? 'mb-2' : 'mx-auto w-full max-w-3xl px-4 pt-4'}>
-      {!embedded && <h1 className="mb-3 text-[28px] leading-none font-bold tracking-tight">Разбор ссылки</h1>}
-      <p className="mb-3 text-[14px] text-muted-foreground">
-        Ссылка разбирается в браузере. Плюс в public key остаётся плюсом, название в отпечаток не входит.
-      </p>
+      {!embedded && <h1 className="mb-3 text-[28px] leading-none font-bold tracking-tight">{ru.inspect.title}</h1>}
+      <p className="mb-3 text-[14px] text-muted-foreground">{ru.inspect.hint}</p>
       <textarea
         value={text}
         onChange={(event) => setText(event.target.value)}
-        placeholder="vless://…"
-        aria-label="VLESS-ссылка"
+        placeholder={ru.inspect.placeholder}
+        aria-label={ru.inspect.aria}
         className={`min-h-28 w-full rounded-2xl px-3 py-3 font-mono text-[13px] outline-none ${embedded ? 'bg-background' : 'bg-card'}`}
       />
       <Button className="mt-3" onClick={() => void inspect()}>
-        Разобрать
+        {ru.inspect.run}
       </Button>
       {error && <p className="mt-3 text-sm text-muted-foreground">{error}</p>}
       {parsed && (
@@ -78,7 +77,7 @@ export function InspectScreen({ embedded = false }: { embedded?: boolean }) {
               }
             >
               <QrCode />
-              QR и клиенты
+              {ru.inspect.qrClients}
             </Button>
           </div>
         </div>

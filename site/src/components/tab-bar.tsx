@@ -1,13 +1,14 @@
 import { Download, List, Send, Settings } from 'lucide-react'
+import { ru } from '@/lib/ru'
 import { cn } from '@/lib/utils'
 
 export type AppTab = 'configs' | 'telegram' | 'export' | 'settings'
 
 const TABS: { id: AppTab; label: string; icon: typeof List }[] = [
-  { id: 'configs', label: 'Конфиги', icon: List },
-  { id: 'telegram', label: 'Telegram Proxy', icon: Send },
-  { id: 'export', label: 'Экспорт', icon: Download },
-  { id: 'settings', label: 'Настройки', icon: Settings },
+  { id: 'configs', label: ru.tabs.configs, icon: List },
+  { id: 'telegram', label: ru.tabs.telegram, icon: Send },
+  { id: 'export', label: ru.tabs.export, icon: Download },
+  { id: 'settings', label: ru.tabs.settings, icon: Settings },
 ]
 
 export function TabBar({
@@ -20,7 +21,7 @@ export function TabBar({
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-[max(0.25rem,env(safe-area-inset-bottom))] backdrop-blur-md"
-      aria-label="Разделы"
+      aria-label={ru.tabs.nav}
     >
       <div className="mx-auto grid h-auto min-h-16 max-w-lg grid-cols-4" role="tablist">
         {TABS.map((item) => {

@@ -1,3 +1,4 @@
+import { ru } from '@/lib/ru'
 import type { ConfigRecord, HubData } from '@/lib/types'
 
 export async function loadHub(bust = false): Promise<HubData> {
@@ -5,11 +6,11 @@ export async function loadHub(bust = false): Promise<HubData> {
   const url = `${import.meta.env.BASE_URL}data/configs.json${stamp}`
   const response = await fetch(url, { cache: 'no-store' })
   if (!response.ok) {
-    throw new Error(`Не удалось загрузить данные (${response.status})`)
+    throw new Error(`${ru.loadFailed} (${response.status})`)
   }
   const data = (await response.json()) as HubData
   if (!data || !Array.isArray(data.configs) || !Array.isArray(data.subscriptions)) {
-    throw new Error('Файл данных повреждён')
+    throw new Error(ru.dataBroken)
   }
   data.catalog ??= []
   data.unstable ??= []

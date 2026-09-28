@@ -3,6 +3,7 @@ import { Moon, RefreshCw, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { useHub } from '@/lib/hub'
+import { ru } from '@/lib/ru'
 import { cn } from '@/lib/utils'
 
 export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNode }) {
@@ -12,7 +13,7 @@ export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNo
   return (
     <header className="flex items-center gap-2 pb-2">
       <div className="min-w-0 flex-1">
-        <p className="text-[17px] leading-none font-semibold tracking-tight">V2Hub</p>
+        <p className="text-[17px] leading-none font-semibold tracking-tight">{ru.brand}</p>
         {updated && <p className="mt-1 text-[13px] text-muted-foreground">{updated}</p>}
         {updateAvailable && (
           <button
@@ -20,7 +21,7 @@ export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNo
             className="mt-1.5 rounded-full bg-secondary px-2.5 py-1 text-[12px] text-foreground"
             onClick={() => void refresh()}
           >
-            Есть обновление
+            {ru.updateAvailable}
           </button>
         )}
       </div>
@@ -28,7 +29,7 @@ export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNo
       <Button
         variant="ghost"
         size="icon"
-        aria-label="Обновить"
+        aria-label={ru.refresh}
         disabled={refreshing}
         onClick={() => void refresh()}
       >
@@ -37,7 +38,7 @@ export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNo
       <Button
         variant="ghost"
         size="icon"
-        aria-label={dark ? 'Светлая тема' : 'Тёмная тема'}
+        aria-label={dark ? ru.themeLight : ru.themeDark}
         onClick={() => setTheme(dark ? 'light' : 'dark')}
       >
         {dark ? <Sun /> : <Moon />}

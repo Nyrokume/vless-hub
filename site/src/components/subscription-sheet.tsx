@@ -18,6 +18,8 @@ import {
   type ClientId,
 } from '@/lib/clients'
 import { copyText } from '@/lib/copy'
+import { securityLabel, transportLabel } from '@/lib/format'
+import { ru } from '@/lib/ru'
 import { membersOf, publicFileUrl, subscriptionUrl } from '@/lib/data'
 import type { CatalogEntry, ConfigRecord, SubscriptionInfo } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -81,23 +83,23 @@ export function SubscriptionSheet({
             <p className="break-all rounded-xl bg-secondary px-3 py-2 font-mono text-[11px] text-muted-foreground">
               {url}
             </p>
-            <Button onClick={() => void copyText(url, 'Ссылка подписки скопирована')}>
+            <Button onClick={() => void copyText(url, ru.copySubscription)}>
               <Copy />
-              Скопировать URL
+              {ru.copySubscriptionUrl}
             </Button>
             {subscription.b64 && (
-              <Button variant="secondary" onClick={() => void copyText(b64Url, 'Ссылка base64 скопирована')}>
+              <Button variant="secondary" onClick={() => void copyText(b64Url, ru.encodedUrlCopied)}>
                 <Copy />
-                Скопировать base64 URL
+                {ru.copyEncodedUrl}
               </Button>
             )}
             {subscription.id !== 'clash' && subscription.id !== 'singbox' && (
               <Button
                 variant="secondary"
-                onClick={() => void copyText(body, `Скопировано конфигов: ${subscription.count}`)}
+                onClick={() => void copyText(body, ru.copiedConfigs(subscription.count))}
               >
                 <Copy />
-                Скопировать все ссылки
+                {ru.copyAllLinks}
               </Button>
             )}
             <div className="grid grid-cols-2 gap-2">
@@ -113,11 +115,11 @@ export function SubscriptionSheet({
                 }
               >
                 <QrCode />
-                QR подписки
+                {ru.subscriptionQr}
               </Button>
               <Button variant="secondary" disabled={!deepLink} onClick={() => deepLink && openExternal(deepLink)}>
                 <ExternalLink />
-                {deepLink ? clientName(client) : 'Только ссылка'}
+                {deepLink ? clientName(client) : ru.linkOnly}
               </Button>
             </div>
             {subscriptions.length > 1 && (
@@ -126,7 +128,7 @@ export function SubscriptionSheet({
                 className="mt-1 text-left text-sm text-primary"
                 onClick={() => onSelect(null)}
               >
-                Все подписки
+                {ru.allSubscriptions}
               </button>
             )}
           </div>
@@ -222,33 +224,33 @@ export function SubscriptionBuilder({
 
   return (
     <div className={cn('rounded-2xl bg-card p-4', className)}>
-      <p className="text-[15px] font-medium">Собрать подписку</p>
+      <p className="text-[15px] font-medium">{ru.buildSubscription}</p>
       <div className="mt-3 grid grid-cols-3 gap-2">
-        <Select label="Страна" value={country} onChange={setCountry} options={countries} />
+        <Select label={ru.country} value={country} onChange={setCountry} options={countries.map((code) => ({ value: code, label: code }))} />
         <Select
-          label="Защита"
+          label={ru.security}
           value={security}
           onChange={setSecurity}
-          options={['reality', 'tls', 'none']}
+          options={['reality', 'tls', 'none'].map((value) => ({ value, label: securityLabel(value) }))}
         />
         <Select
-          label="Тип соединения"
+          label={ru.connection}
           value={transport}
           onChange={setTransport}
-          options={['tcp', 'ws', 'grpc', 'xhttp', 'h2']}
+          options={['tcp', 'ws', 'grpc', 'xhttp', 'h2'].map((value) => ({ value, label: transportLabel(value) }))}
         />
       </div>
       <p className="mt-2 text-[12px] text-muted-foreground">
-        {url ? url : `В списке сейчас: ${picked.length}`}
+        {url ? url : ru.inListNow(picked.length)}
       </p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         <Button
           variant="secondary"
           disabled={!url}
-          onClick={() => url && void copyText(url, 'Ссылка подборки скопирована')}
+          onClick={() => url && void copyText(url, ru.copySelection)}
         >
           <Copy />
-          URL
+          {ru.copySubscriptionUrl}
         </Button>
         <Button
           variant="secondary"
@@ -256,7 +258,7 @@ export function SubscriptionBuilder({
           onClick={() =>
             url &&
             onQr({
-              title: 'Подборка',
+              title: ru.selection,
               value: url,
               share: 'url',
               actions: subscriptionImportActions(url, 'V2Hub'),
@@ -264,12 +266,12 @@ export function SubscriptionBuilder({
           }
         >
           <QrCode />
-          QR
+          {ru.qrShort}
         </Button>
       </div>
       <Button className="mt-2 w-full" variant="secondary" disabled={picked.length === 0} onClick={downloadLocal}>
         <Download />
-        Скачать {picked.length}
+        {ru.downloadCount(picked.length)}
       </Button>
     </div>
   )
@@ -283,7 +285,7 @@ function Select({
 }: {
   label: string
   value: string
-  options: string[]
+  options: { value: string; label: string }[]
   onChange: (value: string) => void
 }) {
   return (
@@ -294,10 +296,10 @@ function Select({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">все</option>
+        <option value="">{ru.any}</option>
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>

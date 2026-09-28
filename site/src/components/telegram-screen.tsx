@@ -7,6 +7,7 @@ import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
 import { flagEmoji, formatStamp, latencyClass, latencyText, stabilityText } from '@/lib/format'
+import { kindLabel, ru, statusLabel } from '@/lib/ru'
 import { openExternal } from '@/lib/clients'
 import type { HubData, ProxyRecord } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -49,7 +50,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
       <SiteHeader updated={formatStamp(data.generated_at)} />
       <p className="mb-3 text-[13px] text-muted-foreground">
-        MTProto {stats?.mtproto ?? 0} · SOCKS {stats?.socks ?? 0} · медиана{' '}
+        {ru.kinds.mtproto} {stats?.mtproto ?? 0} · {ru.kinds.socks} {stats?.socks ?? 0} · средний пинг{' '}
         <span className={cn('font-medium', latencyClass(stats?.median_latency_ms))}>
           {latencyText(stats?.median_latency_ms)}
         </span>
@@ -57,7 +58,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
       {best && (
         <Button className="mb-4 w-full" onClick={() => openExternal(best.tg)}>
           <Send />
-          Лучший в Telegram · {best.country || best.host} · {latencyText(best.latency_ms)}
+          {ru.bestInTelegram(best.country || best.host, latencyText(best.latency_ms))}
         </Button>
       )}
       <div className="mb-3 flex flex-wrap gap-2">
@@ -70,7 +71,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
             )}
             onClick={() => setShowUnstable((value) => !value)}
           >
-            Нестабильные · {data.unstable_proxies?.length}
+            {ru.showUnstable} · {data.unstable_proxies?.length}
           </button>
         )}
         {(['all', 'mtproto', 'socks'] as const).map((item) => (
@@ -83,16 +84,16 @@ export function TelegramScreen({ data }: { data: HubData }) {
             )}
             onClick={() => setKind(item)}
           >
-            {item === 'all' ? 'Все' : item === 'mtproto' ? 'MTProto' : 'SOCKS'}
+            {item === 'all' ? ru.kinds.all : kindLabel(item)}
           </button>
         ))}
         <select
-          aria-label="Страна"
+          aria-label={ru.country}
           className="h-9 rounded-full bg-card px-3 text-[13px]"
           value={country}
           onChange={(event) => setCountry(event.target.value)}
         >
-          <option value="">Все страны</option>
+          <option value="">{ru.allCountries}</option>
           {countries.map((code) => (
             <option key={code} value={code}>
               {flagEmoji(code)} {code}
@@ -105,14 +106,14 @@ export function TelegramScreen({ data }: { data: HubData }) {
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Адрес или страна"
-          aria-label="Поиск прокси"
+          placeholder={ru.searchProxiesPlaceholder}
+          aria-label={ru.searchProxies}
           className="h-10 rounded-xl border-0 bg-card pl-9"
         />
       </div>
       <div className="overflow-hidden rounded-2xl bg-card">
         {filtered.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">Проверенных прокси нет.</p>
+          <p className="px-4 py-6 text-sm text-muted-foreground">{ru.noProxies}</p>
         ) : (
           filtered.map((proxy, index) => (
             <ProxyRow
@@ -121,7 +122,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
               divided={index > 0}
               onQr={() =>
                 setQr({
-                  title: `${proxy.kind} ${proxy.host}`,
+                  title: `${kindLabel(proxy.kind)} ${proxy.host}`,
                   value: proxy.tg,
                   share: 'text',
                 })
@@ -157,7 +158,7 @@ function ProxyRow({
                   'inline-block size-2 shrink-0 rounded-full',
                   proxy.status === 'unstable' ? 'border border-foreground' : 'bg-foreground',
                 )}
-                aria-label={proxy.status === 'unstable' ? 'Нестабильный' : 'Рабочий'}
+                aria-label={statusLabel(proxy.status)}
               />
             ) : null}
             <span className="truncate">
@@ -165,25 +166,25 @@ function ProxyRow({
             </span>
           </p>
           <p className="truncate text-[13px] text-muted-foreground">
-            {proxy.kind} · {proxy.host}:{proxy.port}
+            {kindLabel(proxy.kind)} · {proxy.host}:{proxy.port}
             {stabilityText(proxy.stability) ? ` · ${stabilityText(proxy.stability)}` : ''}
           </p>
         </div>
         <span className={cn('text-[14px] font-semibold tabular-nums', latencyClass(proxy.latency_ms))}>
           {latencyText(proxy.latency_ms)}
         </span>
-        <Button size="sm" aria-label={`Открыть ${title} в Telegram`} onClick={() => openExternal(proxy.tg)}>
-          В Telegram
+        <Button size="sm" aria-label={ru.openInTelegram(title)} onClick={() => openExternal(proxy.tg)}>
+          {ru.inTelegram}
         </Button>
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Скопировать https"
-          onClick={() => void copyText(proxy.https, 'HTTPS-ссылка скопирована')}
+          aria-label={ru.copyHttps}
+          onClick={() => void copyText(proxy.https, ru.httpsCopied)}
         >
           <Copy />
         </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="QR прокси" onClick={onQr}>
+        <Button variant="ghost" size="icon-sm" aria-label={ru.qrProxy} onClick={onQr}>
           <QrCode />
         </Button>
       </div>

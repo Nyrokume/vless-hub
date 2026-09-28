@@ -6,6 +6,7 @@ import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
 import { Button } from '@/components/ui/button'
 import { useHub } from '@/lib/hub'
+import { ru } from '@/lib/ru'
 
 export default function App() {
   const [tab, setTab] = useState<AppTab>('configs')
@@ -36,7 +37,7 @@ export default function App() {
 function LoadingState() {
   return (
     <div className="mx-auto flex min-h-[70dvh] max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
-      <p className="text-sm text-muted-foreground">Загружаем результаты сборщика…</p>
+      <p className="text-sm text-muted-foreground">{ru.loading}</p>
     </div>
   )
 }
@@ -45,10 +46,10 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return (
     <div className="mx-auto flex min-h-[70dvh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
       <div className="rounded-2xl bg-card px-4 py-5">
-        <p className="text-[17px] font-medium">Нет данных</p>
+        <p className="text-[17px] font-medium">{ru.noData}</p>
         <p className="mt-1 text-sm text-muted-foreground">{message}</p>
       </div>
-      <Button onClick={onRetry}>Повторить</Button>
+      <Button onClick={onRetry}>{ru.retry}</Button>
     </div>
   )
 }
