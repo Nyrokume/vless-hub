@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
 import { FilterSheet } from '@/components/filter-sheet'
+import { LiveParseSheet } from '@/components/live-parse-sheet'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { configImportActions } from '@/lib/clients'
@@ -157,6 +158,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const [protocol, setProtocol] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [liveOpen, setLiveOpen] = useState(false)
   const [showUnverified, setShowUnverified] = useState(false)
   const [showUnstable, setShowUnstable] = useState(false)
   const [selecting, setSelecting] = useState(false)
@@ -388,6 +390,11 @@ export function ConfigsScreen({ data }: { data: HubData }) {
 
   const statsLine = `${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')}`
   const filtersOn = sessionFilters > 0 || settings.latencyThreshold != null
+  const knownIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const item of [...data.configs, ...(data.unstable ?? []), ...data.unverified]) ids.add(item.id)
+    return ids
+  }, [data])
 
   const menu = (
     <DropdownMenu>
@@ -400,6 +407,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         <DropdownMenuItem onSelect={() => (selecting ? exitSelect() : enterSelect())}>
           {selecting ? 'Закончить выбор' : 'Выбрать'}
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setLiveOpen(true)}>Живой парс</DropdownMenuItem>
         {data.unverified.length > 0 && (
           <>
             <DropdownMenuSeparator />
@@ -420,6 +428,11 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   return (
     <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', selecting && chosen.length > 0 && 'pb-36')}>
       <SiteHeader updated={formatStamp(data.generated_at)} menu={menu} />
+      <LiveParseSheet
+        open={liveOpen}
+        known={knownIds}
+        onOpenChange={setLiveOpen}
+      />
       <p className="mb-3 text-[13px] text-muted-foreground">{statsLine}</p>
 
       <div className="mb-3 flex items-center gap-2">
