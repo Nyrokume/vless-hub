@@ -112,7 +112,7 @@ function ChoiceSheet<T extends string>({
   )
 }
 
-export function SettingsScreen({ data }: { data: HubData | null }) {
+export function SettingsScreen({ data, embedded = false }: { data: HubData | null; embedded?: boolean }) {
   const { settings, update } = useSettings()
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
@@ -130,8 +130,8 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
       .join(' · ') ?? 'нет данных'
 
   return (
-    <div className="mx-auto w-full max-w-[560px] px-4 pt-4">
-      <h1 className="px-1 pb-5 text-[34px] leading-none font-bold tracking-tight">Настройки</h1>
+    <div className={embedded ? 'pb-4' : 'mx-auto w-full max-w-[560px] px-4 pt-4'}>
+      {!embedded && <h1 className="px-1 pb-5 text-[34px] leading-none font-bold tracking-tight">Настройки</h1>}
 
       <Group>
         <div className="flex items-center gap-3 px-4 py-3">

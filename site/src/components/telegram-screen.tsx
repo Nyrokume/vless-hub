@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
+import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
-import { flagEmoji, latencyClass, latencyText, uptimeText } from '@/lib/format'
+import { flagEmoji, formatStamp, latencyClass, latencyText, uptimeText } from '@/lib/format'
 import { openExternal } from '@/lib/clients'
 import type { HubData, ProxyRecord } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -44,17 +45,11 @@ export function TelegramScreen({ data }: { data: HubData }) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-      <div className="mb-4 flex items-center gap-2">
-        <img
-          src={`${import.meta.env.BASE_URL}favicon.svg`}
-          alt=""
-          className="size-8 rounded-lg dark:invert"
-        />
-        <h1 className="text-[28px] leading-none font-bold tracking-tight">Telegram</h1>
-      </div>
+      <SiteHeader updated={formatStamp(data.generated_at)} />
+      <h1 className="mb-2 text-[22px] leading-none font-semibold tracking-tight">Telegram Proxy</h1>
       <p className="mb-4 text-[14px] text-muted-foreground">
-        MTProto отвечает resPQ с тем же nonce, SOCKS доходит до датацентра Telegram. Кнопка
-        «Подключить» открывает tg:// и подставляет прокси в клиент.
+        MTProto отвечает resPQ с тем же nonce, SOCKS доходит до датацентра Telegram. «В Telegram»
+        открывает tg:// и подставляет прокси.
       </p>
       <div className="mb-4 grid grid-cols-3 gap-2 rounded-2xl bg-card px-2 py-3 text-center">
         <Stat value={String(stats?.mtproto ?? 0)} label="MTProto" />
@@ -67,7 +62,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
       {best && (
         <Button className="mb-4 w-full" onClick={() => openExternal(best.tg)}>
           <Send />
-          Лучший сейчас · {best.country || best.host} · {latencyText(best.latency_ms)}
+          Лучший в Telegram · {best.country || best.host} · {latencyText(best.latency_ms)}
         </Button>
       )}
       <div className="mb-3 flex flex-wrap gap-2">
@@ -159,8 +154,8 @@ function ProxyRow({
         <span className={cn('text-[14px] font-semibold tabular-nums', latencyClass(proxy.latency_ms))}>
           {latencyText(proxy.latency_ms)}
         </span>
-        <Button size="sm" onClick={() => openExternal(proxy.tg)}>
-          Подключить
+        <Button size="sm" aria-label={`Открыть ${title} в Telegram`} onClick={() => openExternal(proxy.tg)}>
+          В Telegram
         </Button>
         <Button
           variant="ghost"

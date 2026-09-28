@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ConnectionScreen } from '@/components/connection-screen'
-import { InspectScreen } from '@/components/inspect-screen'
-import { SettingsScreen } from '@/components/settings-screen'
+import { ConfigsScreen } from '@/components/configs-screen'
+import { ExportScreen } from '@/components/export-screen'
+import { GuideScreen } from '@/components/guide-screen'
 import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
 import { Button } from '@/components/ui/button'
@@ -33,24 +33,24 @@ function useHub() {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<AppTab>('connection')
+  const [tab, setTab] = useState<AppTab>('configs')
   const { data, error, loading, reload } = useHub()
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <main className="pb-24">
-        {tab === 'settings' ? (
-          <SettingsScreen data={data} />
-        ) : tab === 'inspect' ? (
-          <InspectScreen />
+        {tab === 'guide' ? (
+          <GuideScreen data={data} />
         ) : loading && !data ? (
           <LoadingState />
         ) : error && !data ? (
           <ErrorState message={error} onRetry={() => void reload()} />
         ) : data && tab === 'telegram' ? (
           <TelegramScreen data={data} />
+        ) : data && tab === 'export' ? (
+          <ExportScreen data={data} />
         ) : data ? (
-          <ConnectionScreen data={data} onReload={() => void reload()} onOpenSettings={() => setTab('settings')} />
+          <ConfigsScreen data={data} />
         ) : null}
       </main>
       <TabBar tab={tab} onChange={setTab} />
@@ -61,7 +61,6 @@ export default function App() {
 function LoadingState() {
   return (
     <div className="mx-auto flex min-h-[70dvh] max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
-      <div className="size-[72px] animate-pulse rounded-full bg-card" />
       <p className="text-sm text-muted-foreground">Загружаем результаты сборщика…</p>
     </div>
   )

@@ -23,7 +23,7 @@ const FIELDS: { key: keyof ParsedVless; label: string }[] = [
   { key: 'fingerprint', label: 'Отпечаток' },
 ]
 
-export function InspectScreen() {
+export function InspectScreen({ embedded = false }: { embedded?: boolean }) {
   const [text, setText] = useState('')
   const [parsed, setParsed] = useState<ParsedVless | null>(null)
   const [error, setError] = useState('')
@@ -41,8 +41,8 @@ export function InspectScreen() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-      <h1 className="mb-3 text-[28px] leading-none font-bold tracking-tight">Разбор ссылки</h1>
+    <div className={embedded ? 'mb-2' : 'mx-auto w-full max-w-3xl px-4 pt-4'}>
+      {!embedded && <h1 className="mb-3 text-[28px] leading-none font-bold tracking-tight">Разбор ссылки</h1>}
       <p className="mb-3 text-[14px] text-muted-foreground">
         Ссылка разбирается в браузере. Плюс в public key остаётся плюсом, название в отпечаток не входит.
       </p>

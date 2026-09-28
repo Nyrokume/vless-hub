@@ -50,17 +50,6 @@ export function uptimeText(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`
 }
 
-export function formatElapsed(fromIso: string, now: number): string {
-  const start = Date.parse(fromIso)
-  if (Number.isNaN(start)) return '-- : -- : --'
-  const total = Math.max(0, Math.floor((now - start) / 1000))
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  const seconds = total % 60
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${pad(hours)} : ${pad(minutes)} : ${pad(seconds)}`
-}
-
 export function formatStamp(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso

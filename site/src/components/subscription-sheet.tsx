@@ -135,6 +135,7 @@ export function SubscriptionSheet({
         ) : (
           <>
           <SubscriptionBuilder
+            className="mx-4 mb-4"
             configs={configs}
             catalog={catalog}
             publicBase={publicBase}
@@ -166,16 +167,18 @@ export function SubscriptionSheet({
   )
 }
 
-function SubscriptionBuilder({
+export function SubscriptionBuilder({
   configs,
   catalog,
   publicBase,
   onQr,
+  className,
 }: {
   configs: ConfigRecord[]
   catalog: CatalogEntry[]
   publicBase: string
   onQr: (request: QrRequest) => void
+  className?: string
 }) {
   const [country, setCountry] = useState('')
   const [security, setSecurity] = useState('')
@@ -220,7 +223,7 @@ function SubscriptionBuilder({
   }
 
   return (
-    <div className="mx-4 mb-4 rounded-2xl bg-card p-4">
+    <div className={cn('rounded-2xl bg-card p-4', className)}>
       <p className="text-[15px] font-medium">Собрать подписку</p>
       <p className="mt-1 text-[13px] text-muted-foreground">
         Готовые файлы лежат в /sub/. Если сочетания нет, список скачивается из уже загруженных конфигов.
