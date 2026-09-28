@@ -34,9 +34,9 @@ export function flagEmoji(code: string | null | undefined): string {
 }
 
 export function latencyClass(ms: number): string {
-  if (ms <= 300) return 'text-good'
-  if (ms <= 600) return 'text-amber-400'
-  return 'text-orange-400'
+  if (ms <= 300) return 'text-success'
+  if (ms <= 600) return 'text-warning'
+  return 'text-destructive'
 }
 
 export function formatElapsed(fromIso: string, now: number): string {

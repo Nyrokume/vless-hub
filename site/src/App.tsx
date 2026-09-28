@@ -1,10 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Cable, Settings } from 'lucide-react'
 import { ConnectionScreen } from '@/components/connection-screen'
 import { SettingsScreen } from '@/components/settings-screen'
-import { TabBar, type AppTab } from '@/components/tab-bar'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { loadHub } from '@/lib/data'
 import type { HubData } from '@/lib/types'
+
+export type AppTab = 'connection' | 'settings'
 
 function useHub() {
   const [data, setData] = useState<HubData | null>(null)
@@ -35,42 +47,71 @@ export default function App() {
   const { data, error, loading, reload } = useHub()
 
   return (
-    <div className="min-h-dvh bg-background text-foreground">
-      <main className="pb-24">
-        {tab === 'connection' ? (
-          loading && !data ? (
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(value as AppTab)}
+      className="h-dvh gap-0"
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <TabsContent value="connection" forceMount className="data-[state=inactive]:hidden">
+          {loading && !data ? (
             <LoadingState />
           ) : error && !data ? (
             <ErrorState message={error} onRetry={() => void reload()} />
           ) : data ? (
-            <ConnectionScreen data={data} onReload={() => void reload()} onOpenSettings={() => setTab('settings')} />
-          ) : null
-        ) : (
+            <ConnectionScreen
+              data={data}
+              onReload={() => void reload()}
+              onOpenSettings={() => setTab('settings')}
+            />
+          ) : null}
+        </TabsContent>
+        <TabsContent value="settings" forceMount className="data-[state=inactive]:hidden">
           <SettingsScreen data={data} />
-        )}
-      </main>
-      <TabBar tab={tab} onChange={setTab} />
-    </div>
+        </TabsContent>
+      </div>
+      <TabsList
+        aria-label="Разделы"
+        className="h-16 w-full shrink-0 rounded-none border-t bg-background p-1 pb-[env(safe-area-inset-bottom)]"
+      >
+        <TabsTrigger value="connection" className="h-full flex-col gap-1">
+          <Cable />
+          Подключение
+        </TabsTrigger>
+        <TabsTrigger value="settings" className="h-full flex-col gap-1">
+          <Settings />
+          Настройки
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   )
 }
 
 function LoadingState() {
   return (
-    <div className="mx-auto flex min-h-[70dvh] max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
-      <div className="size-[72px] animate-pulse rounded-full bg-card" />
-      <p className="text-sm text-muted-foreground">Загружаем результаты сборщика…</p>
+    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-4 px-4 pt-16">
+      <Skeleton className="h-4 w-28" />
+      <Skeleton className="h-10 w-48" />
+      <Skeleton className="size-24 rounded-full" />
+      <Skeleton className="h-20 w-full" />
+      <Skeleton className="h-28 w-full" />
     </div>
   )
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="mx-auto flex min-h-[70dvh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="rounded-2xl bg-card px-4 py-5">
-        <p className="text-[17px] font-medium">Нет данных</p>
-        <p className="mt-1 text-sm text-muted-foreground">{message}</p>
-      </div>
-      <Button onClick={onRetry}>Повторить</Button>
-    </div>
+    <Empty className="min-h-[70dvh]">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Cable />
+        </EmptyMedia>
+        <EmptyTitle>Нет данных</EmptyTitle>
+        <EmptyDescription>{message}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button onClick={onRetry}>Повторить</Button>
+      </EmptyContent>
+    </Empty>
   )
 }

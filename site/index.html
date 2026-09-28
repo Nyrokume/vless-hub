@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#252525" />
     <meta
       name="description"
       content="Публичные VLESS-конфиги: задержка, страны, подписки и QR. Сборщик vless-hub."
@@ -13,7 +13,11 @@
     <script>
       try {
         var theme = localStorage.getItem('vless-hub-theme')
-        if (theme === 'light') document.documentElement.classList.remove('dark')
+        if (theme === 'light') {
+          document.documentElement.classList.remove('dark')
+          var meta = document.querySelector('meta[name="theme-color"]')
+          if (meta) meta.setAttribute('content', '#ffffff')
+        }
       } catch (e) {}
     </script>
   </head>

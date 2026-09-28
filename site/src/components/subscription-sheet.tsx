@@ -1,18 +1,18 @@
 import { Copy, ExternalLink, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemSeparator,
+  ItemTitle,
+} from '@/components/ui/item'
+import { ResponsivePanel } from '@/components/responsive-panel'
 import { clientName, openExternal, subscriptionDeepLink, type ClientId } from '@/lib/clients'
 import { copyText } from '@/lib/copy'
 import { membersOf, subscriptionUrl } from '@/lib/data'
 import type { ConfigRecord, SubscriptionInfo } from '@/lib/types'
-import { cn } from '@/lib/utils'
 
 export function SubscriptionSheet({
   open,
@@ -51,85 +51,72 @@ export function SubscriptionSheet({
     : ''
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side={desktop ? 'right' : 'bottom'}
-        className={cn(
-          'gap-0 overflow-y-auto',
-          desktop ? 'w-full sm:max-w-md' : 'max-h-[88dvh] rounded-t-3xl',
-        )}
-      >
-        <SheetHeader className="pr-10 text-left">
-          <SheetTitle>{subscription ? subscription.name : title}</SheetTitle>
-          <SheetDescription>
-            {subscription
-              ? `${subscription.description}. ${subscription.count} конфигов.`
-              : 'Файлы, которые публикует сборщик. Ссылка ведёт на GitHub Pages.'}
-          </SheetDescription>
-        </SheetHeader>
-
-        {subscription ? (
-          <div className="flex flex-col gap-2 px-4 pb-6">
-            <p className="break-all rounded-xl bg-secondary px-3 py-2 font-mono text-[11px] text-muted-foreground">
-              {url}
-            </p>
-            <Button onClick={() => void copyText(url, 'Ссылка подписки скопирована')}>
-              <Copy />
-              Скопировать URL
+    <ResponsivePanel
+      open={open}
+      onOpenChange={onOpenChange}
+      desktop={desktop}
+      title={subscription ? subscription.name : title}
+      description={
+        subscription
+          ? `${subscription.description}. ${subscription.count} конфигов.`
+          : 'Файлы, которые публикует сборщик. Ссылка ведёт на GitHub Pages.'
+      }
+    >
+      {subscription ? (
+        <>
+          <p className="rounded-lg bg-muted p-3 font-mono text-xs break-all text-muted-foreground">
+            {url}
+          </p>
+          <Button onClick={() => void copyText(url, 'Ссылка подписки скопирована')}>
+            <Copy data-icon="inline-start" />
+            Скопировать URL
+          </Button>
+          <Button variant="secondary" onClick={() => void copyText(b64Url, 'Ссылка base64 скопирована')}>
+            <Copy data-icon="inline-start" />
+            Скопировать base64 URL
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => void copyText(body, `Скопировано конфигов: ${subscription.count}`)}
+          >
+            <Copy data-icon="inline-start" />
+            Скопировать все ссылки
+          </Button>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" onClick={() => onQr(subscription.name, url)}>
+              <QrCode data-icon="inline-start" />
+              QR подписки
             </Button>
-            <Button variant="secondary" onClick={() => void copyText(b64Url, 'Ссылка base64 скопирована')}>
-              <Copy />
-              Скопировать base64 URL
+            <Button variant="outline" disabled={!deepLink} onClick={() => deepLink && openExternal(deepLink)}>
+              <ExternalLink data-icon="inline-start" />
+              {deepLink ? clientName(client) : 'Только ссылка'}
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => void copyText(body, `Скопировано конфигов: ${subscription.count}`)}
-            >
-              <Copy />
-              Скопировать все ссылки
-            </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" onClick={() => onQr(subscription.name, url)}>
-                <QrCode />
-                QR подписки
-              </Button>
-              <Button variant="secondary" disabled={!deepLink} onClick={() => deepLink && openExternal(deepLink)}>
-                <ExternalLink />
-                {deepLink ? clientName(client) : 'Только ссылка'}
-              </Button>
-            </div>
-            {subscriptions.length > 1 && (
-              <button
-                type="button"
-                className="mt-1 text-left text-sm text-primary"
-                onClick={() => onSelect(null)}
-              >
-                Все подписки
-              </button>
-            )}
           </div>
-        ) : (
-          <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-card">
-            {subscriptions.map((item, index) => (
-              <div key={item.id}>
-                {index > 0 && <Separator />}
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left"
-                  onClick={() => onSelect(item)}
-                >
-                  <span className="flex-1">
-                    <span className="block text-[17px]">{item.name}</span>
-                    <span className="block text-[13px] text-muted-foreground">
+          {subscriptions.length > 1 && (
+            <Button variant="ghost" className="w-full" onClick={() => onSelect(null)}>
+              Все подписки
+            </Button>
+          )}
+        </>
+      ) : (
+        <ItemGroup>
+          {subscriptions.map((item, index) => (
+            <div key={item.id}>
+              {index > 0 && <ItemSeparator />}
+              <Item variant="outline" asChild>
+                <button type="button" onClick={() => onSelect(item)}>
+                  <ItemContent>
+                    <ItemTitle>{item.name}</ItemTitle>
+                    <ItemDescription>
                       {item.count} · {item.description}
-                    </span>
-                  </span>
+                    </ItemDescription>
+                  </ItemContent>
                 </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
+              </Item>
+            </div>
+          ))}
+        </ItemGroup>
+      )}
+    </ResponsivePanel>
   )
 }

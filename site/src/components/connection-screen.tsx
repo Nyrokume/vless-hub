@@ -3,7 +3,6 @@ import {
   Cable,
   ChevronDown,
   ChevronRight,
-  Clock,
   Copy,
   EllipsisVertical,
   Globe,
@@ -24,6 +23,14 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -38,12 +45,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemSeparator,
+  ItemTitle,
+} from '@/components/ui/item'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
 import { FilterSheet } from '@/components/filter-sheet'
-import { IconTile } from '@/components/icon-tile'
 import { QrDialog } from '@/components/qr-dialog'
 import { SubscriptionSheet } from '@/components/subscription-sheet'
 import { copyText } from '@/lib/copy'
@@ -127,6 +150,7 @@ export function ConnectionScreen({
 
   const mainSub = data.subscriptions.find((item) => item.id === 'all') ?? data.subscriptions[0]
   const mainUrl = mainSub ? subscriptionUrl(settings.publicBase, mainSub.file) : ''
+  const featured = featuredSubscriptions(data.subscriptions)
 
   const countries = useMemo(() => {
     const map = new Map<string, { code: string; name: string; count: number }>()
@@ -202,20 +226,15 @@ export function ConnectionScreen({
   const sessionFilters = [country, transport, security].filter(Boolean).length
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 lg:px-6">
-      <div className="mb-2 flex items-center justify-end gap-1 pt-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Подписки"
-          onClick={() => openSubscription(null)}
-        >
-          <Plus className="size-6" />
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
+      <div className="flex items-center justify-end gap-1">
+        <Button variant="ghost" size="icon" aria-label="Подписки" onClick={() => openSubscription(null)}>
+          <Plus />
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Меню">
-              <EllipsisVertical className="size-6" />
+              <EllipsisVertical />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -252,156 +271,164 @@ export function ConnectionScreen({
         </DropdownMenu>
       </div>
 
-      <div className="lg:grid lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:items-start lg:gap-8">
-        <div>
-          <div className="px-2 pt-4 text-center lg:pt-2">
-            <p className="text-[17px] font-medium">С обновления</p>
-            <p className="mt-1 font-light text-[44px] leading-none tracking-wide text-foreground tabular-nums">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:gap-8">
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex flex-col items-center gap-1 text-center">
+            <p className="text-sm font-medium text-muted-foreground">С обновления</p>
+            <p className="text-4xl font-medium tracking-wide text-foreground tabular-nums">
               {formatElapsed(data.generated_at, now)}
             </p>
           </div>
 
-          <div className="mt-6 flex flex-col items-center">
-            <button
-              type="button"
-              className="grid size-[104px] place-items-center rounded-[32px] bg-card transition active:scale-95 disabled:opacity-50"
+          <div className="flex flex-col items-center gap-3">
+            <Button
+              size="lg"
+              className="size-24 rounded-full"
               disabled={!mainUrl}
               aria-label="Скопировать ссылку подписки"
               onClick={() => mainUrl && void copyText(mainUrl, 'Ссылка подписки скопирована')}
             >
-              <span className="grid size-[72px] place-items-center rounded-full bg-good text-white dark:text-black">
-                <Copy className="size-8" />
-              </span>
-            </button>
-            <p className="mt-3 text-[13px] text-muted-foreground">Ссылка подписки</p>
-            <button
-              type="button"
-              className="mt-3 inline-flex items-center gap-1 rounded-full bg-card px-4 py-2 text-[15px] font-medium"
+              <Copy className="size-8" />
+            </Button>
+            <p className="text-sm text-muted-foreground">Ссылка подписки</p>
+            <Button
+              variant="secondary"
+              className="rounded-full"
               onClick={() => mainSub && openSubscription(mainSub)}
             >
               {data.stats.published} рабочих
-              <ChevronRight className="size-4 text-muted-foreground" />
-            </button>
+              <ChevronRight data-icon="inline-end" />
+            </Button>
           </div>
 
-          <div className="mx-auto mt-5 grid max-w-md grid-cols-3 gap-2 rounded-2xl bg-card px-2 py-3 text-center">
-            <Stat value={String(data.stats.published)} label="в списке" />
-            <Stat value={String(data.stats.countries)} label="стран" />
-            <Stat
-              value={data.stats.median_latency_ms == null ? '—' : String(data.stats.median_latency_ms)}
-              label="медиана, мс"
-            />
-          </div>
+          <Card className="w-full max-w-md">
+            <CardContent className="grid grid-cols-3 gap-2 text-center">
+              <Stat value={String(data.stats.published)} label="в списке" />
+              <Stat value={String(data.stats.countries)} label="стран" />
+              <Stat
+                value={data.stats.median_latency_ms == null ? '—' : String(data.stats.median_latency_ms)}
+                label="медиана, мс"
+              />
+            </CardContent>
+          </Card>
 
-          <div className="mx-auto mt-5 flex max-w-md flex-col gap-1">
-            {featuredSubscriptions(data.subscriptions).map((subscription) => {
-              const Icon = subscriptionIcon(subscription.id)
-              return (
-                <div key={subscription.id} className="mb-2">
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-2xl bg-card px-4 py-3.5 text-left"
-                    onClick={() => openSubscription(subscription)}
-                  >
-                    <IconTile>
-                      <Icon className="size-4" />
-                    </IconTile>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[17px] font-medium">{subscription.name}</span>
-                      <span className="block text-[13px] text-muted-foreground">
-                        {subscription.count} конфигов
-                      </span>
-                    </span>
-                    <ChevronRight className="size-5 text-muted-foreground/70" />
-                  </button>
-                  <div className="mt-1.5 flex items-center gap-1.5 px-1 text-[13px] text-muted-foreground">
-                    <Clock className="size-3.5" />
-                    <span>{formatStamp(data.generated_at)}</span>
-                  </div>
-                </div>
-              )
-            })}
-            {data.subscriptions.length > featuredSubscriptions(data.subscriptions).length && (
-              <button
-                type="button"
-                className="mb-2 flex w-full items-center justify-between rounded-2xl bg-card px-4 py-3 text-left text-[15px] text-primary"
-                onClick={() => openSubscription(null)}
-              >
-                Все подписки
-                <span className="text-muted-foreground">{data.subscriptions.length}</span>
-              </button>
-            )}
-          </div>
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>Подписки</CardTitle>
+              <CardDescription>{formatStamp(data.generated_at)}</CardDescription>
+              <CardAction>
+                <Button variant="outline" size="sm" onClick={() => openSubscription(null)}>
+                  Все
+                  <Badge variant="secondary">{data.subscriptions.length}</Badge>
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent>
+              <ItemGroup className="gap-2">
+                {featured.map((subscription, index) => {
+                  const Icon = subscriptionIcon(subscription.id)
+                  return (
+                    <div key={subscription.id}>
+                      {index > 0 && <ItemSeparator />}
+                      <Item variant="outline" asChild>
+                        <button type="button" onClick={() => openSubscription(subscription)}>
+                          <ItemMedia variant="icon">
+                            <Icon />
+                          </ItemMedia>
+                          <ItemContent>
+                            <ItemTitle>{subscription.name}</ItemTitle>
+                            <ItemDescription>{subscription.count} конфигов</ItemDescription>
+                          </ItemContent>
+                          <ChevronRight />
+                        </button>
+                      </Item>
+                    </div>
+                  )
+                })}
+              </ItemGroup>
+            </CardContent>
+          </Card>
         </div>
 
-        <div className="mt-2 lg:sticky lg:top-3 lg:mt-0">
+        <div className="lg:sticky lg:top-3">
           <Collapsible open={expanded} onOpenChange={setExpanded}>
-            <div className="overflow-hidden rounded-2xl bg-card">
-              <div className="flex items-center gap-2 px-4 py-3">
-                <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                  <span className="text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <CollapsibleTrigger className="flex items-center gap-2">
                     Конфигурации
-                  </span>
-                  <Badge variant="secondary">{filtered.length}</Badge>
-                  <ChevronDown
-                    className={cn(
-                      'size-4 text-muted-foreground transition-transform',
-                      expanded ? 'rotate-180' : '',
+                    <Badge variant="secondary">{filtered.length}</Badge>
+                    <ChevronDown
+                      className={cn('transition-transform', expanded && 'rotate-180')}
+                    />
+                  </CollapsibleTrigger>
+                </CardTitle>
+                <CardDescription>
+                  {sortLabel(settings.sort)}
+                  {settings.latencyThreshold != null ? ` · до ${settings.latencyThreshold} мс` : ''}
+                </CardDescription>
+                <CardAction>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="relative"
+                    aria-label="Фильтры"
+                    onClick={() => setFiltersOpen(true)}
+                  >
+                    <SlidersHorizontal />
+                    {sessionFilters > 0 && (
+                      <Badge className="absolute -top-2 -right-2 px-1">{sessionFilters}</Badge>
                     )}
-                  />
-                </CollapsibleTrigger>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="relative"
-                  aria-label="Фильтры"
-                  onClick={() => setFiltersOpen(true)}
-                >
-                  <SlidersHorizontal />
-                  {sessionFilters > 0 && (
-                    <span className="absolute top-1 right-1 size-1.5 rounded-full bg-primary" />
-                  )}
-                </Button>
-              </div>
+                  </Button>
+                </CardAction>
+              </CardHeader>
               <CollapsibleContent>
-                <div className="px-3 pb-3">
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
+                <CardContent className="flex flex-col gap-3">
+                  <InputGroup>
+                    <InputGroupAddon>
+                      <Search />
+                    </InputGroupAddon>
+                    <InputGroupInput
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
                       placeholder="Страна, адрес, транспорт"
                       aria-label="Поиск конфигов"
-                      className="h-10 rounded-xl border-0 bg-secondary pl-9"
                     />
+                  </InputGroup>
+                  <div className="lg:max-h-[calc(100dvh-14rem)] lg:overflow-y-auto">
+                    {filtered.length === 0 ? (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <Search />
+                          </EmptyMedia>
+                          <EmptyTitle>Ничего не найдено</EmptyTitle>
+                          <EmptyDescription>Измените запрос или сбросьте фильтры.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    ) : (
+                      <ItemGroup className="gap-0">
+                        {filtered.map((config, index) => (
+                          <div key={config.id}>
+                            {index > 0 && <Separator />}
+                            <ConfigRow
+                              config={config}
+                              onOpen={() => setSelected(config)}
+                              onQr={() =>
+                                openQr(
+                                  `${flagEmoji(config.country_code)} ${configTitle(config)}`.trim(),
+                                  config.uri,
+                                )
+                              }
+                            />
+                          </div>
+                        ))}
+                      </ItemGroup>
+                    )}
                   </div>
-                  <p className="px-1 pt-2 text-[12px] text-muted-foreground">
-                    {sortLabel(settings.sort)}
-                    {settings.latencyThreshold != null ? ` · до ${settings.latencyThreshold} мс` : ''}
-                  </p>
-                </div>
-                <div className="lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto">
-                  {filtered.length === 0 ? (
-                    <p className="px-4 pb-6 text-sm text-muted-foreground">Ничего не найдено.</p>
-                  ) : (
-                    filtered.map((config, index) => (
-                      <ConfigRow
-                        key={config.id}
-                        config={config}
-                        divided={index > 0}
-                        onOpen={() => setSelected(config)}
-                        onQr={() =>
-                          openQr(
-                            `${flagEmoji(config.country_code)} ${configTitle(config)}`.trim(),
-                            config.uri,
-                          )
-                        }
-                      />
-                    ))
-                  )}
-                </div>
+                </CardContent>
               </CollapsibleContent>
-            </div>
+            </Card>
           </Collapsible>
         </div>
       </div>
@@ -463,43 +490,42 @@ export function ConnectionScreen({
 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <div>
+    <div className="flex flex-col gap-1">
       <div className="text-lg font-semibold tabular-nums">{value}</div>
-      <div className="text-[12px] text-muted-foreground">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   )
 }
 
 function ConfigRow({
   config,
-  divided,
   onOpen,
   onQr,
 }: {
   config: ConfigRecord
-  divided: boolean
   onOpen: () => void
   onQr: () => void
 }) {
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
   return (
-    <div>
-      {divided && <Separator />}
-      <div className="flex items-center gap-3 px-4 py-3">
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={onOpen}>
-          <span className="grid w-7 place-items-center text-xl leading-none" aria-hidden>
-            {flag || <Globe className="size-5 text-muted-foreground" />}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[16px] font-medium">
-              {title}
-              {config.country_code ? ` ${config.country_code}` : ''}
-            </span>
-            <span className="block text-[13px] text-muted-foreground">{protocolLine(config.transport)}</span>
-          </span>
+    <Item>
+      <ItemMedia>
+        <span className="text-xl leading-none" aria-hidden>
+          {flag || <Globe />}
+        </span>
+      </ItemMedia>
+      <ItemContent>
+        <button type="button" className="text-left" onClick={onOpen}>
+          <ItemTitle>
+            {title}
+            {config.country_code ? ` ${config.country_code}` : ''}
+          </ItemTitle>
+          <ItemDescription>{protocolLine(config.transport)}</ItemDescription>
         </button>
-        <span className={cn('text-[15px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
+      </ItemContent>
+      <ItemActions>
+        <span className={cn('text-sm font-medium tabular-nums', latencyClass(config.latency_ms))}>
           {config.latency_ms} мс
         </span>
         <Tooltip>
@@ -518,7 +544,7 @@ function ConfigRow({
           </TooltipTrigger>
           <TooltipContent>Подробности</TooltipContent>
         </Tooltip>
-      </div>
-    </div>
+      </ItemActions>
+    </Item>
   )
 }

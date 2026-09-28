@@ -25,11 +25,7 @@ export function QrDialog({
   const open = Boolean(value)
 
   useEffect(() => {
-    if (!value) {
-      setImage(null)
-      setFailed(false)
-      return
-    }
+    if (!value) return
     let cancelled = false
     QRCode.toDataURL(value, {
       margin: 1,
@@ -70,15 +66,15 @@ export function QrDialog({
             <img
               src={image}
               alt={title ? `QR-код: ${title}` : 'QR-код'}
-              className="size-64 rounded-xl bg-white p-2"
+              className="size-64 rounded-lg bg-muted p-2"
             />
           ) : (
-            <div className="grid size-64 place-items-center rounded-xl bg-secondary text-sm text-muted-foreground">
+            <div className="grid size-64 place-items-center rounded-lg bg-muted text-sm text-muted-foreground">
               {failed ? 'Не удалось построить QR' : 'Строим QR…'}
             </div>
           )}
           {value && (
-            <p className="max-h-20 w-full overflow-auto break-all rounded-xl bg-secondary px-3 py-2 font-mono text-[11px] text-muted-foreground">
+            <p className="max-h-20 w-full overflow-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs break-all text-muted-foreground">
               {value}
             </p>
           )}
@@ -87,7 +83,7 @@ export function QrDialog({
             disabled={!value}
             onClick={() => value && void copyText(value, 'Ссылка скопирована')}
           >
-            <Copy />
+            <Copy data-icon="inline-start" />
             Скопировать
           </Button>
         </div>
