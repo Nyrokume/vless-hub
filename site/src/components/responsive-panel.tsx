@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react'
+import { XIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   Drawer,
+  DrawerClose,
   DrawerContent,
   DrawerDescription,
   DrawerHeader,
@@ -46,7 +49,13 @@ export function ResponsivePanel({
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
-        <DrawerHeader className="text-left">
+        <DrawerClose asChild>
+          <Button variant="ghost" className="absolute top-3 right-3" size="icon-sm" aria-label="Закрыть">
+            <XIcon />
+            <span className="sr-only">Закрыть</span>
+          </Button>
+        </DrawerClose>
+        <DrawerHeader className="pr-10 text-left">
           <DrawerTitle>{title}</DrawerTitle>
           <DrawerDescription>{description}</DrawerDescription>
         </DrawerHeader>
