@@ -80,7 +80,7 @@ export function ConfigSheet({
         ],
         ['Стабильность', stabilityText(config.stability) || uptimeText(config.uptime)],
         ['Скорость', speedText(config.speed_kbps)],
-        ['Рукопожатие', config.handshake_ms != null ? `${config.handshake_ms} мс` : ''],
+        ['Рукопожатие', config.handshake_ms != null ? latencyText(config.handshake_ms) : ''],
         ['Статус', config.status === 'working' ? 'Рабочий' : config.status === 'unstable' ? 'Нестабильный' : config.verified === 'tcp' ? 'Только открытый порт' : ''],
         ['Список', sourceName ?? ''],
         ['Проверено', config.tested_at ? formatStamp(config.tested_at) : ''],

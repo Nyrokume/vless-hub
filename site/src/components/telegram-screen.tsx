@@ -50,7 +50,9 @@ export function TelegramScreen({ data }: { data: HubData }) {
       <SiteHeader updated={formatStamp(data.generated_at)} />
       <p className="mb-3 text-[13px] text-muted-foreground">
         MTProto {stats?.mtproto ?? 0} · SOCKS {stats?.socks ?? 0} · медиана{' '}
-        {stats?.median_latency_ms == null ? '—' : stats.median_latency_ms} мс
+        <span className={cn('font-medium', latencyClass(stats?.median_latency_ms))}>
+          {latencyText(stats?.median_latency_ms)}
+        </span>
       </p>
       {best && (
         <Button className="mb-4 w-full" onClick={() => openExternal(best.tg)}>

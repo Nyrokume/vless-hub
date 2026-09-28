@@ -65,16 +65,20 @@ export function flagEmoji(code: string | null | undefined): string {
   )
 }
 
+/** Displayed ping: green below fast, yellow through slow, red above. */
+export const LATENCY_BANDS = { fast: 300, slow: 800 } as const
+
 export function latencyClass(ms: number | null | undefined): string {
-  if (ms == null) return 'text-muted-foreground'
-  if (ms <= 300) return 'text-foreground'
-  if (ms <= 800) return 'text-muted-foreground'
-  return 'text-muted-foreground'
+  if (ms == null || Number.isNaN(ms)) return 'text-muted-foreground'
+  const whole = Math.round(ms)
+  if (whole < LATENCY_BANDS.fast) return 'text-latency-fast'
+  if (whole <= LATENCY_BANDS.slow) return 'text-latency-mid'
+  return 'text-latency-slow'
 }
 
 export function latencyText(ms: number | null | undefined): string {
-  if (ms == null) return '—'
-  return `${ms} мс`
+  if (ms == null || Number.isNaN(ms)) return '—'
+  return `${Math.round(ms)} мс`
 }
 
 export function uptimeText(value: number | null | undefined): string {

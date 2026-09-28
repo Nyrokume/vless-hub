@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { CLIENTS, clientName, type ClientId } from '@/lib/clients'
-import { formatStamp } from '@/lib/format'
+import { formatStamp, latencyText } from '@/lib/format'
 import {
   DEFAULT_PUBLIC_BASE,
   SORTS,
@@ -235,7 +235,7 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
           icon={<Globe className="size-4" />}
           text={
             data
-              ? `Стран: ${data.stats.countries} · медиана HTTP ${data.stats.median_latency_ms ?? '—'} мс`
+              ? `Стран: ${data.stats.countries} · медиана HTTP ${latencyText(data.stats.median_latency_ms)}`
               : 'Стран: —'
           }
         />
