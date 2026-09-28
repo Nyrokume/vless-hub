@@ -1,8 +1,9 @@
+import type { ReactNode } from 'react'
 import { Moon, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 
-export function SiteHeader({ updated }: { updated?: string }) {
+export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
   return (
@@ -11,6 +12,7 @@ export function SiteHeader({ updated }: { updated?: string }) {
         <p className="text-[17px] leading-none font-semibold tracking-tight">V2Hub</p>
         {updated && <p className="mt-1 text-[13px] text-muted-foreground">{updated}</p>}
       </div>
+      {menu}
       <Button
         variant="ghost"
         size="icon"

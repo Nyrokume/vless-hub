@@ -2,9 +2,11 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { ClientId } from '@/lib/clients'
 
 export type SortKey = 'latency-asc' | 'latency-desc' | 'country' | 'transport'
+export type ViewMode = 'country' | 'flat' | 'compact' | 'cards'
 
 export type Settings = {
   sort: SortKey
+  view: ViewMode
   latencyThreshold: number | null
   client: ClientId
   publicBase: string
@@ -20,6 +22,13 @@ export const SORTS: { value: SortKey; label: string }[] = [
   { value: 'transport', label: 'По транспорту' },
 ]
 
+export const VIEWS: { value: ViewMode; label: string }[] = [
+  { value: 'country', label: 'По странам' },
+  { value: 'flat', label: 'Список' },
+  { value: 'compact', label: 'Компактно' },
+  { value: 'cards', label: 'Карточки' },
+]
+
 export const THRESHOLDS: { value: string; label: string; hint?: string }[] = [
   { value: 'all', label: 'Все', hint: 'Без ограничения' },
   { value: '150', label: 'до 150 мс' },
@@ -30,6 +39,7 @@ export const THRESHOLDS: { value: string; label: string; hint?: string }[] = [
 
 export const DEFAULT_SETTINGS: Settings = {
   sort: 'latency-asc',
+  view: 'country',
   latencyThreshold: null,
   client: 'happ',
   publicBase: DEFAULT_PUBLIC_BASE,
@@ -37,6 +47,10 @@ export const DEFAULT_SETTINGS: Settings = {
 
 function isSort(value: unknown): value is SortKey {
   return SORTS.some((item) => item.value === value)
+}
+
+function isView(value: unknown): value is ViewMode {
+  return VIEWS.some((item) => item.value === value)
 }
 
 const CLIENT_IDS: ClientId[] = [
@@ -78,6 +92,7 @@ function loadSettings(): Settings {
     const parsed = JSON.parse(raw) as Partial<Settings>
     return {
       sort: isSort(parsed.sort) ? parsed.sort : DEFAULT_SETTINGS.sort,
+      view: isView(parsed.view) ? parsed.view : DEFAULT_SETTINGS.view,
       latencyThreshold: isThreshold(parsed.latencyThreshold) ? parsed.latencyThreshold : null,
       client: isClient(parsed.client) ? parsed.client : DEFAULT_SETTINGS.client,
       publicBase:

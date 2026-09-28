@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, Globe, Info, QrCode, Search, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronRight, Globe, Info, MoreVertical, QrCode, Search, SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
@@ -27,16 +35,17 @@ import {
   protocolLine,
   uptimeText,
 } from '@/lib/format'
-import { SORTS, sortLabel, useSettings, type SortKey } from '@/lib/settings'
+import { SORTS, VIEWS, sortLabel, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
 import { useMediaQuery } from '@/lib/use-media'
 import { cn } from '@/lib/utils'
 
 const HEADER_H = 56
 const ROW_H = 72
+const COMPACT_H = 44
+const CARD_H = 112
 const OVERSCAN = 640
 
-type Layout = 'country' | 'flat'
 type CountryOrder = 'count' | 'ping'
 
 type CountryGroup = {
@@ -72,11 +81,11 @@ function compareConfigs(sort: SortKey, left: ConfigRecord, right: ConfigRecord):
   return latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id)
 }
 
-function byPing(left: ConfigRecord, right: ConfigRecord): number {
-  return latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id)
-}
-
-function groupByCountry(configs: ConfigRecord[], order: CountryOrder): CountryGroup[] {
+function groupByCountry(
+  configs: ConfigRecord[],
+  order: CountryOrder,
+  compare: (left: ConfigRecord, right: ConfigRecord) => number,
+): CountryGroup[] {
   const map = new Map<string, ConfigRecord[]>()
   for (const config of configs) {
     const code =
@@ -89,7 +98,7 @@ function groupByCountry(configs: ConfigRecord[], order: CountryOrder): CountryGr
   }
   const groups: CountryGroup[] = []
   for (const [code, items] of map) {
-    items.sort(byPing)
+    items.sort(compare)
     const name = items.find((item) => item.country)?.country || (code === 'ZZ' ? 'Без страны' : code)
     let best: number | null = null
     for (const item of items) {
@@ -111,8 +120,11 @@ function groupByCountry(configs: ConfigRecord[], order: CountryOrder): CountryGr
   return groups
 }
 
-function rowHeight(row: ListRow): number {
-  return row.kind === 'group' ? HEADER_H : ROW_H
+function rowHeight(row: ListRow, view: ViewMode): number {
+  if (row.kind === 'group') return HEADER_H
+  if (view === 'compact') return COMPACT_H
+  if (view === 'cards') return CARD_H
+  return ROW_H
 }
 
 function lowerBound(prefix: number[], target: number): number {
@@ -139,7 +151,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const [showUnverified, setShowUnverified] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [qr, setQr] = useState<QrRequest | null>(null)
-  const [layout, setLayout] = useState<Layout>('country')
   const [countryOrder, setCountryOrder] = useState<CountryOrder>('count')
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement>(null)
@@ -232,17 +243,20 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       if (needle && !item.blob.includes(needle)) continue
       matched.push(config)
     }
-    if (layout === 'flat') matched.sort((left, right) => compareConfigs(settings.sort, left, right))
+    if (settings.view !== 'country') matched.sort((left, right) => compareConfigs(settings.sort, left, right))
     return matched
-  }, [country, indexed, layout, protocol, query, security, settings.latencyThreshold, settings.sort, transport])
+  }, [country, indexed, protocol, query, security, settings.latencyThreshold, settings.sort, settings.view, transport])
 
   const groups = useMemo(
-    () => (layout === 'country' ? groupByCountry(filtered, countryOrder) : []),
-    [countryOrder, filtered, layout],
+    () =>
+      settings.view === 'country'
+        ? groupByCountry(filtered, countryOrder, (left, right) => compareConfigs(settings.sort, left, right))
+        : [],
+    [countryOrder, filtered, settings.sort, settings.view],
   )
 
   const rows = useMemo(() => {
-    if (layout === 'flat') {
+    if (settings.view !== 'country') {
       return filtered.map((config) => ({ kind: 'config' as const, key: config.id, config }))
     }
     const next: ListRow[] = []
@@ -253,14 +267,16 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       for (const config of group.configs) next.push({ kind: 'config', key: config.id, config })
     }
     return next
-  }, [collapsed, filtered, groups, layout])
+  }, [collapsed, filtered, groups, settings.view])
 
   const prefix = useMemo(() => {
     const next = new Array<number>(rows.length + 1)
     next[0] = 0
-    for (let index = 0; index < rows.length; index += 1) next[index + 1] = next[index] + rowHeight(rows[index])
+    for (let index = 0; index < rows.length; index += 1) {
+      next[index + 1] = next[index] + rowHeight(rows[index], settings.view)
+    }
     return next
-  }, [rows])
+  }, [rows, settings.view])
 
   useEffect(() => {
     const node = listRef.current
@@ -345,14 +361,38 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
+  const viewLabel = VIEWS.find((item) => item.value === settings.view)?.label ?? 'По странам'
   const layoutNote =
-    layout === 'country'
-      ? `По странам · ${countryOrder === 'count' ? 'по числу' : 'по лучшему пингу'}`
-      : sortLabel(settings.sort)
+    settings.view === 'country'
+      ? `${viewLabel} · ${countryOrder === 'count' ? 'по числу' : 'по лучшему пингу'} · ${sortLabel(settings.sort)}`
+      : `${viewLabel} · ${sortLabel(settings.sort)}`
+
+  const sortMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Меню">
+          <MoreVertical />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>Сортировка</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={settings.sort}
+          onValueChange={(value) => update({ sort: value as SortKey })}
+        >
+          {SORTS.map((item) => (
+            <DropdownMenuRadioItem key={item.value} value={item.value}>
+              {item.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 
   return (
     <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', chosen.length > 0 && 'pb-36')}>
-      <SiteHeader updated={formatStamp(data.generated_at)} />
+      <SiteHeader updated={formatStamp(data.generated_at)} menu={sortMenu} />
       <p className="mb-3 text-[13px] text-muted-foreground">
         {data.stats.published} в списке · {data.stats.countries} стран · медиана{' '}
         {data.stats.median_latency_ms == null ? '—' : data.stats.median_latency_ms} мс
@@ -375,27 +415,20 @@ export function ConfigsScreen({ data }: { data: HubData }) {
             Фильтры
             {sessionFilters > 0 && <Badge variant="secondary">{sessionFilters}</Badge>}
           </Button>
-          <button
-            type="button"
-            className={cn(
-              'rounded-full px-3 py-1.5 text-[13px]',
-              layout === 'country' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-            )}
-            onClick={() => setLayout('country')}
-          >
-            По странам
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'rounded-full px-3 py-1.5 text-[13px]',
-              layout === 'flat' ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-            )}
-            onClick={() => setLayout('flat')}
-          >
-            Списком
-          </button>
-          {layout === 'country' ? (
+          {VIEWS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className={cn(
+                'rounded-full px-3 py-1.5 text-[13px]',
+                settings.view === item.value ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
+              )}
+              onClick={() => update({ view: item.value })}
+            >
+              {item.label}
+            </button>
+          ))}
+          {settings.view === 'country' && (
             <label className="text-[13px] text-muted-foreground">
               <span className="sr-only">Порядок стран</span>
               <select
@@ -406,22 +439,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
               >
                 <option value="count">По числу</option>
                 <option value="ping">По лучшему пингу</option>
-              </select>
-            </label>
-          ) : (
-            <label className="text-[13px] text-muted-foreground">
-              <span className="sr-only">Сортировка</span>
-              <select
-                aria-label="Сортировка"
-                className="h-8 rounded-lg bg-secondary px-2 text-[13px]"
-                value={settings.sort}
-                onChange={(event) => update({ sort: event.target.value as SortKey })}
-              >
-                {SORTS.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
               </select>
             </label>
           )}
@@ -447,7 +464,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         </p>
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-card">
+      <div className={settings.view === 'cards' ? '' : 'overflow-hidden rounded-2xl bg-card'}>
         <div className="flex items-center gap-3 px-4 py-3">
           <input
             type="checkbox"
@@ -475,8 +492,9 @@ export function ConfigsScreen({ data }: { data: HubData }) {
                   onToggle={() => toggleGroup(row.group.code)}
                 />
               ) : (
-                <ConfigRow
+                <ConfigItem
                   key={row.key}
+                  view={settings.view}
                   config={row.config}
                   checked={picked.has(row.config.id)}
                   onToggle={() => toggle(row.config.id)}
@@ -604,6 +622,22 @@ function CountryHeader({
   )
 }
 
+function ConfigItem({
+  view,
+  ...props
+}: {
+  view: ViewMode
+  config: ConfigRecord
+  checked: boolean
+  onToggle: () => void
+  onOpen: () => void
+  onQr: () => void
+}) {
+  if (view === 'compact') return <CompactRow {...props} />
+  if (view === 'cards') return <CardRow {...props} />
+  return <ConfigRow {...props} />
+}
+
 function ConfigRow({
   config,
   checked,
@@ -665,6 +699,103 @@ function ConfigRow({
         </TooltipTrigger>
         <TooltipContent>Подробности</TooltipContent>
       </Tooltip>
+    </div>
+  )
+}
+
+function CompactRow({
+  config,
+  checked,
+  onToggle,
+  onOpen,
+  onQr,
+}: {
+  config: ConfigRecord
+  checked: boolean
+  onToggle: () => void
+  onOpen: () => void
+  onQr: () => void
+}) {
+  const title = configTitle(config)
+  const flag = flagEmoji(config.country_code)
+  return (
+    <div className="flex h-11 items-center gap-2 border-t border-border px-3">
+      <input
+        type="checkbox"
+        className="size-4 shrink-0"
+        aria-label={`Выбрать ${title}`}
+        checked={checked}
+        onChange={onToggle}
+      />
+      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={onOpen}>
+        <span className="w-5 shrink-0 text-center text-[16px] leading-none" aria-hidden>
+          {flag || <Globe className="size-4 text-muted-foreground" />}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[14px]">
+          {title}
+          {config.country_code ? ` ${config.country_code}` : ''}
+          <span className="text-muted-foreground"> · {protocolLine(config.transport, config.protocol)}</span>
+        </span>
+      </button>
+      <span className={cn('shrink-0 text-[13px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
+        {latencyText(config.latency_ms)}
+      </span>
+      <Button variant="ghost" size="icon-sm" aria-label={`QR-код ${title}`} onClick={onQr}>
+        <QrCode />
+      </Button>
+    </div>
+  )
+}
+
+function CardRow({
+  config,
+  checked,
+  onToggle,
+  onOpen,
+  onQr,
+}: {
+  config: ConfigRecord
+  checked: boolean
+  onToggle: () => void
+  onOpen: () => void
+  onQr: () => void
+}) {
+  const title = configTitle(config)
+  const flag = flagEmoji(config.country_code)
+  const verified = config.verified === 'tcp' ? 'порт открыт' : config.verified === 'proxy' ? 'Xray' : ''
+  return (
+    <div className="h-28 px-1 py-1.5">
+      <div className="flex h-full items-center gap-2 rounded-2xl bg-card px-3">
+        <input
+          type="checkbox"
+          className="size-4 shrink-0"
+          aria-label={`Выбрать ${title}`}
+          checked={checked}
+          onChange={onToggle}
+        />
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={onOpen}>
+          <span className="grid w-6 shrink-0 place-items-center text-xl leading-none" aria-hidden>
+            {flag || <Globe className="size-5 text-muted-foreground" />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[15px] font-medium">
+              {title}
+              {config.country_code ? ` ${config.country_code}` : ''}
+            </span>
+            <span className="block truncate text-[12px] text-muted-foreground">
+              {protocolLine(config.transport, config.protocol)}
+              {uptimeText(config.uptime) ? ` · ${uptimeText(config.uptime)}` : ''}
+              {verified ? ` · ${verified}` : ''}
+            </span>
+          </span>
+        </button>
+        <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
+          {latencyText(config.latency_ms)}
+        </span>
+        <Button variant="ghost" size="icon-sm" aria-label={`QR-код ${title}`} onClick={onQr}>
+          <QrCode />
+        </Button>
+      </div>
     </div>
   )
 }
