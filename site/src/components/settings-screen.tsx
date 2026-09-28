@@ -75,7 +75,7 @@ function ChoiceSheet<T extends string>({
 }: {
   open: boolean
   title: string
-  description: string
+  description?: string
   value: T
   choices: { value: T; label: string; hint?: string }[]
   onOpenChange: (open: boolean) => void
@@ -86,7 +86,7 @@ function ChoiceSheet<T extends string>({
       <SheetContent side="bottom" className="max-h-[80dvh] gap-0 overflow-y-auto rounded-t-3xl">
         <SheetHeader className="pr-10 text-left">
           <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>{description}</SheetDescription>
+          {description ? <SheetDescription>{description}</SheetDescription> : null}
         </SheetHeader>
         <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-card">
           {choices.map((choice, index) => (
@@ -148,9 +148,13 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
   }
 
   const rejected = data?.stats.rejected
-  const rejectedLine = rejected
-    ? `Отброшено: разбор ${rejected.parse_error ?? 0}, tcp_refused ${rejected.tcp_refused ?? 0}, timeout ${rejected.timeout ?? 0}, http_fail ${rejected.http_fail ?? 0}, no_data ${rejected.no_data ?? 0}`
-    : ''
+  const rejectedParts = rejected
+    ? Object.entries(FAILURE_LABELS)
+        .map(([key, label]) => [label, rejected[key] ?? 0] as const)
+        .filter(([, count]) => count > 0)
+        .map(([label, count]) => `${label} ${count}`)
+    : []
+  const rejectedLine = rejectedParts.length ? `Отброшено: ${rejectedParts.join(', ')}` : ''
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
@@ -192,7 +196,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
           <IconTile>
             <Gauge className="size-4" />
           </IconTile>
-          <span className="flex-1 text-[17px]">Порог задержки</span>
+          <span className="flex-1 text-[17px]">Максимальный пинг</span>
           <span className="text-[15px] text-muted-foreground">
             {thresholdLabel(settings.latencyThreshold)}
           </span>
@@ -231,7 +235,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         <Separator />
         <InfoRow
           icon={<Activity className="size-4" />}
-          text={`Сборщик: ${data?.collector_version ?? '—'}`}
+          text={`Проверка: ${data?.collector_version ?? '—'}`}
         />
         <Separator />
         <InfoRow
@@ -241,7 +245,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         <Separator />
         <InfoRow
           icon={<Gauge className="size-4" />}
-          text="Пинг — медиана HTTP после прогрева, отдельно от рукопожатия"
+          text="Пинг — время ответа сайта, без времени подключения"
         />
         <Separator />
         <InfoRow
@@ -296,7 +300,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
               <div>
                 <p className="font-medium text-foreground">Как забрать конфиги</p>
                 <p className="mt-1">
-                  «Экспорт» — файлы по срезу, стране, защите и транспорту, Clash, sing-box и конструктор
+                  «Экспорт» — файлы по срезу, стране, защите и типу соединения, Clash, sing-box и конструктор
                   подписки. На «Конфигах» отметьте строки и выгрузите текст, base64, файл, QR, Clash или
                   sing-box. QR и кнопки клиента используют только проверенные схемы: Happ, v2rayNG,
                   Hiddify, v2RayTun для VLESS; Clash Meta, Mihomo, NekoBox и sing-box — для своих файлов.
@@ -395,7 +399,6 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
       <ChoiceSheet
         open={picker === 'sort'}
         title="Сортировка"
-        description="Порядок списка конфигураций. Сохраняется на этом устройстве."
         value={settings.sort}
         choices={SORTS}
         onOpenChange={(open) => setPicker(open ? 'sort' : null)}
@@ -403,8 +406,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
       />
       <ChoiceSheet
         open={picker === 'threshold'}
-        title="Порог задержки"
-        description="Конфиги медленнее порога скрываются из списка."
+        title="Максимальный пинг"
         value={thresholdKey(settings.latencyThreshold)}
         choices={THRESHOLDS}
         onOpenChange={(open) => setPicker(open ? 'threshold' : null)}
@@ -413,7 +415,6 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
       <ChoiceSheet
         open={picker === 'client'}
         title="Приложение"
-        description="Какую схему открывать кнопкой «в клиент»."
         value={settings.client}
         choices={CLIENTS.map((item) => ({
           value: item.id,
@@ -428,9 +429,6 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         <SheetContent side="bottom" className="rounded-t-3xl">
           <SheetHeader className="pr-10 text-left">
             <SheetTitle>Адрес сайта</SheetTitle>
-            <SheetDescription>
-              К нему добавляются пути data/subs/ и sub/. Для этого репозитория оставьте адрес GitHub Pages.
-            </SheetDescription>
           </SheetHeader>
           <form
             className="flex flex-col gap-3 px-4 pb-6"

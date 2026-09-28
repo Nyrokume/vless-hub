@@ -19,7 +19,7 @@ export const SORTS: { value: SortKey; label: string }[] = [
   { value: 'latency-asc', label: 'Сначала быстрые' },
   { value: 'latency-desc', label: 'Сначала медленные' },
   { value: 'country', label: 'По стране' },
-  { value: 'transport', label: 'По транспорту' },
+  { value: 'transport', label: 'По типу соединения' },
 ]
 
 export const VIEWS: { value: ViewMode; label: string }[] = [

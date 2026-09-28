@@ -9,7 +9,7 @@ const FIELDS: { key: keyof ParsedVless; label: string }[] = [
   { key: 'uuid', label: 'UUID' },
   { key: 'host', label: 'Адрес' },
   { key: 'port', label: 'Порт' },
-  { key: 'network', label: 'Транспорт' },
+  { key: 'network', label: 'Тип соединения' },
   { key: 'security', label: 'Защита' },
   { key: 'sni', label: 'SNI' },
   { key: 'fp', label: 'Fingerprint' },

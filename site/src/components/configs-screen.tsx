@@ -428,7 +428,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Страна, адрес, транспорт"
+            placeholder="Страна, адрес, соединение"
             aria-label="Поиск конфигов"
             className="h-10 rounded-xl border-0 bg-card pl-9"
           />

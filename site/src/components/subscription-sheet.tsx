@@ -232,7 +232,7 @@ export function SubscriptionBuilder({
           options={['reality', 'tls', 'none']}
         />
         <Select
-          label="Транспорт"
+          label="Тип соединения"
           value={transport}
           onChange={setTransport}
           options={['tcp', 'ws', 'grpc', 'xhttp', 'h2']}

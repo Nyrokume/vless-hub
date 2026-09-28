@@ -145,7 +145,7 @@ export function ExportScreen({ data }: { data: HubData }) {
         ))}
       </Section>
 
-      <Section title="Защита и транспорт">
+      <Section title="Защита и соединение">
         {details.map((entry, index) => (
           <FileRow
             key={entry.path}

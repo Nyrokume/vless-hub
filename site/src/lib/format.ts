@@ -45,16 +45,16 @@ export function speedText(kbps: number | null | undefined): string {
 }
 
 export const FAILURE_LABELS: Record<string, string> = {
-  parse_error: 'разбор',
-  invalid_field: 'поле',
-  tcp_refused: 'tcp_refused',
-  timeout: 'timeout',
-  tls_fail: 'tls_fail',
-  reality_fail: 'reality_fail',
-  handshake_fail: 'рукопожатие',
-  http_fail: 'http_fail',
-  no_data: 'no_data',
-  exit_ip_leak: 'exit_ip_leak',
+  parse_error: 'не разобралось',
+  invalid_field: 'ошибка в поле',
+  tcp_refused: 'отказали',
+  timeout: 'нет ответа',
+  tls_fail: 'ошибка защиты',
+  reality_fail: 'ошибка Reality',
+  handshake_fail: 'не подключилось',
+  http_fail: 'сайт не открылся',
+  no_data: 'пустой ответ',
+  exit_ip_leak: 'свой адрес',
 }
 
 export function flagEmoji(code: string | null | undefined): string {
