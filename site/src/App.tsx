@@ -1,40 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ConfigsScreen } from '@/components/configs-screen'
 import { ExportScreen } from '@/components/export-screen'
 import { SettingsScreen } from '@/components/settings-screen'
 import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
 import { Button } from '@/components/ui/button'
-import { loadHub } from '@/lib/data'
-import type { HubData } from '@/lib/types'
-
-function useHub() {
-  const [data, setData] = useState<HubData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const reload = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setData(await loadHub())
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Ошибка загрузки')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void reload()
-  }, [reload])
-
-  return { data, error, loading, reload }
-}
+import { useHub } from '@/lib/hub'
 
 export default function App() {
   const [tab, setTab] = useState<AppTab>('configs')
-  const { data, error, loading, reload } = useHub()
+  const { data, error, loading, refresh } = useHub()
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
@@ -44,7 +19,7 @@ export default function App() {
         ) : loading && !data ? (
           <LoadingState />
         ) : error && !data ? (
-          <ErrorState message={error} onRetry={() => void reload()} />
+          <ErrorState message={error} onRetry={() => void refresh()} />
         ) : data && tab === 'telegram' ? (
           <TelegramScreen data={data} />
         ) : data && tab === 'export' ? (

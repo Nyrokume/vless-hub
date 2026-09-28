@@ -1,8 +1,9 @@
 import type { ConfigRecord, HubData } from '@/lib/types'
 
-export async function loadHub(): Promise<HubData> {
-  const url = `${import.meta.env.BASE_URL}data/configs.json`
-  const response = await fetch(url, { cache: 'no-cache' })
+export async function loadHub(bust = false): Promise<HubData> {
+  const stamp = bust ? `?t=${Date.now()}` : ''
+  const url = `${import.meta.env.BASE_URL}data/configs.json${stamp}`
+  const response = await fetch(url, { cache: 'no-store' })
   if (!response.ok) {
     throw new Error(`Не удалось загрузить данные (${response.status})`)
   }
