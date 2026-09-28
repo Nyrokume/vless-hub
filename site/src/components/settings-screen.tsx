@@ -277,6 +277,32 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
         </div>
       </Collapsible>
 
+      <Group title="Об авторе">
+        <div className="px-4 py-3">
+          <p className="text-[16px] font-medium">nyrokume.dev</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+            Самоучка: Rust, фронтенд, бэкенд, Python, AI, навыки для агентов, промпты.
+          </p>
+          <p className="mt-2 flex flex-wrap gap-x-4 text-[14px]">
+            <a className="underline underline-offset-2" href="https://github.com/Nyrokume" target="_blank" rel="noreferrer">
+              GitHub
+            </a>
+            <a
+              className="underline underline-offset-2"
+              href="https://github.com/Nyrokume/vless-hub"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Репозиторий
+            </a>
+          </p>
+          <p className="mt-2 text-[13px] text-muted-foreground">
+            Версия {SITE_VERSION}
+            {data ? ` · обновлено ${formatStamp(data.generated_at)}` : ''}
+          </p>
+        </div>
+      </Group>
+
       <ChoiceSheet
         open={picker === 'sort'}
         title="Сортировка"
