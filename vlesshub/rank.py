@@ -80,6 +80,29 @@ def select_candidates(
     return chosen[:limit]
 
 
+def mix_proxy_targets(
+    tcp_ok: list[VlessConfig],
+    hysteria: list[VlessConfig],
+    history: History,
+    limit: int,
+    drop_after: int,
+    deprioritized: set[str] | None = None,
+) -> list[VlessConfig]:
+    """Give Hysteria2 its own slice of the proxy budget, then fill with TCP-open configs."""
+    if limit <= 0:
+        return []
+    reserved = len(hysteria) if len(hysteria) <= max(8, limit // 8) else max(8, limit // 8)
+    hy2_chosen = select_candidates(hysteria, history, min(reserved, limit), drop_after, deprioritized)
+    rest = select_candidates(
+        tcp_ok,
+        history,
+        limit - len(hy2_chosen),
+        drop_after,
+        deprioritized,
+    )
+    return hy2_chosen + rest
+
+
 def rank_published(configs: list[VlessConfig]) -> list[VlessConfig]:
     def key(cfg: VlessConfig) -> tuple:
         latency = cfg.latency_ms if cfg.latency_ms is not None else 9_999_999

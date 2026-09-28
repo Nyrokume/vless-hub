@@ -1,6 +1,6 @@
 from vlesshub.history import History
-from vlesshub.parser import parse_vless
-from vlesshub.rank import rank_published, select_candidates
+from vlesshub.parser import parse_any, parse_vless
+from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
 
 
 def _cfg(host: str):
@@ -41,6 +41,16 @@ def test_rank_puts_proxy_and_uptime_first():
     ordered = rank_published([fast, tcp, slow])
     assert ordered[0] is slow
     assert ordered[-1] is tcp
+
+
+def test_hysteria2_gets_proxy_slots_ahead_of_a_full_tcp_pool():
+    history = History()
+    tcp_ok = [_cfg(f"tcp{i}.example") for i in range(30)]
+    hy2 = parse_any("hysteria2://secret@hy2.example:443?insecure=1#x")
+    assert hy2 is not None
+    chosen = mix_proxy_targets(tcp_ok, [hy2], history, limit=10, drop_after=4)
+    assert hy2 in chosen
+    assert len(chosen) == 10
 
 
 def test_deprioritized_source_sorts_after_a_healthy_one():

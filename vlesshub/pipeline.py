@@ -10,7 +10,7 @@ from vlesshub.health import apply_source_health, deprioritized_names, load_healt
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
 from vlesshub.probe import ProbeResult, failure_reason, proxy_probe, tcp_probe
-from vlesshub.rank import rank_published, select_candidates
+from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
 from vlesshub.tgcollect import collect_proxies, select_proxies
 from vlesshub.tgparse import TgProxy
 from vlesshub.tgprobe import probe_many
@@ -99,8 +99,9 @@ def run_pipeline(
     proxy_results: dict[str, ProbeResult] = {}
     proxy_targets: list[VlessConfig] = []
     if settings.max_proxy_tests > 0 and (tcp_ok or hy2_pool) and not skip_download:
-        proxy_targets = select_candidates(
-            tcp_ok + hy2_pool,
+        proxy_targets = mix_proxy_targets(
+            tcp_ok,
+            hy2_pool,
             history,
             settings.max_proxy_tests,
             settings.drop_after_failures,
@@ -114,7 +115,8 @@ def run_pipeline(
             log("proxy tests skipped because Xray is unavailable")
             proxy_targets = []
         else:
-            log(f"proxy candidates {len(proxy_targets)}")
+            hy2_n = sum(1 for cfg in proxy_targets if cfg.protocol == "hysteria2")
+            log(f"proxy candidates {len(proxy_targets)} hysteria2={hy2_n}")
             proxy_results = proxy_probe(
                 proxy_targets,
                 xray,
