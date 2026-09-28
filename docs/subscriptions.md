@@ -8,12 +8,12 @@
 
 | Список | Адрес | Что внутри |
 | --- | --- | --- |
-| Все рабочие | https://nyrokume.github.io/vless-hub/sub/all.txt | Конфиги, которые прошли проверку и держатся стабильно |
-| Рабочие и нестабильные | https://nyrokume.github.io/vless-hub/sub/with-unstable.txt | То же плюс те, что проходят не каждый раз |
+| Все рабочие | https://nyrokume.github.io/vless-hub/sub/all.txt | Конфиги, которые прошли все ступени в текущем прогоне |
+| Старый адрес «с нестабильными» | https://nyrokume.github.io/vless-hub/sub/with-unstable.txt | Тот же строгий набор. Адрес оставлен, чтобы старые подписки не оборвались |
 | Проверенные | https://nyrokume.github.io/vless-hub/sub/verified.txt | Тот же набор, что у всех рабочих. Адрес оставлен для старых подписок |
-| Только открытый порт | https://nyrokume.github.io/vless-hub/sub/unverified.txt | Сервер ответил, полный проход в этот раз не делали |
+| Только открытый порт | https://nyrokume.github.io/vless-hub/sub/unverified.txt | Больше не наполняется. Открытый порт без полного прохода не публикуется |
 
-В начале файла есть служебные строки для приложений: название списка и как часто его обновлять. У рабочих списков интервал 6 часов, у списка с нестабильными — 12.
+В начале файла есть служебные строки для приложений: название списка и как часто его обновлять. Интервал рабочих списков — 6 часов.
 
 ## Срезы
 
@@ -73,7 +73,7 @@ QR на сайте чёрный на белом. Его можно показа�
 | SOCKS | https://nyrokume.github.io/vless-hub/tg/socks.txt |
 | SOCKS для браузера | https://nyrokume.github.io/vless-hub/tg/socks-https.txt |
 | Все ссылки Telegram | https://nyrokume.github.io/vless-hub/tg/all.txt |
-| Рабочие и нестабильные | https://nyrokume.github.io/vless-hub/tg/with-unstable.txt |
+| Старый адрес «с нестабильными» | https://nyrokume.github.io/vless-hub/tg/with-unstable.txt |
 | Ссылки для браузера | https://nyrokume.github.io/vless-hub/tg/https.txt |
 | Данные | https://nyrokume.github.io/vless-hub/api/proxies.json |
 

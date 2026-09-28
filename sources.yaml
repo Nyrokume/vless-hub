@@ -8,8 +8,9 @@
 settings:
   drop_after_failures: 4
   max_links_per_source: 15000
-  # TCP is only a prefilter. Published latency comes from HTTP through Xray
-  # or sing-box. The budget walks the unique pool across runs.
+  # TCP is only a prefilter. A config is published only after this run's
+  # handshake, 2 of 3 HTTPS checks, a throughput floor, and a different exit IP.
+  # A definitive HTTP answer is not retried. The whole check stays inside 20s.
   max_tcp_tests: 20000
   max_proxy_tests: 12000
   tcp_timeout_sec: 2.5

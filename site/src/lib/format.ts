@@ -75,6 +75,8 @@ export const FAILURE_LABELS: Record<string, string> = {
   http_fail: reasonLabel('http_fail'),
   no_data: reasonLabel('no_data'),
   exit_ip_leak: reasonLabel('exit_ip_leak'),
+  mtproto_fail: reasonLabel('mtproto_fail'),
+  socks_fail: reasonLabel('socks_fail'),
   dead: reasonLabel('dead'),
 }
 

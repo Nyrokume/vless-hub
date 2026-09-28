@@ -5,12 +5,12 @@ from pathlib import Path
 
 from vlesshub.collect import collect_all, load_config
 from vlesshub.export import publish
-from vlesshub.geo import GeoCache, apply_exit_countries, country_name, enrich
+from vlesshub.geo import GeoCache, apply_exit_countries, enrich
 from vlesshub.health import apply_source_health, deprioritized_names, load_health, save_health
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
 from vlesshub.probe import ProbeResult, failure_reason, proxy_probe, tcp_probe
-from vlesshub.rank import carry_verified, mix_proxy_targets, rank_published, select_candidates
+from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
 from vlesshub.stability import Stability
 from vlesshub.stages import dropped_after, status_of
 from vlesshub.tgcollect import collect_proxies, select_proxies
@@ -143,8 +143,6 @@ def run_pipeline(
 
     tested_proxy = {cfg.fingerprint for cfg in proxy_targets}
     working: list[VlessConfig] = []
-    unstable: list[VlessConfig] = []
-    unverified: list[VlessConfig] = []
     evaluated: list[tuple[VlessConfig, bool]] = []
 
     def _reject(result: ProbeResult | None) -> None:
@@ -175,10 +173,7 @@ def run_pipeline(
         recorded = history.record(cfg.fingerprint, ok=True, latency_ms=result.latency_ms)
         cfg.tested_at = str(recorded.get("last_ok") or "")
         _mark(cfg, True)
-        if cfg.status == "unstable":
-            unstable.append(cfg)
-        else:
-            working.append(cfg)
+        working.append(cfg)
         evaluated.append((cfg, True))
 
     def _fail_proxy(cfg: VlessConfig, result: ProbeResult | None) -> None:
@@ -208,7 +203,6 @@ def run_pipeline(
             cfg.speed_kbps = None
             cfg.verified = "tcp"
             history.seen(cfg.fingerprint)
-            unverified.append(cfg)
         elif tcp_result is not None and not tcp_result.evaluated:
             history.seen(cfg.fingerprint)
         else:
@@ -228,50 +222,16 @@ def run_pipeline(
         else:
             _fail_proxy(cfg, proxy_result)
 
-    carried_ids: set[str] = set()
-    for cfg in carry_verified(
-        alive,
-        history,
-        {item.fingerprint for item in working + unstable},
-        max_age_sec=settings.carry_max_age_sec,
-    ):
-        entry = history.get(cfg.fingerprint) or {}
-        stability.seed(cfg.fingerprint, str(entry.get("bits") or ""))
-        cfg.bits = stability.bits(cfg.fingerprint) or str(entry.get("bits") or "")
-        rate = stability.rate(cfg.fingerprint)
-        cfg.stability = rate
-        if rate is not None:
-            cfg.uptime = rate
-        cfg.status = status_of(True, cfg.bits)
-        carried_ids.add(cfg.fingerprint)
-        if cfg.status == "unstable":
-            unstable.append(cfg)
-        else:
-            working.append(cfg)
-    if carried_ids:
-        # A TCP-open row is not a failure. Once it is carried it stays verified.
-        unverified[:] = [cfg for cfg in unverified if cfg.fingerprint not in carried_ids]
-        log(f"kept {len(carried_ids)} previous passes within {settings.carry_max_age_sec // 3600}h")
-
     apply_source_health(reports, evaluated, health)
     save_health(state_dir / "source_health.json", health)
 
     cache = GeoCache.load(state_dir / "geo_cache.json")
     mmdb = None if skip_download else ensure_geoip(root / "data" / "Country.mmdb")
-    passed = working + unstable
+    passed = list(working)
     passed_ids = {cfg.fingerprint for cfg in passed}
-    enrich(passed + unverified, cache, mmdb, settings.user_agent)
-    apply_exit_countries([cfg for cfg in passed if cfg.fingerprint not in carried_ids], mmdb)
+    enrich(passed, cache, mmdb, settings.user_agent)
+    apply_exit_countries(passed, mmdb)
     for cfg in passed:
-        if cfg.fingerprint not in carried_ids:
-            continue
-        saved = history.get(cfg.fingerprint) or {}
-        code = str(saved.get("country") or "").upper()
-        if len(code) == 2 and code.isalpha():
-            cfg.country = code
-            cfg.country_source = "geoip"
-            cfg.country_name = country_name(code) or cfg.country_name
-    for cfg in passed + unverified:
         entry = history.get(cfg.fingerprint)
         if entry is not None and cfg.country:
             entry["country"] = cfg.country
@@ -295,12 +255,10 @@ def run_pipeline(
     cache.save(state_dir / "geo_cache.json")
 
     published = rank_published(working)
-    unstable_ranked = rank_published(unstable)
-    unverified_sorted = sorted(unverified, key=lambda cfg: (cfg.country or "ZZ", cfg.fingerprint))
-    proxy_ok = len(passed)
+    proxy_ok = len(published)
     log(
-        f"publish {len(published)} working, {len(unstable_ranked)} unstable, "
-        f"{len(unverified_sorted)} unverified from {len(configs)} unique; rejected {rejections}"
+        f"publish {len(published)} working from {len(configs)} unique; "
+        f"proxy tested {len(proxy_targets)}; rejected {rejections}"
     )
     if not passed and had_success:
         log("no proxy-verified configs in this run; history was saved, site was left unchanged")
@@ -310,8 +268,8 @@ def run_pipeline(
         out_dir=out_dir,
         site_dir=site_dir,
         configs=published,
-        unstable=unstable_ranked,
-        unverified=unverified_sorted,
+        unstable=[],
+        unverified=[],
         reports=reports,
         collected=sum(report.links for report in reports),
         unique=len(configs),
@@ -357,7 +315,6 @@ def _probe_telegram(
     results = probe_many(targets, settings.tg_timeout_sec, settings.tg_concurrency) if targets else {}
     tested = {proxy.fingerprint for proxy in targets}
     working: list[TgProxy] = []
-    unstable: list[TgProxy] = []
 
     def _remember(proxy: TgProxy, ok: bool) -> None:
         bits = stability.note(proxy.fingerprint, ok, telegram=True)
@@ -375,10 +332,7 @@ def _probe_telegram(
             stability.seed(proxy.fingerprint, str((history.get(proxy.fingerprint) or {}).get("bits") or ""), telegram=True)
             history.record(proxy.fingerprint, ok=True, latency_ms=result.latency_ms)
             _remember(proxy, True)
-            if proxy.status == "unstable":
-                unstable.append(proxy)
-            else:
-                working.append(proxy)
+            working.append(proxy)
         else:
             proxy.latency_ms = None
             proxy.status = "dead"
@@ -387,7 +341,7 @@ def _probe_telegram(
             _remember(proxy, False)
             reason = (result.reason if result else "") or "handshake_fail"
             rejections[reason] = rejections.get(reason, 0) + 1
-    passed = working + unstable
+    passed = list(working)
     enrich(passed, cache, mmdb, settings.user_agent)
     passed_ids = {proxy.fingerprint for proxy in passed}
     for proxy in passed:
@@ -416,6 +370,5 @@ def _probe_telegram(
         )
 
     ranked = _rank(working)
-    rare = _rank(unstable)
-    log(f"tg working {len(ranked)} unstable {len(rare)} of {len(targets)} tested")
-    return ranked, rare, len(targets)
+    log(f"tg working {len(ranked)} of {len(targets)} tested")
+    return ranked, [], len(targets)

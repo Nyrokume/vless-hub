@@ -97,6 +97,7 @@ def publish(
         catalog,
         kind="unstable",
         header=_UNSTABLE_HEADER,
+        listed=bool(unstable),
     )
     # Same proxy-verified set, kept so older subscription URLs still resolve.
     _write_pair(out_dir, "sub/verified.txt", configs, catalog, kind="verified")
@@ -107,6 +108,7 @@ def publish(
         catalog,
         kind="unverified",
         header=_UNVERIFIED_HEADER,
+        listed=bool(unverified),
     )
 
     for size in settings.top_sizes:
@@ -461,6 +463,7 @@ def _write_pair(
     protocol: str = "",
     top: int | None = None,
     header: str | None = None,
+    listed: bool = True,
 ) -> None:
     plain_path = out_dir / relative
     plain_path.parent.mkdir(parents=True, exist_ok=True)
@@ -480,6 +483,8 @@ def _write_pair(
         "top": top,
         "count": len(configs),
     }
+    if not listed:
+        return
     catalog.append({**base, "path": relative, "format": "plain"})
     catalog.append({**base, "path": b64_relative, "format": "base64"})
 

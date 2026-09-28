@@ -64,6 +64,31 @@ def test_flag_in_remark_and_local_hosts():
     assert parse_vless(REALITY.replace(":443", ":99999")) is None
 
 
+def test_same_server_port_and_credentials_collapse_to_one():
+    from vlesshub.parser import access_key
+
+    user = "11111111-1111-4111-8111-111111111111"
+    plain = parse_vless(
+        f"vless://{user}@de.example:443?type=ws&security=none&path=/a#plain",
+        source="alpha",
+    )
+    tls = parse_vless(
+        f"vless://{user}@de.example:443?type=ws&security=tls&sni=de.example&path=/b#tls",
+        source="beta",
+    )
+    other = parse_vless(
+        "vless://22222222-2222-4222-8222-222222222222@de.example:443?type=tcp&security=none#other"
+    )
+    assert plain is not None and tls is not None and other is not None
+    assert access_key(plain) == access_key(tls)
+    assert plain.fingerprint != tls.fingerprint
+    merged = dedup([plain, tls, other])
+    assert len(merged) == 2
+    kept = next(cfg for cfg in merged if cfg.host == "de.example" and cfg.uuid == user)
+    assert kept.security == "tls"
+    assert kept.sources == ["alpha", "beta"]
+
+
 def test_remark_is_not_part_of_dedup_key():
     first = parse_vless(REALITY.replace("#Germany", "#one"), source="alpha")
     second = parse_vless(REALITY.replace("#Germany", "#two"), source="beta")

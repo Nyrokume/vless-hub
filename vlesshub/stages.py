@@ -5,11 +5,21 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass, field
 
-HTTP_TARGETS: tuple[tuple[str, frozenset[int]], ...] = (
-    ("https://www.gstatic.com/generate_204", frozenset({204, 200})),
-    ("https://cp.cloudflare.com/generate_204", frozenset({204, 200})),
-    ("https://www.google.com/generate_204", frozenset({204, 200})),
+@dataclass(frozen=True, slots=True)
+class HttpTarget:
+    """One HTTPS check. ``empty`` is a generate_204; ``page`` is a real document."""
+
+    url: str
+    codes: frozenset[int]
+    kind: str
+
+
+HTTP_TARGETS: tuple[HttpTarget, ...] = (
+    HttpTarget("https://www.gstatic.com/generate_204", frozenset({204}), "empty"),
+    HttpTarget("https://cp.cloudflare.com/generate_204", frozenset({204}), "empty"),
+    HttpTarget("https://example.com/", frozenset({200}), "page"),
 )
+PAGE_MARK = "Example Domain"
 SPEED_URL = "https://speed.cloudflare.com/__down?bytes=250000"
 SPEED_BYTES = 250_000
 # A zombie answers the socket but does not move a real payload.
@@ -32,6 +42,8 @@ REASONS = (
     "http_fail",
     "no_data",
     "exit_ip_leak",
+    "mtproto_fail",
+    "socks_fail",
 )
 
 
@@ -52,7 +64,11 @@ def classify_failure(stage: str, error: str, security: str = "") -> str:
             return "tls_fail"
         return "handshake_fail"
     if stage == "http":
-        return "timeout" if timed_out else "http_fail"
+        if timed_out:
+            return "timeout"
+        if "tls" in err or "ssl" in err:
+            return "tls_fail"
+        return "http_fail"
     if stage == "throughput":
         return "timeout" if timed_out else "no_data"
     if stage == "exit":
@@ -74,16 +90,9 @@ def median_ms(samples: list[float]) -> float | None:
 
 
 def status_of(passed_now: bool, bits: str, *, min_rate: float = STABILITY_MIN_RATE) -> str:
-    """working passed now with a solid history, unstable passed now but rarely, dead failed now."""
-    if not passed_now:
-        return "dead"
-    window = [char == "1" for char in bits if char in {"0", "1"}]
-    if not window:
-        return "working"
-    rate = sum(1 for item in window if item) / len(window)
-    if rate < min_rate:
-        return "unstable"
-    return "working"
+    """A config is working only when this run passed. History does not keep a failure."""
+    del bits, min_rate
+    return "working" if passed_now else "dead"
 
 
 def note_bits(previous: str, ok: bool, window: int = STABILITY_WINDOW) -> str:
@@ -127,6 +136,7 @@ class HttpSample:
     size: int = 0
     timed_out: bool = False
     body: str = ""
+    tls_error: bool = False
 
 
 @dataclass(slots=True)
@@ -141,10 +151,36 @@ class ProxyAssessment:
     samples: list[float] = field(default_factory=list)
 
 
-def attempt_ok(sample: HttpSample | None, expected: frozenset[int]) -> bool:
-    if sample is None or sample.timed_out or sample.code not in expected:
+_CAPTIVE = (
+    "captive portal",
+    "wifi login",
+    "hotspot login",
+    "please log in",
+    "sign in to the network",
+    "click here to login",
+)
+
+
+def _captive(body: str) -> bool:
+    text = (body or "").lower()
+    return any(marker in text for marker in _CAPTIVE)
+
+
+def response_ok(sample: HttpSample | None, expected: frozenset[int], kind: str = "empty") -> bool:
+    """Status and body must both match. A portal page or a TLS error is a miss."""
+    if sample is None or sample.timed_out or sample.tls_error or sample.start_ms <= 0:
         return False
-    return sample.start_ms > 0
+    if sample.code not in expected:
+        return False
+    if _captive(sample.body):
+        return False
+    if kind == "page":
+        return PAGE_MARK in (sample.body or "")
+    return sample.size <= 64
+
+
+def attempt_ok(sample: HttpSample | None, expected: frozenset[int]) -> bool:
+    return response_ok(sample, expected, "empty")
 
 
 def parse_exit_ip(body: str) -> str:
@@ -162,9 +198,9 @@ def parse_exit_ip(body: str) -> str:
     return ""
 
 
-def _target_hit(attempts: list[HttpSample], expected: frozenset[int]) -> HttpSample | None:
+def _target_hit(attempts: list[HttpSample], expected: frozenset[int], kind: str) -> HttpSample | None:
     for sample in attempts:
-        if attempt_ok(sample, expected):
+        if response_ok(sample, expected, kind):
             return sample
     return None
 
@@ -179,7 +215,7 @@ def assess_proxy(
     *,
     security: str,
     warmup: HttpSample | None,
-    targets: list[tuple[frozenset[int], list[HttpSample]]],
+    targets: list[tuple[str, frozenset[int], list[HttpSample]]],
     speed: HttpSample | None,
     exit_body: str,
     exit_timed_out: bool,
@@ -190,9 +226,11 @@ def assess_proxy(
     Ping is the median time-to-first-byte of the successful measured targets.
     The warmup request is the handshake and is not part of that median.
     """
-    expected_warm = frozenset({200, 204})
-    if not attempt_ok(warmup, expected_warm):
-        if warmup is None or warmup.timed_out:
+    warm = HTTP_TARGETS[0]
+    if not response_ok(warmup, warm.codes, warm.kind):
+        if warmup is not None and warmup.tls_error:
+            error = "tls"
+        elif warmup is None or warmup.timed_out:
             error = "timeout"
         elif warmup.code == 0:
             error = "connection failed"
@@ -206,18 +244,29 @@ def assess_proxy(
 
     hits: list[float] = []
     timeout_misses = 0
+    tls_misses = 0
     other_misses = 0
-    for expected, attempts in targets:
-        hit = _target_hit(attempts, expected)
+    for kind, expected, attempts in targets:
+        hit = _target_hit(attempts, expected, kind)
         if hit is not None:
             hits.append(hit.start_ms)
+        elif attempts and any(sample.tls_error for sample in attempts) and _target_timed_out(attempts) is False:
+            if all(sample.tls_error or sample.timed_out for sample in attempts):
+                tls_misses += 1
+            else:
+                other_misses += 1
         elif _target_timed_out(attempts):
             timeout_misses += 1
         else:
             other_misses += 1
     total = len(targets)
     if not majority(len(hits), total):
-        error = "timeout" if other_misses == 0 else "http fail"
+        if other_misses == 0 and tls_misses > 0:
+            error = "tls"
+        elif other_misses == 0:
+            error = "timeout"
+        else:
+            error = "http fail"
         return ProxyAssessment(
             False,
             "http",

@@ -354,21 +354,48 @@ def invalid_reason(cfg: VlessConfig) -> str | None:
     return "invalid_field"
 
 
+def access_key(cfg: VlessConfig) -> str:
+    """Same server, port, and credentials are one config, whatever the path or title."""
+    return "|".join(
+        [
+            (cfg.protocol or "vless").lower(),
+            (cfg.host or "").lower(),
+            str(int(cfg.port)),
+            (cfg.uuid or "").strip().lower(),
+        ]
+    )
+
+
 def dedup(configs: list[VlessConfig]) -> list[VlessConfig]:
     ordered: dict[str, VlessConfig] = {}
     for cfg in configs:
-        current = ordered.get(cfg.fingerprint)
+        key = access_key(cfg)
+        current = ordered.get(key)
         if current is None:
-            ordered[cfg.fingerprint] = cfg
+            ordered[key] = cfg
             continue
         for name in cfg.sources:
             if name and name not in current.sources:
                 current.sources.append(name)
-        if _fp_rank(cfg.fp) < _fp_rank(current.fp):
-            current.fp = cfg.fp
+        if _variant_rank(cfg) < _variant_rank(current):
+            cfg.sources = list(current.sources)
+            if not cfg.remark and current.remark:
+                cfg.remark = current.remark
+            ordered[key] = cfg
+            continue
         if not current.remark and cfg.remark:
             current.remark = cfg.remark
+        if _fp_rank(cfg.fp) < _fp_rank(current.fp):
+            current.fp = cfg.fp
     return list(ordered.values())
+
+
+_SECURITY_RANK = {"reality": 0, "tls": 1, "none": 3}
+
+
+def _variant_rank(cfg: VlessConfig) -> tuple[int, int, int]:
+    security = normalize_security(cfg.security)
+    return (_SECURITY_RANK.get(security, 2), _fp_rank(cfg.fp), 0 if cfg.sni else 1)
 
 
 def _fp_rank(value: str) -> int:

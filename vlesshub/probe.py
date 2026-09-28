@@ -23,15 +23,15 @@ from vlesshub.stages import (
     MIN_SPEED_BYTES,
     SPEED_URL,
     assess_proxy,
-    attempt_ok,
     classify_failure,
     parse_exit_ip,
+    response_ok,
 )
 from vlesshub.util import log
 
 # Time to first byte of one HTTP response. The core is already listening, and curl does not retry.
 _CURL_WRITE = "%{http_code} %{time_starttransfer} %{time_total} %{size_download}"
-_WARM_CODES = frozenset({200, 204})
+_TLS_EXITS = {35, 51, 53, 54, 58, 59, 60, 64, 77, 80, 82, 83, 90, 91}
 _ports_lock = threading.Lock()
 _ports: set[int] = set()
 
@@ -528,16 +528,22 @@ def _probe_through_core(cfg: VlessConfig, port: int, per_request: float, runner_
             return HttpSample(timed_out=True)
         return _curl(port, url, min(per_request, left), read_body=read_body)
 
-    def with_retry(url: str, expected: frozenset[int]) -> list[HttpSample]:
-        first = once(url)
-        if attempt_ok(first, expected) or deadline - time.perf_counter() < 0.4:
+    def with_retry(url: str, expected: frozenset[int], kind: str) -> list[HttpSample]:
+        read_body = kind == "page"
+        first = once(url, read_body=read_body)
+        # A real status is an answer. Retry only silence, so a dead proxy does not sit twice.
+        definitive = first.code > 0 and not first.timed_out and not first.tls_error
+        if response_ok(first, expected, kind) or definitive or deadline - time.perf_counter() < 0.4:
             return [first]
-        return [first, once(url)]
+        return [first, once(url, read_body=read_body)]
 
-    warm_url = HTTP_TARGETS[0][0]
-    warm_attempts = with_retry(warm_url, _WARM_CODES)
-    warmup = next((sample for sample in warm_attempts if attempt_ok(sample, _WARM_CODES)), warm_attempts[-1])
-    if not attempt_ok(warmup, _WARM_CODES):
+    warm = HTTP_TARGETS[0]
+    warm_attempts = with_retry(warm.url, warm.codes, warm.kind)
+    warmup = next(
+        (sample for sample in warm_attempts if response_ok(sample, warm.codes, warm.kind)),
+        warm_attempts[-1],
+    )
+    if not response_ok(warmup, warm.codes, warm.kind):
         return _from_assessment(
             assess_proxy(
                 security=cfg.security,
@@ -550,15 +556,22 @@ def _probe_through_core(cfg: VlessConfig, port: int, per_request: float, runner_
             )
         )
 
-    targets: list[tuple[frozenset[int], list[HttpSample]]] = []
-    for url, expected in HTTP_TARGETS:
+    # The warmup is already the first endpoint, so it counts as one of the three.
+    targets: list[tuple[str, frozenset[int], list[HttpSample]]] = [
+        (warm.kind, warm.codes, warm_attempts)
+    ]
+    for check in HTTP_TARGETS[1:]:
         if deadline - time.perf_counter() < 0.4:
-            targets.append((expected, []))
+            targets.append((check.kind, check.codes, []))
             continue
-        targets.append((expected, with_retry(url, expected)))
+        targets.append((check.kind, check.codes, with_retry(check.url, check.codes, check.kind)))
 
-    hits = sum(1 for expected, attempts in targets if any(attempt_ok(sample, expected) for sample in attempts))
-    if hits * 2 <= len(targets):
+    hits = sum(
+        1
+        for kind, expected, attempts in targets
+        if any(response_ok(sample, expected, kind) for sample in attempts)
+    )
+    if hits * 2 <= len(HTTP_TARGETS):
         return _from_assessment(
             assess_proxy(
                 security=cfg.security,
@@ -645,17 +658,20 @@ def _curl(port: int, url: str, timeout: float, *, read_body: bool = False) -> Ht
         )
         code, start_ms, total_ms, size = parse_curl_write(proc.stdout or "")
         timed_out = proc.returncode == 28
+        stderr = (proc.stderr or "").lower()
+        tls_error = proc.returncode in _TLS_EXITS or "ssl" in stderr
     except subprocess.TimeoutExpired:
         code, start_ms, total_ms, size = 0, 0.0, 0.0, 0
         timed_out = True
+        tls_error = False
     body = ""
     if body_path:
         try:
-            body = Path(body_path).read_text(encoding="utf-8", errors="replace")[:200]
+            body = Path(body_path).read_text(encoding="utf-8", errors="replace")[:800]
         except OSError:
             body = ""
         Path(body_path).unlink(missing_ok=True)
-    return HttpSample(code, start_ms, total_ms, size, timed_out, body)
+    return HttpSample(code, start_ms, total_ms, size, timed_out, body, tls_error)
 
 
 def fetch_runner_ip(timeout: float = REQUEST_TIMEOUT_SEC) -> str:

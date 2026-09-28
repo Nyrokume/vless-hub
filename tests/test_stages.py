@@ -41,10 +41,9 @@ def test_ping_is_the_median_of_successful_round_trips():
     assert median_ms([]) is None
 
 
-def test_status_uses_this_run_and_recent_history():
+def test_status_is_this_run_only():
     assert status_of(True, "1111111") == "working"
-    assert status_of(True, "0000001") == "unstable"
-    assert status_of(True, "1111110" + "1") == "working"
+    assert status_of(True, "0000001") == "working"
     assert status_of(False, "1111111") == "dead"
     assert status_of(True, "") == "working"
 
@@ -67,8 +66,27 @@ def _ok(start_ms: float, code: int = 204) -> HttpSample:
     return HttpSample(code=code, start_ms=start_ms, total_ms=start_ms + 20, size=0)
 
 
+def _hit(target, start_ms: float) -> HttpSample:
+    if target.kind == "page":
+        return HttpSample(
+            code=200,
+            start_ms=start_ms,
+            total_ms=start_ms + 20,
+            size=90,
+            body="<!doctype html><title>Example Domain</title>",
+        )
+    return _ok(start_ms, code=204)
+
+
+def _targets(samples: list[HttpSample]):
+    return [
+        (target.kind, target.codes, [samples[index]])
+        for index, target in enumerate(HTTP_TARGETS)
+    ]
+
+
 def test_assess_splits_handshake_from_median_ping():
-    targets = [(expected, [_ok(100), _ok(140), _ok(120)][index : index + 1]) for index, (_, expected) in enumerate(HTTP_TARGETS)]
+    targets = _targets([_hit(target, ms) for target, ms in zip(HTTP_TARGETS, (100, 140, 120), strict=True)])
     speed = HttpSample(code=200, start_ms=80, total_ms=2000, size=250_000)
     result = assess_proxy(
         security="reality",
@@ -88,11 +106,12 @@ def test_assess_splits_handshake_from_median_ping():
 
 
 def test_assess_retries_count_toward_majority_and_http_fail_does_not():
-    expected = HTTP_TARGETS[0][1]
+    kind = HTTP_TARGETS[0].kind
+    expected = HTTP_TARGETS[0].codes
     targets = [
-        (expected, [HttpSample(timed_out=True), _ok(80)]),
-        (expected, [HttpSample(code=403, start_ms=30, total_ms=40)]),
-        (expected, [HttpSample(timed_out=True), HttpSample(timed_out=True)]),
+        (kind, expected, [HttpSample(timed_out=True), _ok(80)]),
+        (kind, expected, [HttpSample(code=403, start_ms=30, total_ms=40, size=20)]),
+        (kind, expected, [HttpSample(timed_out=True), HttpSample(timed_out=True)]),
     ]
     failed = assess_proxy(
         security="tls",
@@ -113,9 +132,9 @@ def test_assess_retries_count_toward_majority_and_http_fail_does_not():
         security="tls",
         warmup=_ok(50),
         targets=[
-            (expected, [HttpSample(code=0), _ok(110)]),
-            (expected, [_ok(90)]),
-            (expected, [HttpSample(timed_out=True)]),
+            (kind, expected, [HttpSample(code=0), _ok(110)]),
+            (kind, expected, [_ok(90)]),
+            (kind, expected, [HttpSample(timed_out=True)]),
         ],
         speed=HttpSample(code=200, start_ms=40, total_ms=1000, size=200_000),
         exit_body="2001:db8::1",
@@ -128,8 +147,7 @@ def test_assess_retries_count_toward_majority_and_http_fail_does_not():
 
 
 def test_assess_rejects_zombies_and_exit_leaks():
-    expected = HTTP_TARGETS[0][1]
-    targets = [(expected, [_ok(70)]) for _ in HTTP_TARGETS]
+    targets = _targets([_hit(target, 70) for target in HTTP_TARGETS])
     zombie = assess_proxy(
         security="none",
         warmup=_ok(40),
@@ -153,6 +171,26 @@ def test_assess_rejects_zombies_and_exit_leaks():
     )
     assert leak.reason == "exit_ip_leak"
     assert leak.stage == "exit"
+
+
+def test_assess_rejects_a_portal_page_and_a_hijacked_document():
+    portal = HttpSample(code=200, start_ms=30, total_ms=40, size=400, body="<html>captive portal login</html>")
+    page = HTTP_TARGETS[2]
+    missed = assess_proxy(
+        security="tls",
+        warmup=_ok(40),
+        targets=[
+            (HTTP_TARGETS[0].kind, HTTP_TARGETS[0].codes, [portal]),
+            (HTTP_TARGETS[1].kind, HTTP_TARGETS[1].codes, [_ok(80)]),
+            (page.kind, page.codes, [HttpSample(code=200, start_ms=50, total_ms=70, size=80, body="<html>blocked</html>")]),
+        ],
+        speed=None,
+        exit_body="",
+        exit_timed_out=False,
+        runner_ip="203.0.113.4",
+    )
+    assert not missed.ok
+    assert missed.reason == "http_fail"
 
 
 def test_assess_handshake_uses_security_and_timeout():

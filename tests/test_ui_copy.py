@@ -17,6 +17,8 @@ RAW_KEYS = (
     "http_fail",
     "no_data",
     "exit_ip_leak",
+    "mtproto_fail",
+    "socks_fail",
     "unsupported_protocol",
     "dead",
     "working",

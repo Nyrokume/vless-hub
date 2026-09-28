@@ -42,13 +42,25 @@ class TgProbeResult:
     reason: str = ""
 
 
+class MtprotoError(ConnectionError):
+    """The proxy answered, but Telegram did not complete req_pq / resPQ."""
+
+
+class SocksError(ConnectionError):
+    """SOCKS5 did not finish the greeting or the tunnel to a Telegram DC."""
+
+
 def classify_tg_error(error: str) -> str:
-    """MTProto and SOCKS failures use the same reason codes as the proxy probe."""
+    """Map a Telegram probe failure to a reason the site can show in Russian."""
     err = (error or "").lower()
     if "timeout" in err or "timed out" in err:
         return "timeout"
     if "refused" in err or "network is unreachable" in err or "no route" in err:
         return "tcp_refused"
+    if "socks" in err:
+        return "socks_fail"
+    if any(token in err for token in ("respq", "mtproto", "fake-tls", "frame", "server hello")):
+        return "mtproto_fail"
     return "handshake_fail"
 
 
@@ -108,6 +120,10 @@ def probe_one(proxy: TgProxy, timeout: float) -> TgProbeResult:
             _fake_tls(proxy, timeout)
         else:
             _obfuscated_with_fallback(proxy, timeout)
+    except (MtprotoError, SocksError) as exc:
+        error = f"{type(exc).__name__}: {exc}"[:180]
+        reason = "mtproto_fail" if isinstance(exc, MtprotoError) else "socks_fail"
+        return TgProbeResult(False, error=error, reason=reason)
     except Exception as exc:  # noqa: BLE001
         error = f"{type(exc).__name__}: {exc}"[:180]
         return TgProbeResult(False, error=error, reason=classify_tg_error(error))
@@ -153,12 +169,17 @@ def _obfuscated(host: str, port: int, secret: bytes, tag: bytes, timeout: float,
 
 
 def _mtproto_exchange(sock: socket.socket, secret: bytes, tag: bytes, timeout: float) -> None:
-    payload, encryptor, decryptor = obfuscated_client_init(secret, DC_ID, tag)
-    sock.sendall(payload)
-    nonce = os.urandom(16)
-    frame = frame_message(_req_pq(nonce), padded=tag == _TAG_DD)
-    sock.sendall(encryptor.xor(frame))
-    _read_respq(sock, decryptor, nonce, timeout)
+    try:
+        payload, encryptor, decryptor = obfuscated_client_init(secret, DC_ID, tag)
+        sock.sendall(payload)
+        nonce = os.urandom(16)
+        frame = frame_message(_req_pq(nonce), padded=tag == _TAG_DD)
+        sock.sendall(encryptor.xor(frame))
+        _read_respq(sock, decryptor, nonce, timeout)
+    except MtprotoError:
+        raise
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise MtprotoError(str(exc) or "mtproto") from exc
 
 
 def obfuscated_client_init(secret: bytes, dc_id: int, tag: bytes) -> tuple[bytes, AesCtr, AesCtr]:
@@ -211,17 +232,17 @@ def _read_respq(sock: socket.socket, decryptor: AesCtr, nonce: bytes, timeout: f
     sock.settimeout(timeout)
     length = struct.unpack("<I", decryptor.xor(_recvall(sock, 4)))[0]
     if length < 40 or length > 256:
-        raise ConnectionError(f"unexpected frame {length}")
+        raise MtprotoError(f"unexpected frame {length}")
     blob = decryptor.xor(_recvall(sock, length))
     if len(blob) < 24:
-        raise ConnectionError("short mtproto frame")
+        raise MtprotoError("short mtproto frame")
     msg_len = struct.unpack_from("<I", blob, 16)[0]
     if msg_len < 20 or 20 + msg_len > len(blob):
-        raise ConnectionError("bad message length")
+        raise MtprotoError("bad message length")
     tl = blob[20 : 20 + msg_len]
     ctor = struct.unpack_from("<I", tl, 0)[0]
     if ctor != _RES_PQ or tl[4:20] != nonce:
-        raise ConnectionError(f"not resPQ ({ctor:#x})")
+        raise MtprotoError(f"not resPQ ({ctor:#x})")
 
 
 def _fake_tls(proxy: TgProxy, timeout: float) -> None:
@@ -234,7 +255,7 @@ def _fake_tls(proxy: TgProxy, timeout: float) -> None:
         sock.sendall(hello)
         _records, blob = _read_tls_burst(sock, min(timeout, 4))
         if _find_server_hello(blob, secret, client_random) is None:
-            raise ConnectionError("fake-tls server hello rejected")
+            raise MtprotoError("fake-tls server hello rejected")
         _mtproto_exchange_tls(sock, secret, timeout)
     finally:
         sock.close()
@@ -335,13 +356,13 @@ def _mtproto_exchange_tls(sock: socket.socket, secret: bytes, timeout: float) ->
     stream = _TlsStream(sock, timeout)
     length = struct.unpack("<I", decryptor.xor(stream.read(4)))[0]
     if length < 40 or length > 256:
-        raise ConnectionError(f"unexpected frame {length}")
+        raise MtprotoError(f"unexpected frame {length}")
     blob = decryptor.xor(stream.read(length))
     msg_len = struct.unpack_from("<I", blob, 16)[0]
     tl = blob[20 : 20 + msg_len]
     ctor = struct.unpack_from("<I", tl, 0)[0]
     if ctor != _RES_PQ or tl[4:20] != nonce:
-        raise ConnectionError(f"not resPQ ({ctor:#x})")
+        raise MtprotoError(f"not resPQ ({ctor:#x})")
 
 
 def _tls_app(data: bytes) -> bytes:
@@ -362,7 +383,7 @@ class _TlsStream:
             elif kind == 0x14:
                 continue
             elif kind == 0:
-                raise ConnectionError("tls stream closed")
+                raise MtprotoError("tls stream closed")
         data, self._buf = self._buf[:n], self._buf[n:]
         return data
 
@@ -416,38 +437,47 @@ def _read_record(sock: socket.socket, timeout: float) -> tuple[int, bytes]:
     try:
         header = _recvall(sock, 5)
     except TimeoutError as exc:
-        raise ConnectionError("tls timeout") from exc
+        raise MtprotoError("tls timeout") from exc
     kind = header[0]
     length = int.from_bytes(header[3:5], "big")
     if length > 20000:
-        raise ConnectionError("tls record too large")
+        raise MtprotoError("tls record too large")
     return kind, _recvall(sock, length)
 
 
 def _socks5(sock: socket.socket, host: str, port: int, user: str, password: str) -> None:
+    try:
+        _socks5_greeting(sock, host, port, user, password)
+    except SocksError:
+        raise
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise SocksError(str(exc) or "socks") from exc
+
+
+def _socks5_greeting(sock: socket.socket, host: str, port: int, user: str, password: str) -> None:
     if user or password:
         sock.sendall(b"\x05\x02\x00\x02")
     else:
         sock.sendall(b"\x05\x01\x00")
     method = _recvall(sock, 2)
     if method[0] != 5:
-        raise ConnectionError("not socks5")
+        raise SocksError("not socks5")
     if method[1] == 2:
         u = user.encode("utf-8")
         p = password.encode("utf-8")
         if len(u) > 255 or len(p) > 255:
-            raise ConnectionError("socks auth too long")
+            raise SocksError("socks auth too long")
         sock.sendall(bytes([1, len(u)]) + u + bytes([len(p)]) + p)
         auth = _recvall(sock, 2)
         if auth[1] != 0:
-            raise ConnectionError("socks auth rejected")
+            raise SocksError("socks auth rejected")
     elif method[1] != 0:
-        raise ConnectionError(f"socks method {method[1]}")
+        raise SocksError(f"socks method {method[1]}")
     ip = socket.inet_aton(host)
     sock.sendall(b"\x05\x01\x00\x01" + ip + struct.pack(">H", port))
     reply = _recvall(sock, 4)
     if reply[1] != 0:
-        raise ConnectionError(f"socks connect {reply[1]}")
+        raise SocksError(f"socks connect {reply[1]}")
     if reply[3] == 1:
         _recvall(sock, 6)
     elif reply[3] == 4:
@@ -456,7 +486,7 @@ def _socks5(sock: socket.socket, host: str, port: int, user: str, password: str)
         ln = _recvall(sock, 1)[0]
         _recvall(sock, ln + 2)
     else:
-        raise ConnectionError("socks bad atyp")
+        raise SocksError("socks bad atyp")
 
 
 def _connect(host: str, port: int, timeout: float) -> socket.socket:

@@ -11,7 +11,7 @@ def test_missing_stability_row_starts_from_older_bits():
     history.seed("abc", "1110000001")
     history.seed("abc", "1111111111")
     assert history.bits("abc") == "1110000001"
-    assert status_of(True, history.note("abc", True)) == "unstable"
+    assert status_of(True, history.note("abc", True)) == "working"
 
 
 def test_stability_window_marks_a_rare_pass_unstable(tmp_path):
@@ -23,7 +23,7 @@ def test_stability_window_marks_a_rare_pass_unstable(tmp_path):
     history.save(path)
     loaded = Stability.load(path, fetch_url=None)
     assert loaded.bits("abc") == bits
-    assert status_of(True, bits) == "unstable"
+    assert status_of(True, bits) == "working"
     assert loaded.rate("abc") is not None
     assert loaded.rate("abc") < 0.7
 
