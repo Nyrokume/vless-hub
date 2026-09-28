@@ -254,7 +254,7 @@ def _hub_config(cfg: VlessConfig, generated_at: str) -> dict:
         "country": name,
         "country_source": source,
         "ip_country_code": ip_code_out,
-        "ip_country": cfg.country_name or None,
+        "ip_country": (country_name(ip_code_out) if ip_code_out else None) or cfg.country_name or None,
         "extra": dict(cfg.extras),
         "source": cfg.sources[0] if cfg.sources else "",
         "latency_ms": None if cfg.latency_ms is None else round(float(cfg.latency_ms), 1),
@@ -274,7 +274,7 @@ def _place(cfg: VlessConfig) -> tuple[str | None, str | None, str | None]:
         return flag, country_name(flag) or flag, "remark"
     code = (cfg.country or "").upper()
     if len(code) == 2 and code.isalpha():
-        return code, cfg.country_name or country_name(code) or code, "geoip"
+        return code, country_name(code) or cfg.country_name or code, "geoip"
     return None, None, None
 
 
@@ -755,7 +755,7 @@ def _public_proxy(proxy: TgProxy) -> dict:
         "domain": proxy.domain,
         "user": proxy.user,
         "country": proxy.country,
-        "country_name": proxy.country_name,
+        "country_name": country_name(proxy.country) or proxy.country_name,
         "ip": proxy.ip,
         "latency_ms": proxy.latency_ms,
         "uptime": round(proxy.uptime, 4),
