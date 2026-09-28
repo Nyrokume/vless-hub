@@ -1,69 +1,42 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ConfigsScreen } from '@/components/configs-screen'
 import { ExportScreen } from '@/components/export-screen'
-import { GuideScreen } from '@/components/guide-screen'
+import { SettingsScreen } from '@/components/settings-screen'
 import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
 import { Button } from '@/components/ui/button'
-import { loadHub } from '@/lib/data'
+import { useHub } from '@/lib/hub'
 import { useSettings } from '@/lib/settings'
-import type { HubData } from '@/lib/types'
 
 const AUTO_REFRESH_MS = 15 * 60 * 1000
-
-function useHub() {
-  const [data, setData] = useState<HubData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const reload = useCallback(async (force = false) => {
-    if (!force) setLoading(true)
-    setError(null)
-    try {
-      setData(await loadHub(force))
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'Ошибка загрузки'
-      setError(message)
-      throw new Error(message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void reload().catch(() => undefined)
-  }, [reload])
-
-  return { data, error, loading, reload }
-}
 
 export default function App() {
   const [tab, setTab] = useState<AppTab>('configs')
   const { settings } = useSettings()
-  const { data, error, loading, reload } = useHub()
+  const { data, error, loading, refresh } = useHub()
 
   useEffect(() => {
     if (!settings.autoRefresh) return
-    const refresh = () => {
-      if (document.visibilityState === 'visible') void reload(true).catch(() => undefined)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') void refresh()
     }
-    document.addEventListener('visibilitychange', refresh)
-    const timer = window.setInterval(() => void reload(true).catch(() => undefined), AUTO_REFRESH_MS)
+    document.addEventListener('visibilitychange', onFocus)
+    const timer = window.setInterval(() => void refresh(), AUTO_REFRESH_MS)
     return () => {
-      document.removeEventListener('visibilitychange', refresh)
+      document.removeEventListener('visibilitychange', onFocus)
       window.clearInterval(timer)
     }
-  }, [reload, settings.autoRefresh])
+  }, [refresh, settings.autoRefresh])
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <main className="pb-24">
-        {tab === 'guide' ? (
-          <GuideScreen data={data} onRefresh={() => reload(true)} />
+        {tab === 'settings' ? (
+          <SettingsScreen data={data} />
         ) : loading && !data ? (
           <LoadingState />
         ) : error && !data ? (
-          <ErrorState message={error} onRetry={() => void reload()} />
+          <ErrorState message={error} onRetry={() => void refresh()} />
         ) : data && tab === 'telegram' ? (
           <TelegramScreen data={data} />
         ) : data && tab === 'export' ? (

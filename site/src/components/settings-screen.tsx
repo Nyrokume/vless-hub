@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import {
   Activity,
@@ -17,6 +16,9 @@ import {
   Square,
 } from 'lucide-react'
 import { IconTile } from '@/components/icon-tile'
+import { ListEmpty } from '@/components/list-empty'
+import { InspectScreen } from '@/components/inspect-screen'
+import { SiteHeader } from '@/components/site-header'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,7 +34,8 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { CLIENTS, clientName, type ClientId } from '@/lib/clients'
 import { WORKFLOW_PAGE, loadCollectorRun, nextScheduledRun, runStatusLabel, type CollectorRun } from '@/lib/collector-run'
-import { formatStamp } from '@/lib/format'
+import { FAILURE_LABELS, formatStamp, latencyText } from '@/lib/format'
+import { useHub } from '@/lib/hub'
 import {
   DEFAULT_PUBLIC_BASE,
   SORTS,
@@ -53,7 +56,7 @@ function Group({
   children: ReactNode
 }) {
   return (
-    <section className="mb-4">
+    <section className="mb-6">
       {title && (
         <h2 className="px-4 pb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
           {title}
@@ -75,7 +78,7 @@ function ChoiceSheet<T extends string>({
 }: {
   open: boolean
   title: string
-  description: string
+  description?: string
   value: T
   choices: { value: T; label: string; hint?: string }[]
   onOpenChange: (open: boolean) => void
@@ -86,7 +89,7 @@ function ChoiceSheet<T extends string>({
       <SheetContent side="bottom" className="max-h-[80dvh] gap-0 overflow-y-auto rounded-t-3xl">
         <SheetHeader className="pr-10 text-left">
           <SheetTitle>{title}</SheetTitle>
-          <SheetDescription>{description}</SheetDescription>
+          {description ? <SheetDescription>{description}</SheetDescription> : null}
         </SheetHeader>
         <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-card">
           {choices.map((choice, index) => (
@@ -116,24 +119,33 @@ function ChoiceSheet<T extends string>({
   )
 }
 
-export function SettingsScreen({
-  data,
-  embedded = false,
-  onOpenHelp,
-  onRefresh,
-}: {
-  data: HubData | null
-  embedded?: boolean
-  onOpenHelp?: () => void
-  onRefresh?: () => Promise<void>
-}) {
+function FailureCounts({ data }: { data: HubData | null }) {
+  const rejected = data?.stats.rejected
+  if (!rejected) return null
+  const rows = Object.keys(FAILURE_LABELS)
+    .map((key) => ({ key, label: FAILURE_LABELS[key], count: rejected[key] ?? 0 }))
+    .filter((row) => row.count > 0)
+  if (rows.length === 0) return null
+  return (
+    <ul className="flex flex-col gap-1">
+      {rows.map((row) => (
+        <li key={row.key} className="flex justify-between gap-3">
+          <span>{row.label}</span>
+          <span className="tabular-nums">{row.count}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export function SettingsScreen({ data }: { data: HubData | null }) {
   const { settings, update } = useSettings()
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
+  const { refresh, refreshing: listRefreshing } = useHub()
   const [picker, setPicker] = useState<'sort' | 'threshold' | 'client' | 'base' | null>(null)
   const [baseDraft, setBaseDraft] = useState(settings.publicBase)
   const [run, setRun] = useState<CollectorRun | null>(null)
-  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -145,32 +157,23 @@ export function SettingsScreen({
     }
   }, [data?.generated_at])
 
-  async function refreshLists() {
-    if (!onRefresh) return
-    setRefreshing(true)
-    try {
-      await onRefresh()
-      toast.success('Списки обновлены')
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : 'Не удалось обновить списки')
-    } finally {
-      setRefreshing(false)
-    }
-  }
-
   function openBase() {
     setBaseDraft(settings.publicBase)
     setPicker('base')
   }
 
   const rejected = data?.stats.rejected
-  const rejectedLine = rejected
-    ? `Отброшено: разбор ${rejected.parse_error ?? 0}, tcp_refused ${rejected.tcp_refused ?? 0}, timeout ${rejected.timeout ?? 0}, http_fail ${rejected.http_fail ?? 0}, no_data ${rejected.no_data ?? 0}`
-    : ''
+  const rejectedParts = rejected
+    ? Object.entries(FAILURE_LABELS)
+        .map(([key, label]) => [label, rejected[key] ?? 0] as const)
+        .filter(([, count]) => count > 0)
+        .map(([label, count]) => `${label} ${count}`)
+    : []
+  const rejectedLine = rejectedParts.length ? `Отброшено: ${rejectedParts.join(', ')}` : ''
 
   return (
-    <div className={embedded ? 'pb-4' : 'mx-auto w-full max-w-[560px] px-4 pt-4'}>
-      {!embedded && <h1 className="px-1 pb-5 text-[34px] leading-none font-bold tracking-tight">Настройки</h1>}
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+      <SiteHeader updated={data ? formatStamp(data.generated_at) : undefined} />
 
       <Group>
         <div className="flex items-center gap-3 px-4 py-3">
@@ -208,7 +211,7 @@ export function SettingsScreen({
           <IconTile>
             <Gauge className="size-4" />
           </IconTile>
-          <span className="flex-1 text-[17px]">Порог задержки</span>
+          <span className="flex-1 text-[17px]">Максимальный пинг</span>
           <span className="text-[15px] text-muted-foreground">
             {thresholdLabel(settings.latencyThreshold)}
           </span>
@@ -263,7 +266,7 @@ export function SettingsScreen({
         </div>
         <Separator />
         <div className="flex flex-wrap gap-2 px-4 py-2.5">
-          <Button size="sm" disabled={!onRefresh || refreshing} onClick={() => void refreshLists()}>
+          <Button size="sm" disabled={listRefreshing} onClick={() => void refresh()}>
             Обновить списки
           </Button>
           <Button size="sm" variant="outline" onClick={() => window.open(WORKFLOW_PAGE, '_blank', 'noopener,noreferrer')}>
@@ -283,34 +286,6 @@ export function SettingsScreen({
           />
         </div>
         <p className="px-4 pb-2.5 text-[12px] text-muted-foreground">При возврате на вкладку и каждые 15 минут.</p>
-        <Separator />
-        <Collapsible>
-          <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-2.5 text-left">
-            <span className="flex-1 text-[15px]">Источники</span>
-            <span className="text-[13px] text-muted-foreground">{data?.sources.length ?? 0}</span>
-            <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            {(data?.sources ?? []).map((source) => (
-              <div key={source.id}>
-                <Separator />
-                <div className="px-4 py-2">
-                  <p className="text-[14px]">{source.name}</p>
-                  <p className="text-[12px] text-muted-foreground">
-                    {sourceKindLabel(source)}
-                    {source.ok ? ` · прошло ${source.passed ?? source.verified ?? 0}` : ' · ошибка'}
-                  </p>
-                </div>
-              </div>
-            ))}
-            {(!data || data.sources.length === 0) && (
-              <>
-                <Separator />
-                <p className="px-4 py-2.5 text-[13px] text-muted-foreground">Нет данных</p>
-              </>
-            )}
-          </CollapsibleContent>
-        </Collapsible>
       </Group>
 
       <Group title="Информация">
@@ -318,12 +293,12 @@ export function SettingsScreen({
         <Separator />
         <InfoRow
           icon={<Activity className="size-4" />}
-          text={`Сборщик: ${data?.collector_version ?? '—'}`}
+          text={`Проверка: ${data?.collector_version ?? '—'}`}
         />
         <Separator />
         <InfoRow
           icon={<Gauge className="size-4" />}
-          text="Пинг — медиана HTTP после прогрева, отдельно от рукопожатия"
+          text="Пинг — время ответа сайта, без времени подключения"
         />
         <Separator />
         <InfoRow
@@ -339,7 +314,7 @@ export function SettingsScreen({
           icon={<Globe className="size-4" />}
           text={
             data
-              ? `Стран: ${data.stats.countries} · медиана HTTP ${data.stats.median_latency_ms ?? '—'} мс`
+              ? `Стран: ${data.stats.countries} · медиана HTTP ${latencyText(data.stats.median_latency_ms)}`
               : 'Стран: —'
           }
         />
@@ -351,17 +326,98 @@ export function SettingsScreen({
         )}
       </Group>
 
-      {onOpenHelp && (
-        <Group>
-          <button type="button" className="flex w-full items-center gap-3 px-4 py-2.5 text-left" onClick={onOpenHelp}>
+      <Collapsible className="mb-6">
+        <div className="overflow-hidden rounded-2xl bg-card">
+          <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left">
             <IconTile>
               <BookOpen className="size-4" />
             </IconTile>
-            <span className="flex-1 text-[15px]">Справка</span>
-            <ChevronRight className="size-4 text-muted-foreground/80" />
-          </button>
-        </Group>
-      )}
+            <span className="flex-1 text-[17px]">Инструкции</span>
+            <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="flex flex-col gap-4 px-4 pb-4 text-[14px] leading-relaxed text-muted-foreground">
+              <p>
+                V2Hub собирает публичные конфиги VLESS и прокси Telegram, проверяет их и отдаёт списками.
+                Сайт не поднимает туннель и не подключается к серверу за вас.
+              </p>
+              <div>
+                <p className="font-medium text-foreground">Как читать результат</p>
+                <p className="mt-1">
+                  Точка на строке — рабочий или нестабильный конфиг. Пинг — медиана нескольких HTTP-запросов
+                  через уже запущенный Xray или sing-box, без прогрева. Рядом доля успешных прогонов и
+                  скорость. «Порт открыт» значит, что TCP ответил, а полный проход в этом запуске не
+                  выполнялся.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Как забрать конфиги</p>
+                <p className="mt-1">
+                  «Экспорт» — файлы по срезу, стране, защите и типу соединения, Clash, sing-box и конструктор
+                  подписки. На «Конфигах» отметьте строки и выгрузите текст, base64, файл, QR, Clash или
+                  sing-box. QR и кнопки клиента используют только проверенные схемы: Happ, v2rayNG,
+                  Hiddify, v2RayTun для VLESS; Clash Meta, Mihomo, NekoBox и sing-box — для своих файлов.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Проверка</p>
+                <p className="mt-1">
+                  Сначала разбор ссылки, затем TCP, рукопожатие ядра, большинство из трёх HTTP-адресов,
+                  короткая загрузка и чужой адрес выхода. Рабочий — прошёл сейчас и держится хотя бы в 70%
+                  последних прогонов. Нестабильный прошёл сейчас, но реже. Мёртвый в список не попадает, а
+                  после нескольких провалов подряд выбывает из пула. Проверка идёт с серверов GitHub Actions
+                  вне России, поэтому местный провайдер может закрыть то, что здесь открылось.
+                </p>
+                <div className="mt-3">
+                  <FailureCounts data={data} />
+                </div>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Telegram</p>
+                <p className="mt-1">
+                  Кнопка «В Telegram» открывает tg:// и подставляет прокси. Если клиент не открылся, рядом
+                  есть HTTPS-ссылка и QR.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Разбор ссылки</p>
+                <div className="mt-2">
+                  <InspectScreen embedded />
+                </div>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
+
+      <Collapsible className="mb-6">
+        <div className="overflow-hidden rounded-2xl bg-card">
+          <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left">
+            <IconTile>
+              <Server className="size-4" />
+            </IconTile>
+            <span className="flex-1 text-[17px]">Источники</span>
+            <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            {(data?.sources ?? []).map((source) => (
+              <div key={source.id}>
+                <Separator />
+                <div className="px-4 py-2.5">
+                  <p className="text-[15px]">{source.name}</p>
+                  <p className="text-[13px] text-muted-foreground">
+                    {sourceKindLabel(source)}
+                    {source.ok ? ` · прошло ${source.passed ?? source.verified ?? source.fetched}` : ' · ошибка'}
+                    {source.yield == null ? '' : ` · ${Math.round(source.yield * 100)}%`}
+                    {source.deprioritized ? ' · низкий выход' : ''}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {(!data || data.sources.length === 0) && <ListEmpty title="Нет данных" />}
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       <Group title="Об авторе">
         <div className="px-4 py-3">
@@ -392,7 +448,6 @@ export function SettingsScreen({
       <ChoiceSheet
         open={picker === 'sort'}
         title="Сортировка"
-        description="Порядок списка конфигураций. Сохраняется на этом устройстве."
         value={settings.sort}
         choices={SORTS}
         onOpenChange={(open) => setPicker(open ? 'sort' : null)}
@@ -400,8 +455,7 @@ export function SettingsScreen({
       />
       <ChoiceSheet
         open={picker === 'threshold'}
-        title="Порог задержки"
-        description="Конфиги медленнее порога скрываются из списка."
+        title="Максимальный пинг"
         value={thresholdKey(settings.latencyThreshold)}
         choices={THRESHOLDS}
         onOpenChange={(open) => setPicker(open ? 'threshold' : null)}
@@ -410,7 +464,6 @@ export function SettingsScreen({
       <ChoiceSheet
         open={picker === 'client'}
         title="Приложение"
-        description="Какую схему открывать кнопкой «в клиент»."
         value={settings.client}
         choices={CLIENTS.map((item) => ({
           value: item.id,
@@ -425,9 +478,6 @@ export function SettingsScreen({
         <SheetContent side="bottom" className="rounded-t-3xl">
           <SheetHeader className="pr-10 text-left">
             <SheetTitle>Адрес сайта</SheetTitle>
-            <SheetDescription>
-              К нему добавляются пути data/subs/ и sub/. Для этого репозитория оставьте адрес GitHub Pages.
-            </SheetDescription>
           </SheetHeader>
           <form
             className="flex flex-col gap-3 px-4 pb-6"

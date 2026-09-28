@@ -10,15 +10,15 @@ export type ClientId =
   | 'link'
 
 export const CLIENTS: { id: ClientId; name: string; hint: string }[] = [
-  { id: 'happ', name: 'Happ', hint: 'happ://add/ для https-подписки, vless:// для конфига' },
-  { id: 'v2rayng', name: 'v2rayNG', hint: 'v2rayng://install-config/?url=' },
-  { id: 'hiddify', name: 'Hiddify', hint: 'hiddify://import/…' },
-  { id: 'v2raytun', name: 'v2RayTun', hint: 'v2raytun://import/ без кодирования' },
-  { id: 'nekobox', name: 'NekoBox', hint: 'clash://install-config для https-подписки' },
-  { id: 'clashmeta', name: 'Clash Meta', hint: 'clashmeta:// только для clash.yaml' },
-  { id: 'mihomo', name: 'Mihomo Party', hint: 'mihomo:// только для clash.yaml' },
-  { id: 'singbox', name: 'sing-box', hint: 'sing-box:// только для singbox.json' },
-  { id: 'link', name: 'Только ссылка', hint: 'Копировать URL, без схемы клиента' },
+  { id: 'happ', name: 'Happ', hint: 'Подписка и отдельный конфиг' },
+  { id: 'v2rayng', name: 'v2rayNG', hint: 'Конфиг и подписка' },
+  { id: 'hiddify', name: 'Hiddify', hint: 'Импорт ссылки' },
+  { id: 'v2raytun', name: 'v2RayTun', hint: 'Импорт ссылки' },
+  { id: 'nekobox', name: 'NekoBox', hint: 'Файл Clash' },
+  { id: 'clashmeta', name: 'Clash Meta', hint: 'Только файл Clash' },
+  { id: 'mihomo', name: 'Mihomo Party', hint: 'Только файл Clash' },
+  { id: 'singbox', name: 'sing-box', hint: 'Только файл sing-box' },
+  { id: 'link', name: 'Только ссылка', hint: 'Без приложения' },
 ]
 
 export function clientName(id: ClientId): string {

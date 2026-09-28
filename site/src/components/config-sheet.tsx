@@ -59,14 +59,14 @@ export function ConfigSheet({
     ? [
         ['Адрес', config.host],
         ['Порт', String(config.port)],
-        ['Транспорт', transportLabel(config.transport)],
-        ['Безопасность', securityLabel(config.security)],
-        ['SNI', config.sni],
-        ['Flow', config.flow],
+        ['Тип соединения', transportLabel(config.transport)],
+        ['Защита', securityLabel(config.security)],
+        ['Имя сервера', config.sni],
+        ['Поток', config.flow],
         ['Путь', config.path],
         ['Host', config.host_header],
-        ['gRPC service', config.service_name],
-        ['Fingerprint', config.fingerprint],
+        ['Имя службы', config.service_name],
+        ['Отпечаток TLS', config.fingerprint],
         ['UUID', config.uuid],
         ['Название', config.remark],
         ['Страна IP', config.ip_country ?? ''],
@@ -80,7 +80,7 @@ export function ConfigSheet({
         ],
         ['Стабильность', stabilityText(config.stability) || uptimeText(config.uptime)],
         ['Скорость', speedText(config.speed_kbps)],
-        ['Рукопожатие', config.handshake_ms != null ? `${config.handshake_ms} мс` : ''],
+        ['Рукопожатие', config.handshake_ms != null ? latencyText(config.handshake_ms) : ''],
         ['Статус', config.status === 'working' ? 'Рабочий' : config.status === 'unstable' ? 'Нестабильный' : config.verified === 'tcp' ? 'Только открытый порт' : ''],
         ['Список', sourceName ?? ''],
         ['Проверено', config.tested_at ? formatStamp(config.tested_at) : ''],
@@ -141,10 +141,6 @@ export function ConfigSheet({
                   {deepLink ? clientName(client) : 'Только ссылка'}
                 </Button>
               </div>
-              <p className="px-1 text-[12px] leading-snug text-muted-foreground">
-                Задержка — время HTTP-ответа через Xray с машины сборщика, не пинг вашего устройства.
-                Сайт не поднимает VPN.
-              </p>
             </div>
             <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-secondary/60">
               {rows.map(([label, value], index) => (

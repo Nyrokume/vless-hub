@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { Separator } from '@/components/ui/separator'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { ListEmpty } from '@/components/list-empty'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
@@ -45,13 +46,22 @@ export function TelegramScreen({ data }: { data: HubData }) {
   }, [country, kind, pool, query])
 
   const best = filtered[0]
+  const narrowed = query.trim() !== '' || kind !== 'all' || country !== ''
+
+  function resetFilters() {
+    setQuery('')
+    setKind('all')
+    setCountry('')
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-      <SiteHeader />
+      <SiteHeader updated={formatStamp(data.generated_at)} />
       <p className="mb-2 text-xs text-muted-foreground">
-        {formatStamp(data.generated_at)} · MTProto {stats?.mtproto ?? 0} · SOCKS {stats?.socks ?? 0} · медиана{' '}
-        {stats?.median_latency_ms == null ? '—' : Math.round(stats.median_latency_ms)} мс
+        MTProto {stats?.mtproto ?? 0} · SOCKS {stats?.socks ?? 0} · медиана{' '}
+        <span className={cn('font-medium', latencyClass(stats?.median_latency_ms))}>
+          {latencyText(stats?.median_latency_ms)}
+        </span>
       </p>
       {best && (
         <Button className="mb-3 w-full" onClick={() => openExternal(best.tg)}>
@@ -111,7 +121,10 @@ export function TelegramScreen({ data }: { data: HubData }) {
       </div>
       <div className="overflow-hidden rounded-2xl bg-card">
         {filtered.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">Проверенных прокси нет.</p>
+          <ListEmpty
+            title={narrowed ? 'Ничего не найдено.' : 'Проверенных прокси нет.'}
+            onReset={narrowed ? resetFilters : undefined}
+          />
         ) : (
           filtered.map((proxy, index) => (
             <ProxyRow

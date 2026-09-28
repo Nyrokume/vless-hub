@@ -149,7 +149,7 @@ export function FilterSheet({
           )}
           <div>
             <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Задержка
+              Пинг
             </div>
             <div className="flex flex-wrap gap-2">
               {THRESHOLDS.map((item) => (
@@ -184,7 +184,7 @@ export function FilterSheet({
           </div>
           <div>
             <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Транспорт
+              Тип соединения
             </div>
             <div className="flex flex-wrap gap-2">
               <Chip active={transport === null} onClick={() => onTransport(null)}>
@@ -203,7 +203,7 @@ export function FilterSheet({
           </div>
           <div>
             <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Безопасность
+              Защита
             </div>
             <div className="flex flex-wrap gap-2">
               <Chip active={security === null} onClick={() => onSecurity(null)}>
@@ -256,7 +256,7 @@ export function FilterSheet({
             </div>
           </div>
           <Button variant="secondary" className="w-full" onClick={onReset}>
-            Сбросить страну и протокол
+            Сбросить фильтры
           </Button>
         </div>
       </SheetContent>

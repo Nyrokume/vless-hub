@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Copy, Download, ExternalLink, QrCode } from 'lucide-react'
+import { ListEmpty } from '@/components/list-empty'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
@@ -140,7 +141,9 @@ export function SubscriptionSheet({
             onQr={onQr}
           />
           <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-card">
-            {subscriptions.map((item, index) => (
+            {subscriptions.length === 0 ? (
+              <ListEmpty title="Ничего не найдено." />
+            ) : subscriptions.map((item, index) => (
               <div key={item.id}>
                 {index > 0 && <Separator />}
                 <button
@@ -201,6 +204,7 @@ export function SubscriptionBuilder({
     return ''
   }, [country, security, transport])
 
+  const narrowed = Boolean(country || security || transport)
   const published = path ? catalog.some((item) => item.path === path) : false
   const url = path && published ? publicFileUrl(publicBase, path) : ''
   const picked = configs.filter((config) => {
@@ -232,15 +236,28 @@ export function SubscriptionBuilder({
           options={['reality', 'tls', 'none']}
         />
         <Select
-          label="Транспорт"
+          label="Тип соединения"
           value={transport}
           onChange={setTransport}
           options={['tcp', 'ws', 'grpc', 'xhttp', 'h2']}
         />
       </div>
-      <p className="mt-2 text-[12px] text-muted-foreground">
-        {url ? url : `В списке сейчас: ${picked.length}`}
-      </p>
+      {picked.length === 0 ? (
+        <ListEmpty
+          title="Ничего не найдено."
+          onReset={
+            narrowed
+              ? () => {
+                  setCountry('')
+                  setSecurity('')
+                  setTransport('')
+                }
+              : undefined
+          }
+        />
+      ) : (
+        <p className="mt-2 text-[12px] text-muted-foreground">{url ? url : `В списке сейчас: ${picked.length}`}</p>
+      )}
       <div className="mt-2 grid grid-cols-2 gap-2">
         <Button
           variant="secondary"

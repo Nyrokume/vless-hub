@@ -15,7 +15,9 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
+import { ListEmpty } from '@/components/list-empty'
 import { FilterSheet } from '@/components/filter-sheet'
+import { LiveParseSheet } from '@/components/live-parse-sheet'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { configImportActions } from '@/lib/clients'
@@ -158,6 +160,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const [protocol, setProtocol] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
+  const [liveOpen, setLiveOpen] = useState(false)
   const [showUnverified, setShowUnverified] = useState(false)
   const [showUnstable, setShowUnstable] = useState(false)
   const [selecting, setSelecting] = useState(false)
@@ -387,9 +390,29 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  const median = data.stats.median_latency_ms == null ? '—' : Math.round(data.stats.median_latency_ms)
-  const statsLine = `${formatStamp(data.generated_at)} · ${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')} · медиана HTTP ${median} мс`
+  const statsLine = `${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')}`
   const filtersOn = sessionFilters > 0 || settings.latencyThreshold != null
+  const listNarrowed =
+    query.trim() !== '' ||
+    country != null ||
+    transport != null ||
+    security != null ||
+    protocol != null ||
+    settings.latencyThreshold != null
+
+  function resetFilters() {
+    setQuery('')
+    setCountry(null)
+    setTransport(null)
+    setSecurity(null)
+    setProtocol(null)
+    if (settings.latencyThreshold != null) update({ latencyThreshold: null })
+  }
+  const knownIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const item of [...data.configs, ...(data.unstable ?? []), ...data.unverified]) ids.add(item.id)
+    return ids
+  }, [data])
 
   const menu = (
     <DropdownMenu>
@@ -402,6 +425,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         <DropdownMenuItem onSelect={() => (selecting ? exitSelect() : enterSelect())}>
           {selecting ? 'Закончить выбор' : 'Выбрать'}
         </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setLiveOpen(true)}>Живой парс</DropdownMenuItem>
         {data.unverified.length > 0 && (
           <>
             <DropdownMenuSeparator />
@@ -421,7 +445,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
 
   return (
     <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', selecting && chosen.length > 0 && 'pb-36')}>
-      <SiteHeader menu={menu} />
+      <SiteHeader updated={formatStamp(data.generated_at)} menu={menu} />
+      <LiveParseSheet open={liveOpen} known={knownIds} onOpenChange={setLiveOpen} />
       <p className="mb-2 text-xs text-muted-foreground">{statsLine}</p>
 
       <div className="mb-3 flex items-center gap-2">
@@ -432,7 +457,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           <InputGroupInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Страна, адрес, транспорт"
+            placeholder="Страна, адрес, соединение"
             aria-label="Поиск конфигураций Vless"
           />
           <InputGroupAddon align="inline-end">
@@ -472,7 +497,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           </div>
         )}
         {filtered.length === 0 ? (
-          <p className="px-4 pb-6 text-sm text-muted-foreground">Ничего не найдено.</p>
+          <ListEmpty title="Ничего не найдено." onReset={listNarrowed ? resetFilters : undefined} />
         ) : (
           <div ref={listRef} style={{ height: totalHeight, position: 'relative' }}>
             <div style={{ height: prefix[start] ?? 0 }} />
@@ -582,12 +607,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         onCountryOrder={setCountryOrder}
         onShowUnverified={setShowUnverified}
         onShowUnstable={setShowUnstable}
-        onReset={() => {
-          setCountry(null)
-          setTransport(null)
-          setSecurity(null)
-          setProtocol(null)
-        }}
+        onReset={resetFilters}
       />
       <QrDialog
         request={qr}

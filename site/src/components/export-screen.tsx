@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Copy, ExternalLink, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { ListEmpty } from '@/components/list-empty'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { SubscriptionBuilder } from '@/components/subscription-sheet'
@@ -85,7 +86,9 @@ export function ExportScreen({ data }: { data: HubData }) {
       <SiteHeader updated={formatStamp(data.generated_at)} />
 
       <Section title="Срезы">
-        {slices.map((entry, index) => (
+        {slices.length === 0 ? (
+          <ListEmpty title="Ничего не найдено." />
+        ) : slices.map((entry, index) => (
           <FileRow
             key={entry.path}
             divided={index > 0}
@@ -108,9 +111,10 @@ export function ExportScreen({ data }: { data: HubData }) {
         ))}
       </Section>
 
-      {protocols.length > 0 && (
-        <Section title="Протоколы">
-          {protocols.map((entry, index) => (
+      <Section title="Протоколы">
+        {protocols.length === 0 ? (
+          <ListEmpty title="Ничего не найдено." />
+        ) : protocols.map((entry, index) => (
             <FileRow
               key={entry.path}
               divided={index > 0}
@@ -128,10 +132,11 @@ export function ExportScreen({ data }: { data: HubData }) {
             />
           ))}
         </Section>
-      )}
 
       <Section title="Страны">
-        {countries.map((entry, index) => (
+        {countries.length === 0 ? (
+          <ListEmpty title="Ничего не найдено." />
+        ) : countries.map((entry, index) => (
           <FileRow
             key={entry.path}
             divided={index > 0}
@@ -150,9 +155,10 @@ export function ExportScreen({ data }: { data: HubData }) {
         ))}
       </Section>
 
-      {security.length > 0 && (
-        <Section title="Защита">
-          {security.map((entry, index) => (
+      <Section title="Защита">
+        {security.length === 0 ? (
+          <ListEmpty title="Ничего не найдено." />
+        ) : security.map((entry, index) => (
             <FileRow
               key={entry.path}
               divided={index > 0}
@@ -170,11 +176,11 @@ export function ExportScreen({ data }: { data: HubData }) {
             />
           ))}
         </Section>
-      )}
 
-      {transports.length > 0 && (
-        <Section title="Транспорт">
-          {transports.map((entry, index) => (
+      <Section title="Транспорт">
+        {transports.length === 0 ? (
+          <ListEmpty title="Ничего не найдено." />
+        ) : transports.map((entry, index) => (
             <FileRow
               key={entry.path}
               divided={index > 0}
@@ -192,11 +198,11 @@ export function ExportScreen({ data }: { data: HubData }) {
             />
           ))}
         </Section>
-      )}
 
-      {clash.length > 0 && (
-        <Section title="Clash">
-          {clash.map((entry, index) => (
+      <Section title="Clash">
+        {clash.length === 0 ? (
+          <ListEmpty title="Ничего не найдено." />
+        ) : clash.map((entry, index) => (
             <FileRow
               key={entry.path}
               divided={index > 0}
@@ -214,11 +220,11 @@ export function ExportScreen({ data }: { data: HubData }) {
             />
           ))}
         </Section>
-      )}
 
-      {singbox.length > 0 && (
-        <Section title="sing-box">
-          {singbox.map((entry, index) => (
+      <Section title="sing-box">
+        {singbox.length === 0 ? (
+          <ListEmpty title="Ничего не найдено." />
+        ) : singbox.map((entry, index) => (
             <FileRow
               key={entry.path}
               divided={index > 0}
@@ -236,7 +242,6 @@ export function ExportScreen({ data }: { data: HubData }) {
             />
           ))}
         </Section>
-      )}
 
       {data.stats.telegram && (
         <Section title="Telegram">
