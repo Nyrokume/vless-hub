@@ -31,7 +31,9 @@ import {
   configTitle,
   flagEmoji,
   formatStamp,
+  latencyBounds,
   latencyClass,
+  latencyRange,
   latencyText,
   protocolLine,
   speedText,
@@ -49,13 +51,12 @@ const COMPACT_H = 44
 const CARD_H = 112
 const OVERSCAN = 640
 
-type CountryOrder = 'count' | 'ping'
-
 type CountryGroup = {
   code: string
   name: string
   count: number
-  best: number | null
+  min: number | null
+  max: number | null
   configs: ConfigRecord[]
 }
 
@@ -92,11 +93,13 @@ function compareConfigs(sort: SortKey, left: ConfigRecord, right: ConfigRecord):
   return latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id)
 }
 
-function groupByCountry(
-  configs: ConfigRecord[],
-  order: CountryOrder,
-  compare: (left: ConfigRecord, right: ConfigRecord) => number,
-): CountryGroup[] {
+function workingPing(config: ConfigRecord): number | null {
+  if (config.status && config.status !== 'working') return null
+  if (config.latency_ms == null || Number.isNaN(config.latency_ms)) return null
+  return config.latency_ms
+}
+
+function groupByCountry(configs: ConfigRecord[]): CountryGroup[] {
   const map = new Map<string, ConfigRecord[]>()
   for (const config of configs) {
     const code =
@@ -109,25 +112,18 @@ function groupByCountry(
   }
   const groups: CountryGroup[] = []
   for (const [code, items] of map) {
-    items.sort(compare)
+    items.sort(
+      (left, right) => latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id),
+    )
     const name = items.find((item) => item.country)?.country || (code === 'ZZ' ? ru.noCountry : code)
-    let best: number | null = null
-    for (const item of items) {
-      if (item.latency_ms == null) continue
-      if (best == null || item.latency_ms < best) best = item.latency_ms
-    }
-    groups.push({ code, name, count: items.length, best, configs: items })
+    const working = items.map(workingPing)
+    const bounds = latencyBounds(working.some((value) => value != null) ? working : items.map((item) => item.latency_ms))
+    groups.push({ code, name, count: items.length, min: bounds.min, max: bounds.max, configs: items })
   }
-  groups.sort((left, right) => {
-    if (order === 'ping') {
-      return (
-        latencyRank(left.best) - latencyRank(right.best) ||
-        right.count - left.count ||
-        left.name.localeCompare(right.name, 'ru')
-      )
-    }
-    return right.count - left.count || left.name.localeCompare(right.name, 'ru')
-  })
+  groups.sort(
+    (left, right) =>
+      latencyRank(left.min) - latencyRank(right.min) || left.name.localeCompare(right.name, 'ru'),
+  )
   return groups
 }
 
@@ -165,8 +161,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const [selecting, setSelecting] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [qr, setQr] = useState<QrRequest | null>(null)
-  const [countryOrder, setCountryOrder] = useState<CountryOrder>('count')
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
   const listRef = useRef<HTMLDivElement>(null)
   const [range, setRange] = useState({ start: 0, end: 40 })
 
@@ -265,10 +260,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
 
   const groups = useMemo(
     () =>
-      settings.view === 'country'
-        ? groupByCountry(filtered, countryOrder, (left, right) => compareConfigs(settings.sort, left, right))
-        : [],
-    [countryOrder, filtered, settings.sort, settings.view],
+      settings.view === 'country' ? groupByCountry(filtered) : [],
+    [filtered, settings.view],
   )
 
   const rows = useMemo(() => {
@@ -277,13 +270,13 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     }
     const next: ListRow[] = []
     for (const group of groups) {
-      const open = !collapsed.has(group.code)
+      const open = openGroups.has(group.code)
       next.push({ kind: 'group', key: `g:${group.code}`, group, open })
       if (!open) continue
       for (const config of group.configs) next.push({ kind: 'config', key: config.id, config })
     }
     return next
-  }, [collapsed, filtered, groups, settings.view])
+  }, [filtered, groups, openGroups, settings.view])
 
   const prefix = useMemo(() => {
     const next = new Array<number>(rows.length + 1)
@@ -355,12 +348,20 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   }
 
   function toggleGroup(code: string) {
-    setCollapsed((current) => {
+    setOpenGroups((current) => {
       const next = new Set(current)
       if (next.has(code)) next.delete(code)
       else next.add(code)
       return next
     })
+  }
+
+  function expandGroups() {
+    setOpenGroups(new Set(groups.map((group) => group.code)))
+  }
+
+  function collapseGroups() {
+    setOpenGroups(new Set())
   }
 
   function toggleFiltered() {
@@ -566,7 +567,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         threshold={settings.latencyThreshold}
         sort={settings.sort}
         view={settings.view}
-        countryOrder={countryOrder}
         showUnverified={showUnverified}
         showUnstable={showUnstable}
         unverifiedCount={data.unverified.length}
@@ -578,7 +578,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         onThreshold={(value) => update({ latencyThreshold: value })}
         onSort={(value) => update({ sort: value })}
         onView={(value) => update({ view: value })}
-        onCountryOrder={setCountryOrder}
+        onExpandGroups={expandGroups}
+        onCollapseGroups={collapseGroups}
         onShowUnverified={setShowUnverified}
         onShowUnstable={setShowUnstable}
         onReset={() => {
@@ -598,6 +599,27 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   )
 }
 
+function GroupLatency({ min, max }: { min: number | null; max: number | null }) {
+  const range = latencyRange(min, max)
+  if (range.kind === 'empty') {
+    return <span className="shrink-0 text-[13px] font-semibold text-muted-foreground">—</span>
+  }
+  if (range.kind === 'single') {
+    return (
+      <span className={cn('shrink-0 text-[13px] font-semibold tabular-nums whitespace-nowrap', latencyClass(range.ms))}>
+        {latencyText(range.ms)}
+      </span>
+    )
+  }
+  return (
+    <span className="shrink-0 text-[13px] font-semibold tabular-nums whitespace-nowrap">
+      <span className={latencyClass(range.min)}>{latencyText(range.min)}</span>
+      <span className="font-normal text-muted-foreground"> ~ </span>
+      <span className={latencyClass(range.max)}>{latencyText(range.max)}</span>
+    </span>
+  )
+}
+
 function CountryHeader({
   group,
   open,
@@ -611,7 +633,7 @@ function CountryHeader({
   return (
     <button
       type="button"
-      className="flex h-14 w-full items-center gap-2 border-t border-border px-3 text-left sm:px-4"
+      className="flex h-14 w-full items-center gap-2 overflow-hidden border-t border-border px-3 text-left whitespace-nowrap sm:px-4"
       aria-expanded={open}
       onClick={onToggle}
     >
@@ -621,9 +643,7 @@ function CountryHeader({
       </span>
       <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{group.name}</span>
       <Badge variant="secondary">{group.count}</Badge>
-      <span className={cn('shrink-0 text-[13px] font-semibold tabular-nums', latencyClass(group.best))}>
-        {latencyText(group.best)}
-      </span>
+      <GroupLatency min={group.min} max={group.max} />
     </button>
   )
 }

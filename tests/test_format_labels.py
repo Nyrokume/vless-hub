@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_redundant_transport_is_not_repeated():
     script = r"""
-import { distinctTransport, protocolLabel, protocolLine, transportLabel } from './site/src/lib/format.ts'
+import { distinctTransport, latencyBounds, latencyRange, protocolLabel, protocolLine, transportLabel } from './site/src/lib/format.ts'
 
 const cases = [
   ['hysteria2', 'hysteria2', 'Hysteria2'],
@@ -29,6 +29,15 @@ if (distinctTransport('ws', 'vless') !== 'WS') process.exit(1)
 if (protocolLabel('hysteria2') !== 'Hysteria2') process.exit(1)
 if (transportLabel('hysteria2') !== 'Hysteria2') process.exit(1)
 if (protocolLine('hysteria2', 'hysteria2').includes('/')) process.exit(1)
+
+const bounds = latencyBounds([1805.4, null, 289.2, Number.NaN])
+if (Math.round(bounds.min) !== 289 || Math.round(bounds.max) !== 1805) process.exit(1)
+const one = latencyRange(319.9, 319.9)
+if (one.kind !== 'single') process.exit(1)
+const span = latencyRange(114.2, 2752.6)
+if (span.kind !== 'range' || Math.round(span.min) !== 114 || Math.round(span.max) !== 2753) process.exit(1)
+if (latencyRange(null, 10).kind !== 'empty') process.exit(1)
+if (latencyBounds([]).min !== null) process.exit(1)
 """
     result = subprocess.run(
         [

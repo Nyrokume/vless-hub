@@ -128,8 +128,8 @@ export const ru = {
   protocol: 'Протокол',
   connection: 'Тип соединения',
   security: 'Защита',
-  countriesByCount: 'Страны по числу',
-  countriesByPing: 'Страны по пингу',
+  expandGroups: 'Развернуть все',
+  collapseGroups: 'Свернуть все',
   noCountry: 'Без страны',
   portOpen: 'только открытый порт',
   noun: {

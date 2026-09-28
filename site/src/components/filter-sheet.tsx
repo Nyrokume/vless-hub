@@ -4,6 +4,7 @@ import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { protocolLabel, securityLabel, transportLabel } from '@/lib/format'
+import { ru } from '@/lib/ru'
 import { SORTS, THRESHOLDS, VIEWS, thresholdKey, type SortKey, type ViewMode } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
@@ -44,7 +45,6 @@ export function FilterSheet({
   threshold,
   sort,
   view,
-  countryOrder,
   showUnverified,
   showUnstable,
   unverifiedCount,
@@ -56,7 +56,8 @@ export function FilterSheet({
   onThreshold,
   onSort,
   onView,
-  onCountryOrder,
+  onExpandGroups,
+  onCollapseGroups,
   onShowUnverified,
   onShowUnstable,
   onReset,
@@ -74,7 +75,6 @@ export function FilterSheet({
   threshold: number | null
   sort: SortKey
   view: ViewMode
-  countryOrder: 'count' | 'ping'
   showUnverified: boolean
   showUnstable: boolean
   unverifiedCount: number
@@ -86,7 +86,8 @@ export function FilterSheet({
   onThreshold: (value: number | null) => void
   onSort: (value: SortKey) => void
   onView: (value: ViewMode) => void
-  onCountryOrder: (value: 'count' | 'ping') => void
+  onExpandGroups: () => void
+  onCollapseGroups: () => void
   onShowUnverified: (value: boolean) => void
   onShowUnstable: (value: boolean) => void
   onReset: () => void
@@ -109,11 +110,11 @@ export function FilterSheet({
             </div>
             {view === 'country' && (
               <div className="mt-2 flex flex-wrap gap-2">
-                <Chip active={countryOrder === 'count'} onClick={() => onCountryOrder('count')}>
-                  Страны по числу
+                <Chip active={false} onClick={onExpandGroups}>
+                  {ru.expandGroups}
                 </Chip>
-                <Chip active={countryOrder === 'ping'} onClick={() => onCountryOrder('ping')}>
-                  Страны по пингу
+                <Chip active={false} onClick={onCollapseGroups}>
+                  {ru.collapseGroups}
                 </Chip>
               </div>
             )}

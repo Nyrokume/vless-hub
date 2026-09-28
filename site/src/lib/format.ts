@@ -104,6 +104,27 @@ export function latencyText(ms: number | null | undefined): string {
   return `${Math.round(ms)} мс`
 }
 
+export function latencyBounds(values: Array<number | null | undefined>): { min: number | null; max: number | null } {
+  let min: number | null = null
+  let max: number | null = null
+  for (const value of values) {
+    if (value == null || Number.isNaN(value)) continue
+    if (min == null || value < min) min = value
+    if (max == null || value > max) max = value
+  }
+  return { min, max }
+}
+
+/** One number when the country has a single whole-millisecond ping, otherwise min ~ max. */
+export function latencyRange(
+  min: number | null,
+  max: number | null,
+): { kind: 'empty' } | { kind: 'single'; ms: number } | { kind: 'range'; min: number; max: number } {
+  if (min == null || max == null || Number.isNaN(min) || Number.isNaN(max)) return { kind: 'empty' }
+  if (Math.round(min) === Math.round(max)) return { kind: 'single', ms: min }
+  return { kind: 'range', min, max }
+}
+
 export function uptimeText(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return ''
   return `${Math.round(value * 100)}%`
