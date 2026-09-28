@@ -33,10 +33,21 @@ export function flagEmoji(code: string | null | undefined): string {
   )
 }
 
-export function latencyClass(ms: number): string {
-  if (ms <= 300) return 'text-good'
-  if (ms <= 600) return 'text-amber-400'
-  return 'text-orange-400'
+export function latencyClass(ms: number | null | undefined): string {
+  if (ms == null) return 'text-muted-foreground'
+  if (ms <= 300) return 'text-foreground'
+  if (ms <= 800) return 'text-muted-foreground'
+  return 'text-muted-foreground'
+}
+
+export function latencyText(ms: number | null | undefined): string {
+  if (ms == null) return '—'
+  return `${ms} мс`
+}
+
+export function uptimeText(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return ''
+  return `${Math.round(value * 100)}%`
 }
 
 export function formatElapsed(fromIso: string, now: number): string {

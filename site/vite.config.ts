@@ -5,37 +5,37 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, type Connect, type Plugin } from 'vite'
 
 function collectorData(): Plugin {
-  const src = path.resolve(import.meta.dirname, '../data')
+  const publish = path.resolve(import.meta.dirname, '../publish')
+  const roots = ['data', 'sub', 'api', 'tg']
 
   const handler: Connect.NextHandleFunction = (req, res, next) => {
     const raw = (req.url ?? '').split('?')[0]
-    const marker = '/data/'
-    const index = raw.indexOf(marker)
-    if (index === -1) {
-      next()
+    for (const folder of roots) {
+      const marker = `/${folder}/`
+      const index = raw.indexOf(marker)
+      if (index === -1) continue
+      const rel = decodeURIComponent(raw.slice(index + marker.length))
+      if (!rel || rel.includes('..') || rel.includes('\\')) {
+        next()
+        return
+      }
+      const file = path.resolve(publish, folder, rel)
+      const root = path.resolve(publish, folder) + path.sep
+      if (!file.startsWith(root) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+        next()
+        return
+      }
+      const type = file.endsWith('.json')
+        ? 'application/json; charset=utf-8'
+        : file.endsWith('.yaml') || file.endsWith('.yml')
+          ? 'application/yaml; charset=utf-8'
+          : 'text/plain; charset=utf-8'
+      res.setHeader('Content-Type', type)
+      res.setHeader('Cache-Control', 'no-cache')
+      fs.createReadStream(file).pipe(res)
       return
     }
-    const rel = decodeURIComponent(raw.slice(index + marker.length))
-    if (!rel || rel.includes('..') || rel.includes('\\')) {
-      next()
-      return
-    }
-    const file = path.resolve(src, rel)
-    const root = src.endsWith(path.sep) ? src : `${src}${path.sep}`
-    if (!file.startsWith(root)) {
-      next()
-      return
-    }
-    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-      next()
-      return
-    }
-    const type = file.endsWith('.json')
-      ? 'application/json; charset=utf-8'
-      : 'text/plain; charset=utf-8'
-    res.setHeader('Content-Type', type)
-    res.setHeader('Cache-Control', 'no-cache')
-    fs.createReadStream(file).pipe(res)
+    next()
   }
 
   return {
@@ -47,7 +47,12 @@ function collectorData(): Plugin {
       server.middlewares.use(handler)
     },
     closeBundle() {
-      fs.cpSync(src, path.resolve(import.meta.dirname, 'dist/data'), { recursive: true })
+      const dist = path.resolve(import.meta.dirname, 'dist')
+      for (const folder of roots) {
+        const src = path.join(publish, folder)
+        if (!fs.existsSync(src)) continue
+        fs.cpSync(src, path.join(dist, folder), { recursive: true })
+      }
     },
   }
 }

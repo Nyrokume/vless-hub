@@ -8,16 +8,19 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { clientName, configDeepLink, openExternal, type ClientId } from '@/lib/clients'
+import { clientName, configDeepLink, configImportActions, openExternal, type ClientId } from '@/lib/clients'
 import { copyText } from '@/lib/copy'
+import type { QrRequest } from '@/components/qr-dialog'
 import {
   configTitle,
   flagEmoji,
   formatStamp,
   latencyClass,
+  latencyText,
   protocolLine,
   securityLabel,
   transportLabel,
+  uptimeText,
 } from '@/lib/format'
 import type { ConfigRecord, SourceReport } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -44,7 +47,7 @@ export function ConfigSheet({
   client: ClientId
   desktop: boolean
   onOpenChange: (open: boolean) => void
-  onQr: (title: string, value: string) => void
+  onQr: (request: QrRequest) => void
 }) {
   const title = config ? configTitle(config) : ''
   const flag = config ? flagEmoji(config.country_code) : ''
@@ -73,6 +76,9 @@ export function ConfigSheet({
               ? 'GeoIP адреса'
               : '',
         ],
+        ['Аптайм', uptimeText(config.uptime)],
+        ['Проверки', config.checks_ok != null ? `${config.checks_ok} ок / ${config.checks_fail ?? 0} сбоев` : ''],
+        ['Статус', config.verified === 'proxy' ? 'Прокси через Xray' : config.verified === 'tcp' ? 'Только открытый порт' : ''],
         ['Список', sourceName ?? ''],
         ['Проверено', config.tested_at ? formatStamp(config.tested_at) : ''],
       ].filter(([, value]) => value)
@@ -99,7 +105,7 @@ export function ConfigSheet({
               <SheetDescription className="flex items-center justify-between gap-3 text-[15px]">
                 <span>{protocolLine(config.transport)}</span>
                 <span className={cn('font-semibold tabular-nums', latencyClass(config.latency_ms))}>
-                  {config.latency_ms} мс
+                  {latencyText(config.latency_ms)}
                 </span>
               </SheetDescription>
             </SheetHeader>
@@ -111,7 +117,14 @@ export function ConfigSheet({
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="secondary"
-                  onClick={() => onQr(`${flag} ${title}`.trim(), config.uri)}
+                  onClick={() =>
+                    onQr({
+                      title: `${flag} ${title}`.trim(),
+                      value: config.uri,
+                      share: 'text',
+                      actions: configImportActions(config.uri),
+                    })
+                  }
                 >
                   <QrCode />
                   QR-код
@@ -126,8 +139,8 @@ export function ConfigSheet({
                 </Button>
               </div>
               <p className="px-1 text-[12px] leading-snug text-muted-foreground">
-                Задержка — время TCP-соединения с машины сборщика, не пинг вашего устройства. Сайт не
-                поднимает VPN.
+                Задержка — время HTTP-ответа через Xray с машины сборщика, не пинг вашего устройства.
+                Сайт не поднимает VPN.
               </p>
             </div>
             <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-secondary/60">

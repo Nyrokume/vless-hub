@@ -10,7 +10,25 @@ export async function loadHub(): Promise<HubData> {
   if (!data || !Array.isArray(data.configs) || !Array.isArray(data.subscriptions)) {
     throw new Error('Файл данных повреждён')
   }
+  data.catalog ??= []
+  data.unverified ??= []
+  data.proxies ??= []
+  data.stats ??= {
+    fetched: 0,
+    unique: 0,
+    tested: 0,
+    alive: 0,
+    published: data.configs.length,
+    countries: 0,
+    median_latency_ms: null,
+    transports: {},
+  }
   return data
+}
+
+export function publicFileUrl(publicBase: string, path: string): string {
+  const base = publicBase.replace(/\/+$/, '')
+  return `${base}/${path.replace(/^\/+/, '')}`
 }
 
 export function subscriptionUrl(publicBase: string, file: string): string {
@@ -20,7 +38,9 @@ export function subscriptionUrl(publicBase: string, file: string): string {
 
 export function membersOf(subId: string, configs: ConfigRecord[], fastMs: number): ConfigRecord[] {
   if (subId === 'all') return configs
-  if (subId === 'fast') return configs.filter((item) => item.latency_ms <= fastMs)
+  if (subId === 'fast') {
+    return configs.filter((item) => item.latency_ms != null && item.latency_ms <= fastMs)
+  }
   if (subId === 'reality' || subId === 'tls') {
     return configs.filter((item) => item.security === subId)
   }

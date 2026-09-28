@@ -39,8 +39,20 @@ function isSort(value: unknown): value is SortKey {
   return SORTS.some((item) => item.value === value)
 }
 
+const CLIENT_IDS: ClientId[] = [
+  'happ',
+  'v2rayng',
+  'hiddify',
+  'v2raytun',
+  'nekobox',
+  'clashmeta',
+  'mihomo',
+  'singbox',
+  'link',
+]
+
 function isClient(value: unknown): value is ClientId {
-  return value === 'happ' || value === 'v2rayng' || value === 'hiddify' || value === 'link'
+  return typeof value === 'string' && CLIENT_IDS.includes(value as ClientId)
 }
 
 function isThreshold(value: unknown): value is number | null {

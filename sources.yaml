@@ -1,0 +1,120 @@
+# Публичные источники VLESS.
+# Добавить источник: скопируйте блок, задайте уникальный name и url/channel.
+# type: subscription — сырой файл или base64-подписка (определяется автоматически)
+# type: telegram — веб-превью https://t.me/s/<channel>, без API и токена
+# enabled: false — выключить, не удаляя запись
+
+settings:
+  drop_after_failures: 4
+  max_links_per_source: 15000
+  # TCP is only a prefilter. Published latency and the default lists come from
+  # an HTTP fetch through Xray (generate_204), hundreds of configs per run.
+  max_tcp_tests: 1000
+  max_proxy_tests: 400
+  tcp_timeout_sec: 2.5
+  proxy_timeout_sec: 6.0
+  speed_timeout_sec: 0
+  tcp_concurrency: 120
+  proxy_concurrency: 6
+  proxy_batch_size: 20
+  fetch_timeout_sec: 30
+  fetch_concurrency: 6
+  max_bytes_per_source: 8000000
+  telegram_pages: 2
+  top_sizes: [20, 50, 100]
+  clash_limit: 120
+  # Telegram MTProto / SOCKS. The check is a real handshake (resPQ), not a TCP ping.
+  max_tg_tests: 160
+  tg_timeout_sec: 8
+  tg_concurrency: 40
+  max_tg_links_per_source: 500
+  tg_top_sizes: [20, 50]
+  user_agent: "vless-hub/1.0 (+https://github.com/Nyrokume/vless-hub)"
+
+sources:
+  - name: epodonios-vless
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt
+
+  - name: barry-far-vless
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/vless.txt
+
+  - name: ebrasha-vless
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/vless_configs.txt
+
+  - name: radikal-vless
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/vless.txt
+
+  - name: peasoft-list
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt
+
+  - name: tg-v2rayng3
+    type: telegram
+    enabled: true
+    channel: V2rayNG3
+
+  - name: tg-vlessconfig
+    type: telegram
+    enabled: true
+    channel: vlessconfig
+
+  - name: tg-vlessvpnfree
+    type: telegram
+    enabled: true
+    channel: VlessVpnFree
+
+# kind: telegram-proxy — публичные MTProto (tg://proxy, t.me/proxy, секреты ee/dd)
+# и SOCKS5 (tg://socks, t.me/socks, socks5://). type как у VLESS: subscription или telegram.
+# limit — сколько ссылок брать из этого источника (0 = max_tg_links_per_source).
+
+  - name: tgmtproxy
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/tgmtproxy/telegram-mtproto-proxy-list/main/proxies.txt
+
+  - name: soli-mtproto
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt
+
+  - name: argh94-mtproto
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/Argh94/Proxy-List/main/MTProto.txt
+
+  - name: argh94-socks5
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    limit: 80
+    url: https://raw.githubusercontent.com/Argh94/Proxy-List/main/SOCKS5.txt
+
+  - name: tg-proxymtproto
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: ProxyMTProto
+
+  - name: tg-proxy-pub
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: proxy_pub
+
+  - name: tg-mtpro-xyz
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: mtpro_xyz

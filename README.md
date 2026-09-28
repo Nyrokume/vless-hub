@@ -1,64 +1,54 @@
-# vless-hub
+# V2Hub
 
-Автоматический сборщик и тестер публичных VLESS-конфигов с сайтом на GitHub Pages.
+Публичный агрегатор VLESS и прокси Telegram. Сайт на React и shadcn/ui, сборщик на Python: конфиги проходят HTTP через Xray, MTProto и SOCKS проверяются рукопожатием до датацентра Telegram.
 
-Сайт не поднимает VPN-туннель. Он показывает результат сборщика и помогает скопировать ссылку, открыть QR или передать подписку в клиент (`happ://`, `v2rayng://`, `hiddify://`).
+Страница: https://nyrokume.github.io/vless-hub/
 
-## Сборщик
+Сборщик только читает уже опубликованные ссылки, измеряет их с раннера и выкладывает списки. Он не поднимает туннель в браузере и не обещает, что адрес останется рабочим.
 
-`collector/collect.py` (только стандартная библиотека):
+## Что публикуется
 
-1. Скачивает публичные списки из `collector/sources.json`.
-2. Разбирает `vless://`, убирает дубликаты.
-3. Меряет задержку TCP-подключения до `host:port`.
-4. Определяет страну по флагу в названии или через GeoIP.
-5. Пишет данные, которые читает сайт.
+В списке VLESS только ответы HTTP 200/204 через Xray (`generate_204`). Открытый TCP-порт без такой проверки попадает в `sub/unverified.txt` и скрыт на сайте, пока не включить «Показать непроверенные». Задержка — время этого HTTP-запроса.
 
-Пути результата (их используют сайт и Pages):
+Прокси Telegram публикуются после `resPQ` (MTProto) или SOCKS5 CONNECT до `149.154.167.51:443` и того же запроса.
 
-| Файл | Содержимое |
+## Адреса
+
+Канонические файлы:
+
+| Файл | Содержание |
 | --- | --- |
-| `data/configs.json` | Метаданные запуска, статистика, подписки и конфиги |
-| `data/subs/<id>.txt` | Текстовая подписка |
-| `data/subs/<id>.b64.txt` | Та же подписка в base64 |
+| `/sub/all.txt` | рабочие VLESS |
+| `/sub/verified.txt` | тот же список |
+| `/sub/unverified.txt` | только открытый порт |
+| `/sub/top-20.txt`, `top-50.txt`, `top-100.txt` | самые быстрые |
+| `/sub/country/DE.txt` | страна |
+| `/sub/security/reality.txt` | security |
+| `/sub/transport/ws.txt` | транспорт |
+| `/sub/combo/DE-reality.txt` | страна и security |
+| `/sub/base64/…` | те же списки в base64 |
+| `/sub/clash.yaml` | Clash Meta / Mihomo |
+| `/sub/singbox.json` | sing-box |
+| `/api/configs.json`, `/api/stats.json` | метаданные VLESS |
+| `/tg/mtproto.txt`, `/tg/socks.txt`, `/tg/all.txt` | `tg://` |
+| `/tg/mtproto-https.txt`, `/tg/https.txt` | `https://t.me/proxy` и `t.me/socks` |
+| `/api/proxies.json` | метаданные Telegram |
 
-Группы подписок: все рабочие, быстрые (≤ 300 мс), Reality, TLS и транспорты, для которых нашлись конфиги.
-
-```bash
-python3 collector/collect.py
-python3 -m unittest test_vlesslib.py   # из каталога collector
-```
-
-Если все источники недоступны или ни один адрес не ответил, скрипт завершается с ошибкой и не затирает уже лежащие файлы.
+Старые адреса `data/subs/all.txt`, `all.b64.txt`, `fast`, `reality`, `tls`, `tcp`, `ws`, `grpc`, `xhttp` остаются в артефакте Pages и ведут на те же рабочие списки. `data/configs.json` кормит сайт. Эти файлы не коммитятся: в git лежит только компактное состояние `state/history.json`, `state/tg_history.json`, `state/geo_cache.json`.
 
 ## Сайт
 
-Интерфейс на React, Vite, Tailwind и shadcn/ui. Тёмная тема по умолчанию, акцентный цвет `#0a84ff`.
+Тёмная тема — чёрный фон и белый текст, светлая — белый фон и чёрный текст. Первый заход смотрит `prefers-color-scheme`, переключатель запоминает выбор. На конфигурации и подписке есть QR (чёрный на белом, скачивание PNG), «Поделиться» и проверенные схемы Happ, v2rayNG, Hiddify, v2RayTun, NekoBox, Clash Meta, Mihomo и sing-box. Вкладка Telegram открывает `tg://` с автозаполнением. «Разбор» читает `vless://` локально.
 
-- Подключение: время с последнего запуска сборщика, копирование подписки, карточки подписок, список конфигов.
-- Поиск, фильтры (страна, транспорт, безопасность, порог задержки), сортировка.
-- Карточка конфига, QR, копирование ссылки, открытие в выбранном клиенте.
-- Настройки в `localStorage`: тема, сортировка, порог, клиент, адрес сайта.
-- Блок «Информация»: версия, сборщик, время запуска, статистика, источники.
-
-Базовый путь сборки — `/vless-hub/`. Данные запрашиваются с `data/configs.json` относительно этого пути.
+## Запуск
 
 ```bash
-cd site
-npm ci
-npm run dev      # http://localhost:5173/vless-hub/
-npm run build
-npm run preview
+pip install -r requirements.txt
+python -m pytest
+python -m vlesshub run --out publish --site site
+cd site && npm ci && npm run build
 ```
 
-## GitHub Actions
+Полный прогон качает Xray и GeoIP, проверяет до 1000 TCP и 400 прокси и до 160 прокси Telegram. Для короткой проверки: `--max-tcp 20 --max-proxy 0 --max-tg 0`. Код выхода 2 значит, что в этом прогоне нет прокси-проверенных VLESS, а история уже знает рабочие: состояние сохраняется, сайт не затирается.
 
-- `.github/workflows/collect.yml` — по расписанию и вручную обновляет `data/` и коммитит изменения. Пуш в `main` запускает публикацию сайта.
-- `.github/workflows/pages.yml` — собирает `site/` и вместе с `data/` выкладывает GitHub Pages. В настройках репозитория источник Pages должен быть «GitHub Actions».
-
-Канонические ссылки подписки после публикации:
-
-- https://nyrokume.github.io/vless-hub/data/subs/all.txt
-- https://nyrokume.github.io/vless-hub/data/subs/all.b64.txt
-
-Адрес можно сменить в настройках сайта, если репозиторий форкнут.
+Расписание — `.github/workflows/update.yml`, cron `17 */6 * * *` и ручной запуск. Один workflow гоняет тесты, сборщик, сборку React и деплой на Pages.

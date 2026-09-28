@@ -216,13 +216,13 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
           text={`Последний запуск: ${data ? formatStamp(data.generated_at) : '—'}`}
         />
         <Separator />
-        <InfoRow icon={<Gauge className="size-4" />} text="Проверка: TCP-соединение" />
+        <InfoRow icon={<Gauge className="size-4" />} text="Проверка: HTTP через Xray" />
         <Separator />
         <InfoRow
           icon={<Server className="size-4" />}
           text={
             data
-              ? `В списке: ${data.stats.published} из ${data.stats.tested} проверенных`
+              ? `В списке: ${data.stats.published} прокси из ${data.stats.proxy_tested ?? data.stats.tested} проверок`
               : 'В списке: —'
           }
         />
@@ -240,9 +240,9 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
       </Group>
 
       <p className="px-4 pb-4 text-[13px] leading-relaxed text-muted-foreground">
-        Сборщик забирает публичные VLESS-ссылки, проверяет TCP до адреса и порта и публикует
-        ответившие. Задержка измерена с раннера сборщика, а не с вашего телефона. Кнопка на экране
-        подключения копирует ссылку подписки — сайт не устанавливает VPN-туннель.
+        Сборщик забирает публичные VLESS-ссылки и прокси Telegram. В список попадают только те,
+        что ответили HTTP через Xray или прошли рукопожатие MTProto/SOCKS. Задержка измерена с
+        раннера сборщика, а не с вашего телефона. Сайт не устанавливает туннель.
       </p>
 
       <ChoiceSheet
@@ -282,7 +282,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
           <SheetHeader className="pr-10 text-left">
             <SheetTitle>Адрес сайта</SheetTitle>
             <SheetDescription>
-              К нему добавляется путь data/subs/…. Для этого репозитория оставьте адрес GitHub Pages.
+              К нему добавляются пути data/subs/ и sub/. Для этого репозитория оставьте адрес GitHub Pages.
             </SheetDescription>
           </SheetHeader>
           <form

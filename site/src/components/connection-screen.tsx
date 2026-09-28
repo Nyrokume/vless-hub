@@ -44,8 +44,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ConfigSheet } from '@/components/config-sheet'
 import { FilterSheet } from '@/components/filter-sheet'
 import { IconTile } from '@/components/icon-tile'
-import { QrDialog } from '@/components/qr-dialog'
+import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SubscriptionSheet } from '@/components/subscription-sheet'
+import { configImportActions } from '@/lib/clients'
 import { copyText } from '@/lib/copy'
 import { subscriptionUrl } from '@/lib/data'
 import {
@@ -54,7 +55,9 @@ import {
   formatElapsed,
   formatStamp,
   latencyClass,
+  latencyText,
   protocolLine,
+  uptimeText,
 } from '@/lib/format'
 import { SORTS, sortLabel, useSettings, type SortKey } from '@/lib/settings'
 import type { ConfigRecord, HubData, SubscriptionInfo } from '@/lib/types'
@@ -88,18 +91,25 @@ function subscriptionIcon(id: string): LucideIcon {
   }
 }
 
+function latencyRank(ms: number | null, desc = false): number {
+  if (ms == null) return desc ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY
+  return ms
+}
+
 function compareConfigs(sort: SortKey, left: ConfigRecord, right: ConfigRecord): number {
-  if (sort === 'latency-desc') return right.latency_ms - left.latency_ms || left.id.localeCompare(right.id)
+  if (sort === 'latency-desc') {
+    return latencyRank(right.latency_ms, true) - latencyRank(left.latency_ms, true) || left.id.localeCompare(right.id)
+  }
   if (sort === 'country') {
     return (
       (left.country ?? 'яяя').localeCompare(right.country ?? 'яяя', 'ru') ||
-      left.latency_ms - right.latency_ms
+      latencyRank(left.latency_ms) - latencyRank(right.latency_ms)
     )
   }
   if (sort === 'transport') {
-    return left.transport.localeCompare(right.transport) || left.latency_ms - right.latency_ms
+    return left.transport.localeCompare(right.transport) || latencyRank(left.latency_ms) - latencyRank(right.latency_ms)
   }
-  return left.latency_ms - right.latency_ms || left.id.localeCompare(right.id)
+  return latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id)
 }
 
 export function ConnectionScreen({
@@ -123,14 +133,20 @@ export function ConnectionScreen({
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [subsOpen, setSubsOpen] = useState(false)
   const [activeSub, setActiveSub] = useState<SubscriptionInfo | null>(null)
-  const [qr, setQr] = useState<{ title: string; value: string } | null>(null)
+  const [showUnverified, setShowUnverified] = useState(false)
+  const [qr, setQr] = useState<QrRequest | null>(null)
 
   const mainSub = data.subscriptions.find((item) => item.id === 'all') ?? data.subscriptions[0]
   const mainUrl = mainSub ? subscriptionUrl(settings.publicBase, mainSub.file) : ''
 
+  const visible = useMemo(
+    () => (showUnverified ? [...data.configs, ...data.unverified] : data.configs),
+    [data.configs, data.unverified, showUnverified],
+  )
+
   const countries = useMemo(() => {
     const map = new Map<string, { code: string; name: string; count: number }>()
-    for (const config of data.configs) {
+    for (const config of visible) {
       if (!config.country_code) continue
       const current = map.get(config.country_code)
       if (current) current.count += 1
@@ -145,29 +161,34 @@ export function ConnectionScreen({
     return [...map.values()].sort(
       (left, right) => right.count - left.count || left.name.localeCompare(right.name, 'ru'),
     )
-  }, [data.configs])
+  }, [visible])
 
   const transports = useMemo(() => {
     const map = new Map<string, number>()
-    for (const config of data.configs) map.set(config.transport, (map.get(config.transport) ?? 0) + 1)
+    for (const config of visible) map.set(config.transport, (map.get(config.transport) ?? 0) + 1)
     return [...map.entries()]
       .map(([id, count]) => ({ id, count }))
       .sort((left, right) => right.count - left.count)
-  }, [data.configs])
+  }, [visible])
 
   const securities = useMemo(() => {
     const map = new Map<string, number>()
-    for (const config of data.configs) map.set(config.security, (map.get(config.security) ?? 0) + 1)
+    for (const config of visible) map.set(config.security, (map.get(config.security) ?? 0) + 1)
     return [...map.entries()]
       .map(([id, count]) => ({ id, count }))
       .sort((left, right) => right.count - left.count)
-  }, [data.configs])
+  }, [visible])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return data.configs
+    return visible
       .filter((config) => {
-        if (settings.latencyThreshold != null && config.latency_ms > settings.latencyThreshold) return false
+        if (
+          settings.latencyThreshold != null &&
+          (config.latency_ms == null || config.latency_ms > settings.latencyThreshold)
+        ) {
+          return false
+        }
         if (country && config.country_code !== country) return false
         if (transport && config.transport !== transport) return false
         if (security && config.security !== security) return false
@@ -188,15 +209,15 @@ export function ConnectionScreen({
         return haystack.includes(needle)
       })
       .sort((left, right) => compareConfigs(settings.sort, left, right))
-  }, [country, data.configs, query, security, settings.latencyThreshold, settings.sort, transport])
+  }, [country, query, security, settings.latencyThreshold, settings.sort, transport, visible])
 
   function openSubscription(subscription: SubscriptionInfo | null) {
     setActiveSub(subscription)
     setSubsOpen(true)
   }
 
-  function openQr(title: string, value: string) {
-    setQr({ title, value })
+  function openQr(request: QrRequest) {
+    setQr(request)
   }
 
   const sessionFilters = [country, transport, security].filter(Boolean).length
@@ -246,6 +267,9 @@ export function ConnectionScreen({
               <Copy />
               Копировать список
             </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setShowUnverified((value) => !value)}>
+              {showUnverified ? 'Скрыть непроверенные' : 'Показать непроверенные'}
+            </DropdownMenuItem>
             <DropdownMenuItem onSelect={onReload}>Обновить данные</DropdownMenuItem>
             <DropdownMenuItem onSelect={onOpenSettings}>Настройки</DropdownMenuItem>
           </DropdownMenuContent>
@@ -254,6 +278,14 @@ export function ConnectionScreen({
 
       <div className="lg:grid lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:items-start lg:gap-8">
         <div>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <img
+              src={`${import.meta.env.BASE_URL}favicon.svg`}
+              alt=""
+              className="size-8 rounded-lg dark:invert"
+            />
+            <span className="text-[20px] font-semibold tracking-tight">V2Hub</span>
+          </div>
           <div className="px-2 pt-4 text-center lg:pt-2">
             <p className="text-[17px] font-medium">С обновления</p>
             <p className="mt-1 font-light text-[44px] leading-none tracking-wide text-foreground tabular-nums">
@@ -292,6 +324,12 @@ export function ConnectionScreen({
               label="медиана, мс"
             />
           </div>
+          {data.stats.telegram && (
+            <p className="mx-auto mt-3 max-w-md text-center text-[13px] text-muted-foreground">
+              Telegram: {data.stats.telegram.mtproto} MTProto · {data.stats.telegram.socks} SOCKS
+              {showUnverified ? ` · непроверенных VLESS: ${data.unverified.length}` : ''}
+            </p>
+          )}
 
           <div className="mx-auto mt-5 flex max-w-md flex-col gap-1">
             {featuredSubscriptions(data.subscriptions).map((subscription) => {
@@ -378,6 +416,7 @@ export function ConnectionScreen({
                   <p className="px-1 pt-2 text-[12px] text-muted-foreground">
                     {sortLabel(settings.sort)}
                     {settings.latencyThreshold != null ? ` · до ${settings.latencyThreshold} мс` : ''}
+                    {showUnverified ? ' · с непроверенными' : ''}
                   </p>
                 </div>
                 <div className="lg:max-h-[calc(100dvh-8rem)] lg:overflow-y-auto">
@@ -391,10 +430,12 @@ export function ConnectionScreen({
                         divided={index > 0}
                         onOpen={() => setSelected(config)}
                         onQr={() =>
-                          openQr(
-                            `${flagEmoji(config.country_code)} ${configTitle(config)}`.trim(),
-                            config.uri,
-                          )
+                          openQr({
+                            title: `${flagEmoji(config.country_code)} ${configTitle(config)}`.trim(),
+                            value: config.uri,
+                            share: 'text',
+                            actions: configImportActions(config.uri),
+                          })
                         }
                       />
                     ))
@@ -442,6 +483,7 @@ export function ConnectionScreen({
         subscription={activeSub}
         subscriptions={data.subscriptions}
         configs={data.configs}
+        catalog={data.catalog}
         fastMs={data.fast_threshold_ms}
         publicBase={settings.publicBase}
         client={settings.client}
@@ -451,8 +493,7 @@ export function ConnectionScreen({
         onQr={openQr}
       />
       <QrDialog
-        title={qr?.title ?? null}
-        value={qr?.value ?? null}
+        request={qr}
         onOpenChange={(open) => {
           if (!open) setQr(null)
         }}
@@ -496,11 +537,15 @@ function ConfigRow({
               {title}
               {config.country_code ? ` ${config.country_code}` : ''}
             </span>
-            <span className="block text-[13px] text-muted-foreground">{protocolLine(config.transport)}</span>
+            <span className="block text-[13px] text-muted-foreground">
+              {protocolLine(config.transport)}
+              {uptimeText(config.uptime) ? ` · ${uptimeText(config.uptime)}` : ''}
+              {config.verified === 'tcp' ? ' · порт открыт' : ''}
+            </span>
           </span>
         </button>
         <span className={cn('text-[15px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
-          {config.latency_ms} мс
+          {latencyText(config.latency_ms)}
         </span>
         <Tooltip>
           <TooltipTrigger asChild>

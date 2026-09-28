@@ -1,0 +1,160 @@
+import base64
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from vlesshub.parser import build_uri, dedup, extract_vless_uris, fingerprint, parse_many, parse_vless
+
+FIXTURES = json.loads((Path(__file__).parent / "fixtures.json").read_text(encoding="utf-8"))
+
+REALITY = (
+    "vless://11111111-1111-4111-8111-111111111111@Ex.COM:443"
+    "?encryption=none&security=reality&sni=www.microsoft.com&fp=chrome"
+    "&pbk=abc+def/ghi=&sid=ab12&type=tcp&flow=xtls-rprx-vision&spx=%2F#Germany"
+)
+
+
+def test_fixtures_match_expected_fields():
+    for item in FIXTURES:
+        cfg = parse_vless(item["uri"])
+        assert cfg is not None, item["name"]
+        for key, value in item["expect"].items():
+            assert getattr(cfg, key) == value, (item["name"], key, getattr(cfg, key))
+
+
+def test_reality_plus_in_public_key_and_roundtrip():
+    cfg = parse_vless(REALITY)
+    assert cfg is not None
+    assert cfg.pbk == "abc+def/ghi="
+    assert cfg.spx == "/"
+    assert cfg.host == "ex.com"
+    assert cfg.uuid == "11111111-1111-4111-8111-111111111111"
+    again = parse_vless(build_uri(cfg))
+    assert again is not None
+    assert again.fingerprint == cfg.fingerprint
+    assert again.pbk == cfg.pbk
+    assert again.flow == "xtls-rprx-vision"
+    assert again.security == "reality"
+
+
+def test_flag_in_remark_and_local_hosts():
+    flagged = parse_vless(REALITY.replace("#Germany", "#🇳🇱 NL node"), source="alpha")
+    assert flagged is not None
+    assert flagged.remark_country == "NL"
+    plain = parse_vless(REALITY.replace("#Germany", "#plain"), source="beta")
+    assert plain is not None
+    preferred = dedup([plain, flagged])
+    assert preferred[0].remark_country == "NL"
+    assert "🇳🇱" in preferred[0].remark
+    kept = dedup([flagged, plain])
+    assert kept[0].remark_country == "NL"
+    assert parse_vless(REALITY.replace("Ex.COM", "localhost")) is None
+    assert parse_vless(REALITY.replace(":443", ":99999")) is None
+
+
+def test_remark_is_not_part_of_dedup_key():
+    first = parse_vless(REALITY.replace("#Germany", "#one"), source="alpha")
+    second = parse_vless(REALITY.replace("#Germany", "#two"), source="beta")
+    assert first is not None and second is not None
+    assert first.fingerprint == second.fingerprint
+    merged = dedup([first, second])
+    assert len(merged) == 1
+    assert merged[0].sources == ["alpha", "beta"]
+    assert merged[0].remark == "one"
+
+
+def test_base64_subscription_and_html():
+    plain = (
+        "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=ws&security=tls&path=%2Fa#a\n"
+        "vless://22222222-2222-4222-8222-222222222222@5.6.7.8:8443?type=grpc&security=none&serviceName=demo#b\n"
+    )
+    blob = base64.b64encode(plain.encode()).decode()
+    parsed = parse_many(blob, source="blob")
+    assert len(parsed) == 2
+    assert {cfg.network for cfg in parsed} == {"ws", "grpc"}
+    html = (
+        "<div>hello <code>vless://11111111-1111-4111-8111-111111111111@9.9.9.9:443"
+        "?security=tls&amp;type=ws&amp;path=/a#hi</code></div>"
+    )
+    found = extract_vless_uris(html)
+    assert len(found) == 1
+    cfg = parse_vless(found[0])
+    assert cfg is not None
+    assert cfg.path == "/a"
+    assert cfg.security == "tls"
+
+
+def test_ipv6_and_http_header_and_non_uuid():
+    uri = (
+        "vless://11111111-1111-4111-8111-111111111111@[2001:db8::1]:443"
+        "?type=ws&security=tls&path=%2Fws&host=Example.com&sni=Example.com#v6"
+    )
+    cfg = parse_vless(uri)
+    assert cfg is not None
+    assert cfg.host == "2001:db8::1"
+    assert cfg.port == 443
+    assert cfg.host_header == "Example.com"
+    rebuilt = build_uri(cfg)
+    assert "[2001:db8::1]" in rebuilt
+
+    header = parse_vless(
+        "vless://11111111-1111-4111-8111-111111111111@1.1.1.1:80"
+        "?security=none&encryption=none&host=amp.example&headerType=http&type=tcp#h"
+    )
+    assert header is not None
+    assert header.network == "tcp"
+    assert header.header_type == "http"
+
+    odd = parse_vless("vless://%40Cooonfig%40@1.2.3.4:80?type=tcp&security=none#x")
+    assert odd is not None
+    assert odd.uuid == "@Cooonfig@"
+    assert not odd.uuid.count("-") == 4 or "@" in odd.uuid
+
+
+def test_raw_transport_is_tcp():
+    cfg = parse_vless(
+        "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=raw&security=reality&pbk=abc&sid=aa#r"
+    )
+    assert cfg is not None
+    assert cfg.network == "tcp"
+
+
+def test_false_security_means_none():
+    cfg = parse_vless(
+        "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:80?type=ws&security=false&path=%2F#x"
+    )
+    assert cfg is not None
+    assert cfg.security == "none"
+
+
+def test_fingerprint_stable_material():
+    cfg = parse_vless(REALITY)
+    assert cfg is not None
+    assert fingerprint(cfg) == cfg.fingerprint
+    assert len(cfg.fingerprint) == 16
+
+
+def test_javascript_parser_matches_python():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    proc = subprocess.run(
+        [node, "--experimental-strip-types", "tests/parser.test.mjs"],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[1],
+    )
+    assert proc.returncode == 0, proc.stderr
+    rows = json.loads(proc.stdout)
+    assert rows
+    for row in rows:
+        cfg = parse_vless(row["uri"])
+        assert cfg is not None
+        assert cfg.fingerprint == row["fingerprint"]
+        assert cfg.network == row["network"]
+        assert cfg.pbk == row["pbk"]
+        assert cfg.host == row["host"]

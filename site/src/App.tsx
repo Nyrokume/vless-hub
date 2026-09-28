@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConnectionScreen } from '@/components/connection-screen'
+import { InspectScreen } from '@/components/inspect-screen'
 import { SettingsScreen } from '@/components/settings-screen'
+import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
 import { Button } from '@/components/ui/button'
 import { loadHub } from '@/lib/data'
@@ -37,17 +39,19 @@ export default function App() {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <main className="pb-24">
-        {tab === 'connection' ? (
-          loading && !data ? (
-            <LoadingState />
-          ) : error && !data ? (
-            <ErrorState message={error} onRetry={() => void reload()} />
-          ) : data ? (
-            <ConnectionScreen data={data} onReload={() => void reload()} onOpenSettings={() => setTab('settings')} />
-          ) : null
-        ) : (
+        {tab === 'settings' ? (
           <SettingsScreen data={data} />
-        )}
+        ) : tab === 'inspect' ? (
+          <InspectScreen />
+        ) : loading && !data ? (
+          <LoadingState />
+        ) : error && !data ? (
+          <ErrorState message={error} onRetry={() => void reload()} />
+        ) : data && tab === 'telegram' ? (
+          <TelegramScreen data={data} />
+        ) : data ? (
+          <ConnectionScreen data={data} onReload={() => void reload()} onOpenSettings={() => setTab('settings')} />
+        ) : null}
       </main>
       <TabBar tab={tab} onChange={setTab} />
     </div>

@@ -9,7 +9,7 @@ import '@/index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} storageKey="vless-hub-theme">
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="v2hub-theme">
       <TooltipProvider>
         <SettingsProvider>
           <App />
