@@ -95,6 +95,16 @@ def test_deprioritized_source_sorts_after_a_healthy_one():
     assert chosen == [healthy]
 
 
+def test_long_dead_streak_leaves_the_pool():
+    history = History()
+    dead = _cfg("dead.example")
+    fresh = _cfg("fresh.example")
+    for _ in range(4):
+        history.record(dead.fingerprint, ok=False, latency_ms=None)
+    chosen = select_candidates([dead, fresh], history, limit=5, drop_after=4)
+    assert chosen == [fresh]
+
+
 def test_select_ignores_sub_15ms_ema():
     history = History()
     fake = _cfg("fake.example")

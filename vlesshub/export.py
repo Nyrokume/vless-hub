@@ -11,10 +11,17 @@ import yaml
 from vlesshub.countries import country_name
 from vlesshub.models import Settings, SourceReport, VlessConfig
 from vlesshub.parser import build_uri
+from vlesshub.rank import rank_published
+from vlesshub.stages import REASONS
 from vlesshub.tgparse import TgProxy, https_link, tg_link
 
 _FAST_MS = 300
 _COLLECTOR_VERSION = "2.0.0"
+_UNSTABLE_HEADER = (
+    "#profile-title: V2Hub — рабочие и нестабильные\n"
+    "#profile-update-interval: 12\n"
+    "#profile-web-page-url: https://nyrokume.github.io/vless-hub/\n"
+)
 _LEGACY_SUBS = (
     ("all", "Все рабочие", "Прокси проверены запросом через Xray"),
     ("fast", "Быстрые", f"Задержка HTTP не выше {_FAST_MS} мс"),
@@ -56,6 +63,7 @@ def publish(
     settings: Settings,
     duration_sec: float = 0,
     unverified: list[VlessConfig] | None = None,
+    unstable: list[VlessConfig] | None = None,
     proxies: list[TgProxy] | None = None,
     tg_reports: list[SourceReport] | None = None,
     tg_collected: int = 0,
@@ -68,6 +76,7 @@ def publish(
     _prepare_output(out_dir, site_dir)
 
     unverified = list(unverified or [])
+    unstable = list(unstable or [])
     for cfg in unverified:
         cfg.latency_ms = None
         cfg.speed_kbps = None
@@ -75,6 +84,14 @@ def publish(
 
     catalog: list[dict] = []
     _write_pair(out_dir, "sub/all.txt", configs, catalog, kind="all")
+    _write_pair(
+        out_dir,
+        "sub/with-unstable.txt",
+        rank_published(list(configs) + unstable),
+        catalog,
+        kind="unstable",
+        header=_UNSTABLE_HEADER,
+    )
     # Same proxy-verified set, kept so older subscription URLs still resolve.
     _write_pair(out_dir, "sub/verified.txt", configs, catalog, kind="verified")
     _write_pair(
@@ -171,6 +188,7 @@ def publish(
     stats = _stats(
         configs=configs,
         unverified_count=len(unverified),
+        unstable_count=len(unstable),
         reports=reports,
         collected=collected,
         unique=collected if unique is None else unique,
@@ -194,6 +212,7 @@ def publish(
         out_dir,
         configs=configs,
         unverified=unverified,
+        unstable=unstable,
         proxies=proxies,
         reports=reports,
         tg_reports=tg_reports,
@@ -273,6 +292,10 @@ def _hub_config(cfg: VlessConfig, generated_at: str) -> dict:
         "extra": dict(cfg.extras),
         "source": cfg.sources[0] if cfg.sources else "",
         "latency_ms": None if cfg.latency_ms is None else round(float(cfg.latency_ms), 1),
+        "handshake_ms": None if cfg.handshake_ms is None else round(float(cfg.handshake_ms), 1),
+        "status": cfg.status or ("working" if cfg.verified == "proxy" else ""),
+        "stability": None if cfg.stability is None else round(float(cfg.stability), 4),
+        "exit_ip": cfg.exit_ip,
         "tested_at": generated_at,
         "uptime": round(cfg.uptime, 4),
         "checks_ok": cfg.checks_ok,
@@ -286,7 +309,8 @@ def _hub_config(cfg: VlessConfig, generated_at: str) -> dict:
 def _place(cfg: VlessConfig) -> tuple[str | None, str | None, str | None]:
     code = (cfg.country or "").upper()
     if len(code) == 2 and code.isalpha():
-        return code, country_name(code) or cfg.country_name or code, "geoip"
+        source = "remark" if cfg.country_source == "remark" else "geoip"
+        return code, country_name(code) or cfg.country_name or code, source
     return None, None, None
 
 
@@ -313,6 +337,7 @@ def _write_site_payload(
     *,
     configs: list[VlessConfig],
     unverified: list[VlessConfig],
+    unstable: list[VlessConfig],
     proxies: list[TgProxy],
     reports: list[SourceReport],
     tg_reports: list[SourceReport],
@@ -383,6 +408,8 @@ def _write_site_payload(
             "tested": counts["tested_tcp"],
             "alive": counts["tcp_ok"],
             "published": counts["published"],
+            "working": counts.get("working", counts["published"]),
+            "unstable": counts.get("unstable", 0),
             "countries": counts["countries"],
             "median_latency_ms": stats["median_latency_ms"],
             "transports": stats["by_network"],
@@ -401,6 +428,7 @@ def _write_site_payload(
         "subscriptions": subscriptions,
         "catalog": [item for item in catalog if item.get("format") != "base64"],
         "configs": [_hub_config(cfg, generated_at) for cfg in configs],
+        "unstable": [_hub_config(cfg, generated_at) for cfg in unstable],
         "unverified": [_hub_config(cfg, generated_at) for cfg in unverified],
         "proxies": [_public_proxy(proxy) for proxy in proxies],
     }
@@ -537,10 +565,25 @@ def _public_config(cfg: VlessConfig) -> dict:
     }
 
 
+def _rejected_counts(rejections: dict[str, int] | None) -> dict[str, int]:
+    raw = rejections or {}
+    counts = {reason: int(raw.get(reason, 0)) for reason in REASONS}
+    for key, value in raw.items():
+        if key not in counts:
+            counts[key] = int(value)
+    counts["dead"] = sum(
+        value
+        for key, value in counts.items()
+        if key not in {"parse_error", "invalid_field", "timeout", "dead"}
+    )
+    return counts
+
+
 def _stats(
     *,
     configs: list[VlessConfig],
     unverified_count: int,
+    unstable_count: int = 0,
     reports: list[SourceReport],
     collected: int,
     tcp_tested: int,
@@ -584,6 +627,8 @@ def _stats(
             "tested_proxy": proxy_tested,
             "proxy_ok": proxy_ok,
             "published": len(configs),
+            "working": len(configs),
+            "unstable": unstable_count,
             "unverified": unverified_count,
             "countries": len({cfg.country for cfg in configs if cfg.country}),
             "sources_ok": sum(1 for report in reports if report.ok),
@@ -594,12 +639,7 @@ def _stats(
             "tg_tested": tg_tested,
         },
         "median_latency_ms": round(statistics.median(latencies), 1) if latencies else None,
-        "rejected": {
-            "parse_error": int((rejections or {}).get("parse_error", 0)),
-            "invalid_field": int((rejections or {}).get("invalid_field", 0)),
-            "dead": int((rejections or {}).get("dead", 0)),
-            "timeout": int((rejections or {}).get("timeout", 0)),
-        },
+        "rejected": _rejected_counts(rejections),
         "by_country": _count(configs, lambda cfg: cfg.country or "ZZ"),
         "by_security": _count(configs, lambda cfg: cfg.security or "none"),
         "by_network": _count(configs, lambda cfg: cfg.network or "tcp"),

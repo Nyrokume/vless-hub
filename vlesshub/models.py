@@ -91,10 +91,15 @@ class VlessConfig:
     fingerprint: str = ""
     country: str = ""
     country_name: str = ""
+    country_source: str = ""
     ip: str = ""
+    exit_ip: str = ""
     latency_ms: float | None = None
+    handshake_ms: float | None = None
     speed_kbps: float | None = None
     verified: str = ""
+    status: str = ""
+    stability: float | None = None
     uptime: float = 0.0
     checks_ok: int = 0
     checks_fail: int = 0

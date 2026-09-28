@@ -8,6 +8,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from vlesshub.countries import country_name
 from vlesshub.models import VlessConfig
 from vlesshub.util import log
 
@@ -124,6 +125,33 @@ def _lookup_mmdb(reader: object, ip: str) -> tuple[str, str]:
     names = country.get("names") if isinstance(country.get("names"), dict) else {}
     name = str(names.get("en") or "")
     return code, name
+
+
+def prefer_country(exit_code: str, host_code: str, remark_code: str) -> tuple[str, str]:
+    """Exit address wins. The remark flag is only a fallback, then the server host."""
+    for code, source in ((exit_code, "exit"), (remark_code, "remark"), (host_code, "host")):
+        cleaned = normalize_country_code(code)
+        if cleaned:
+            return cleaned, source
+    return "", ""
+
+
+def apply_exit_countries(configs: list[VlessConfig], mmdb_path: Path | None) -> None:
+    reader = _open_mmdb(mmdb_path)
+    try:
+        for cfg in configs:
+            exit_code = ""
+            if cfg.exit_ip and reader is not None:
+                exit_code, _english = _lookup_mmdb(reader, cfg.exit_ip)
+            code, source = prefer_country(exit_code, cfg.country, cfg.remark_country)
+            cfg.country_source = source
+            if not code:
+                continue
+            cfg.country = code
+            cfg.country_name = country_name(code) or cfg.country_name or code
+    finally:
+        if reader is not None:
+            reader.close()
 
 
 def normalize_country_code(code: str) -> str:

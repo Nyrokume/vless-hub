@@ -32,7 +32,6 @@ def select_candidates(
     fresh: list[VlessConfig] = []
     proven: list[VlessConfig] = []
     retry: list[VlessConfig] = []
-    stale: list[VlessConfig] = []
     for cfg in configs:
         entry = history.get(cfg.fingerprint)
         if entry is None:
@@ -40,8 +39,8 @@ def select_candidates(
             continue
         fails = int(entry.get("streak_fail", 0))
         if fails >= drop_after:
-            stale.append(cfg)
-        elif int(entry.get("ok", 0)) > 0 and fails == 0:
+            continue
+        if int(entry.get("ok", 0)) > 0 and fails == 0:
             proven.append(cfg)
         else:
             retry.append(cfg)
@@ -56,7 +55,6 @@ def select_candidates(
         )
     )
     retry.sort(key=lambda cfg: (late(cfg), seen_at(cfg), cfg.fingerprint))
-    stale.sort(key=lambda cfg: (late(cfg), seen_at(cfg), cfg.fingerprint))
 
     fresh_slots = min(len(fresh), max(1, (limit * 3) // 5)) if fresh else 0
     proven_slots = min(len(proven), max(1, limit // 5)) if proven else 0
@@ -65,7 +63,7 @@ def select_candidates(
         proven_slots = min(proven_slots, max(0, limit - fresh_slots))
     chosen = fresh[:fresh_slots] + proven[:proven_slots]
     used = {cfg.fingerprint for cfg in chosen}
-    for pool in (fresh[fresh_slots:], retry, proven[proven_slots:], stale):
+    for pool in (fresh[fresh_slots:], retry, proven[proven_slots:]):
         for cfg in pool:
             if len(chosen) >= limit:
                 return chosen

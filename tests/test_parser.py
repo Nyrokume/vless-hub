@@ -43,7 +43,7 @@ def test_reality_plus_in_public_key_and_roundtrip():
 def test_flag_in_remark_and_local_hosts():
     flagged = parse_vless(REALITY.replace("#Germany", "#🇳🇱 NL node"), source="alpha")
     assert flagged is not None
-    assert flagged.remark_country == ""
+    assert flagged.remark_country == "NL"
     assert "🇳🇱" in flagged.remark
     plain = parse_vless(REALITY.replace("#Germany", "#plain"), source="beta")
     assert plain is not None

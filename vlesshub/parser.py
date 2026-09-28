@@ -508,6 +508,7 @@ def _finish(cfg: VlessConfig) -> None:
     if cfg.header_type.lower() in {"", "none"}:
         cfg.header_type = ""
     cfg.sni = cfg.sni.strip()
+    cfg.remark_country = extract_flag_code(cfg.remark)
     cfg.fingerprint = fingerprint(cfg)
 
 

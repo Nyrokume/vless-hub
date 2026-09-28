@@ -98,3 +98,6 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     assert "104.21.0.1" not in legacy
     assert (out / "data" / "subs" / "all.b64.txt").is_file()
     assert (out / "data" / "subs" / "clash.yaml").is_file()
+    assert "de.example" in (out / "sub" / "with-unstable.txt").read_text(encoding="utf-8")
+    assert hub["unstable"] == []
+    assert "tcp_refused" in hub["stats"]["rejected"]

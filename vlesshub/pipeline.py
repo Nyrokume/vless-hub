@@ -5,12 +5,14 @@ from pathlib import Path
 
 from vlesshub.collect import collect_all, load_config
 from vlesshub.export import publish
-from vlesshub.geo import GeoCache, enrich
+from vlesshub.geo import GeoCache, apply_exit_countries, enrich
 from vlesshub.health import apply_source_health, deprioritized_names, load_health, save_health
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
 from vlesshub.probe import ProbeResult, failure_reason, proxy_probe, tcp_probe
-from vlesshub.rank import carry_verified, mix_proxy_targets, rank_published, select_candidates
+from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
+from vlesshub.stability import Stability
+from vlesshub.stages import dropped_after, status_of
 from vlesshub.tgcollect import collect_proxies, select_proxies
 from vlesshub.tgparse import TgProxy
 from vlesshub.tgprobe import probe_many
@@ -75,6 +77,7 @@ def run_pipeline(
         return 1
 
     state_dir.mkdir(parents=True, exist_ok=True)
+    stability = Stability.load(out_dir / "data" / "stability.json")
     history = History.load(state_dir / "history.json")
     health = load_health(state_dir / "source_health.json")
     blocked = deprioritized_names(health)
@@ -83,8 +86,17 @@ def run_pipeline(
     had_success = history.has_success()
     history.mark_misses({cfg.fingerprint for cfg in configs})
 
-    tcp_pool = [cfg for cfg in configs if cfg.protocol != "hysteria2"]
-    hy2_pool = [cfg for cfg in configs if cfg.protocol == "hysteria2"]
+    alive = [
+        cfg
+        for cfg in configs
+        if not dropped_after(stability.bits(cfg.fingerprint), settings.drop_after_failures)
+        and not history.excluded(cfg.fingerprint, settings.drop_after_failures)
+    ]
+    dropped = len(configs) - len(alive)
+    if dropped:
+        log(f"dropped {dropped} configs after {settings.drop_after_failures} failed runs")
+    tcp_pool = [cfg for cfg in alive if cfg.protocol != "hysteria2"]
+    hy2_pool = [cfg for cfg in alive if cfg.protocol == "hysteria2"]
     candidates = select_candidates(
         tcp_pool,
         history,
@@ -130,21 +142,50 @@ def run_pipeline(
         log("proxy tests skipped (--skip-download)")
 
     tested_proxy = {cfg.fingerprint for cfg in proxy_targets}
-    verified: list[VlessConfig] = []
+    working: list[VlessConfig] = []
+    unstable: list[VlessConfig] = []
     unverified: list[VlessConfig] = []
     evaluated: list[tuple[VlessConfig, bool]] = []
 
     def _reject(result: ProbeResult | None) -> None:
-        reason = failure_reason(result) or "dead"
+        reason = failure_reason(result)
+        if not reason:
+            return
         rejections[reason] = rejections.get(reason, 0) + 1
+
+    def _mark(cfg: VlessConfig, ok: bool) -> None:
+        bits = stability.note(cfg.fingerprint, ok)
+        cfg.bits = bits
+        cfg.stability = stability.rate(cfg.fingerprint)
+        cfg.status = status_of(ok, bits)
+        if cfg.stability is not None:
+            cfg.uptime = cfg.stability
 
     def _accept(cfg: VlessConfig, result: ProbeResult) -> None:
         cfg.latency_ms = result.latency_ms
+        cfg.handshake_ms = result.handshake_ms
         cfg.speed_kbps = result.speed_kbps
+        cfg.exit_ip = result.exit_ip
         cfg.verified = "proxy"
         history.record(cfg.fingerprint, ok=True, latency_ms=result.latency_ms)
-        verified.append(cfg)
+        _mark(cfg, True)
+        if cfg.status == "unstable":
+            unstable.append(cfg)
+        else:
+            working.append(cfg)
         evaluated.append((cfg, True))
+
+    def _fail_proxy(cfg: VlessConfig, result: ProbeResult | None) -> None:
+        if result is not None and not result.evaluated:
+            history.seen(cfg.fingerprint)
+            return
+        cfg.latency_ms = None
+        cfg.verified = ""
+        cfg.status = "dead"
+        history.record(cfg.fingerprint, ok=False, latency_ms=None)
+        _mark(cfg, False)
+        _reject(result)
+        evaluated.append((cfg, False))
 
     for cfg in candidates:
         tcp_result = tcp.get(cfg.fingerprint)
@@ -153,11 +194,7 @@ def run_pipeline(
             if proxy_result and proxy_result.ok:
                 _accept(cfg, proxy_result)
             else:
-                cfg.latency_ms = None
-                cfg.verified = ""
-                history.record(cfg.fingerprint, ok=False, latency_ms=None)
-                _reject(proxy_result)
-                evaluated.append((cfg, False))
+                _fail_proxy(cfg, proxy_result)
         elif tcp_result and tcp_result.ok:
             # Open port only. Not a success and not a displayed latency.
             cfg.latency_ms = None
@@ -165,8 +202,12 @@ def run_pipeline(
             cfg.verified = "tcp"
             history.seen(cfg.fingerprint)
             unverified.append(cfg)
+        elif tcp_result is not None and not tcp_result.evaluated:
+            history.seen(cfg.fingerprint)
         else:
+            cfg.status = "dead"
             history.record(cfg.fingerprint, ok=False, latency_ms=None)
+            _mark(cfg, False)
             _reject(tcp_result)
             evaluated.append((cfg, False))
 
@@ -177,29 +218,28 @@ def run_pipeline(
         if proxy_result and proxy_result.ok:
             _accept(cfg, proxy_result)
         else:
-            cfg.latency_ms = None
-            cfg.verified = ""
-            history.record(cfg.fingerprint, ok=False, latency_ms=None)
-            _reject(proxy_result)
-            evaluated.append((cfg, False))
+            _fail_proxy(cfg, proxy_result)
 
     apply_source_health(reports, evaluated, health)
     save_health(state_dir / "source_health.json", health)
 
-    carried = carry_verified(configs, history, {cfg.fingerprint for cfg in verified})
-    carried_ids = {cfg.fingerprint for cfg in carried}
-    if carried_ids:
-        unverified = [cfg for cfg in unverified if cfg.fingerprint not in carried_ids]
-        log(f"carried {len(carried)} previously verified configs")
-
     cache = GeoCache.load(state_dir / "geo_cache.json")
     mmdb = None if skip_download else ensure_geoip(root / "data" / "Country.mmdb")
-    enrich(verified + carried + unverified, cache, mmdb, settings.user_agent)
-    for cfg in verified + carried + unverified:
+    passed = working + unstable
+    passed_ids = {cfg.fingerprint for cfg in passed}
+    enrich(passed + unverified, cache, mmdb, settings.user_agent)
+    apply_exit_countries(passed, mmdb)
+    for cfg in passed + unverified:
         entry = history.get(cfg.fingerprint)
         if entry is not None and cfg.country:
             entry["country"] = cfg.country
         history.apply_to(cfg.fingerprint, cfg)
+        if cfg.fingerprint in passed_ids:
+            cfg.bits = stability.bits(cfg.fingerprint)
+            cfg.stability = stability.rate(cfg.fingerprint)
+            if cfg.stability is not None:
+                cfg.uptime = cfg.stability
+            cfg.status = status_of(True, cfg.bits)
 
     history.prune(settings.drop_after_failures)
     history.save(state_dir / "history.json")
@@ -210,14 +250,15 @@ def run_pipeline(
     tg_history.save(state_dir / "tg_history.json")
     cache.save(state_dir / "geo_cache.json")
 
-    published = rank_published(verified + carried)
+    published = rank_published(working)
+    unstable_ranked = rank_published(unstable)
     unverified_sorted = sorted(unverified, key=lambda cfg: (cfg.country or "ZZ", cfg.fingerprint))
-    proxy_ok = len(published)
+    proxy_ok = len(passed)
     log(
-        f"publish {proxy_ok} proxy-verified, {len(unverified_sorted)} unverified "
-        f"from {len(configs)} unique; rejected {rejections}"
+        f"publish {len(published)} working, {len(unstable_ranked)} unstable, "
+        f"{len(unverified_sorted)} unverified from {len(configs)} unique; rejected {rejections}"
     )
-    if not published and had_success:
+    if not passed and had_success:
         log("no proxy-verified configs in this run; history was saved, site was left unchanged")
         return 2
 
@@ -225,6 +266,7 @@ def run_pipeline(
         out_dir=out_dir,
         site_dir=site_dir,
         configs=published,
+        unstable=unstable_ranked,
         unverified=unverified_sorted,
         reports=reports,
         collected=sum(report.links for report in reports),
@@ -242,6 +284,7 @@ def run_pipeline(
         tg_collected=len(tg_found),
         tg_tested=tg_tested,
     )
+    stability.save(out_dir / "data" / "stability.json")
     log(f"site written to {out_dir}")
     return 0
 

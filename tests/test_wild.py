@@ -21,7 +21,7 @@ def test_sip002_padding_variants_and_legacy_form():
     assert padded is not None and padded.protocol == "shadowsocks"
     assert padded.encryption == "chacha20-ietf-poly1305"
     assert padded.host == "45.9.75.37" and padded.port == 8000
-    assert padded.remark_country == ""
+    assert padded.remark_country == "RU"
     assert unpadded is not None
     assert unpadded.encryption == "aes-256-gcm"
     assert unpadded.uuid == "895b4b796a357570"
