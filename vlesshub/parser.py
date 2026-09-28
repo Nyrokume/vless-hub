@@ -17,13 +17,26 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import json
 import re
 from urllib.parse import quote, unquote, urlencode
 
 from vlesshub.models import VlessConfig
 
 VLESS_RE = re.compile(r"vless://[^\s<>\"'`]+", re.IGNORECASE)
-PROXY_RE = re.compile(r"(?:vless|trojan|ss|hysteria2|hy2)://[^\s<>\"'`]+", re.IGNORECASE)
+PROXY_RE = re.compile(
+    r"(?:vless|vmess|trojan|ssr|ss|tuic|hysteria2|hy2|hysteria|juicity|wireguard|naive)://[^\s<>\"'`]+",
+    re.IGNORECASE,
+)
+_UNSUPPORTED_SCHEMES = {
+    "vmess",
+    "ssr",
+    "tuic",
+    "hysteria",
+    "juicity",
+    "wireguard",
+    "naive",
+}
 _XHTTP_MODES = {"auto", "packet-up", "stream-one", "stream-up", "stream-down"}
 _ALPN_OK = {"h3", "h2", "http/1.1", "http/1.0"}
 _SS_METHODS = {
@@ -249,9 +262,13 @@ def parse_document(
     validate: bool = True,
 ) -> tuple[list[VlessConfig], dict[str, int]]:
     """Return kept configs and rejection counts for this document."""
-    reasons = {"parse_error": 0, "invalid_field": 0}
+    reasons = {"parse_error": 0, "invalid_field": 0, "unsupported_protocol": 0}
     configs: list[VlessConfig] = []
     for uri in extract_proxy_uris(text):
+        kind = _reject_kind(uri)
+        if kind:
+            reasons[kind] += 1
+            continue
         cfg = parse_any(uri, source=source)
         if cfg is None:
             reasons["parse_error"] += 1
@@ -261,6 +278,27 @@ def parse_document(
             continue
         configs.append(cfg)
     return configs, reasons
+
+
+def _reject_kind(uri: str) -> str | None:
+    """unsupported_protocol for schemes we do not test; None when parse_any should try."""
+    cleaned = _clean_uri(html.unescape(uri.strip()))
+    scheme = cleaned.split(":", 1)[0].lower()
+    if scheme in _UNSUPPORTED_SCHEMES or _is_wrapped_vmess(cleaned):
+        return "unsupported_protocol"
+    return None
+
+
+def _is_wrapped_vmess(uri: str) -> bool:
+    """Some lists put a VMess JSON share in an ss:// wrapper."""
+    if not uri.lower().startswith("ss://"):
+        return False
+    body = uri[len("ss://") :]
+    body = body.split("#", 1)[0].split("?", 1)[0]
+    if "@" in body:
+        return False
+    payload = _decode_json_b64(unquote(body).strip())
+    return isinstance(payload, dict) and "add" in payload and "id" in payload
 
 
 def invalid_reason(cfg: VlessConfig) -> str | None:
@@ -401,6 +439,7 @@ def _parse_query(query: str) -> dict[str, str]:
 def _split_host_port(hostport: str) -> tuple[str, int | None]:
     if not hostport:
         return "", None
+    hostport = _strip_port_path(hostport.strip())
     if hostport.startswith("["):
         end = hostport.find("]")
         if end < 0:
@@ -422,6 +461,43 @@ def _split_host_port(hostport: str) -> tuple[str, int | None]:
     if port < 1 or port > 65535 or not host:
         return "", None
     return host, port
+
+
+def _strip_port_path(hostport: str) -> str:
+    """Drop `/` or `/path` glued to the port (`host:443/?type=ws`)."""
+    if hostport.startswith("["):
+        end = hostport.find("]")
+        if end >= 0:
+            slash = hostport.find("/", end)
+            if slash >= 0:
+                return hostport[:slash]
+        return hostport
+    slash = hostport.find("/")
+    if slash >= 0:
+        return hostport[:slash]
+    return hostport
+
+
+def _decode_json_b64(payload: str) -> dict | None:
+    compact = "".join(payload.split())
+    if compact.lower().startswith("base64:"):
+        compact = compact[7:]
+    if len(compact) < 16 or not re.fullmatch(r"[A-Za-z0-9+/=_-]+", compact):
+        return None
+    compact = compact.replace("-", "+").replace("_", "/")
+    pad = "=" * ((4 - len(compact) % 4) % 4)
+    try:
+        raw = base64.b64decode(compact + pad, validate=False)
+    except Exception:
+        return None
+    text = raw.decode("utf-8", errors="ignore").strip()
+    if not text.startswith("{") or not text.endswith("}"):
+        return None
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return obj if isinstance(obj, dict) else None
 
 
 def _apply_query(cfg: VlessConfig, query: dict[str, str]) -> None:
@@ -544,16 +620,23 @@ def _plausible_name(value: str) -> bool:
 
 def _parse_ss(uri: str, source: str) -> VlessConfig | None:
     body, remark = _split_remark(uri[len("ss://") :])
+    if "?" in body:
+        body = body.split("?", 1)[0]
     method = ""
     password = ""
     host = ""
     port: int | None = None
     if "@" in body:
         userinfo, hostport = body.rsplit("@", 1)
-        decoded = _b64_userinfo(unquote(userinfo))
-        if not decoded or ":" not in decoded:
-            return None
-        method, password = decoded.split(":", 1)
+        userinfo = unquote(userinfo)
+        plain = _plain_ss_userinfo(userinfo)
+        if plain:
+            method, password = plain
+        else:
+            decoded = _b64_userinfo(userinfo)
+            if not decoded or ":" not in decoded:
+                return None
+            method, password = decoded.split(":", 1)
         host, port = _split_host_port(hostport)
     else:
         decoded = _b64_userinfo(unquote(body))
@@ -648,6 +731,16 @@ def _split_remark(body: str) -> tuple[str, str]:
         return body, ""
     body, fragment = body.split("#", 1)
     return body, _unquote_repeat(fragment).strip()
+
+
+def _plain_ss_userinfo(userinfo: str) -> tuple[str, str] | None:
+    if ":" not in userinfo:
+        return None
+    method, password = userinfo.split(":", 1)
+    method = method.strip().lower()
+    if method not in _SS_METHODS or not password:
+        return None
+    return method, password
 
 
 def _b64_userinfo(value: str) -> str | None:

@@ -11,6 +11,7 @@ import {
   Globe,
   Link2,
   Moon,
+  ScrollText,
   Server,
   Smartphone,
   Tag,
@@ -117,22 +118,70 @@ function ChoiceSheet<T extends string>({
   )
 }
 
-function FailureCounts({ data }: { data: HubData | null }) {
-  const rejected = data?.stats.rejected
-  if (!rejected) return null
-  const rows = Object.entries(rejected)
-    .map(([key, count]) => ({ key, label: reasonLabel(key), count }))
-    .filter((row) => row.count > 0)
-  if (rows.length === 0) return null
+function LogLine({ label, value }: { label: string; value: string }) {
   return (
-    <ul className="flex flex-col gap-1">
-      {rows.map((row) => (
-        <li key={row.key} className="flex justify-between gap-3">
-          <span>{row.label}</span>
-          <span className="tabular-nums">{row.count}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex items-baseline justify-between gap-3 py-1">
+      <span className="min-w-0">{label}</span>
+      <span className="shrink-0 tabular-nums text-foreground">{value}</span>
+    </div>
+  )
+}
+
+function RunLogs({ data }: { data: HubData | null }) {
+  const rejected = data?.stats.rejected
+  const reasons = rejected
+    ? Object.entries(rejected)
+        .map(([key, count]) => ({ key, label: reasonLabel(key), count }))
+        .filter((row) => row.count > 0)
+        .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'ru'))
+    : []
+  const sources = data?.sources ?? []
+  return (
+    <div className="px-4 pb-3 text-[14px] text-muted-foreground">
+      {!data && <p>{ru.noData}</p>}
+      {data && (
+        <>
+          <p>
+            {formatStamp(data.generated_at)}
+            {' · '}
+            {ru.settings.duration(data.duration_sec)}
+          </p>
+          <div className="mt-2">
+            <LogLine label={ru.settings.collected} value={String(data.stats.fetched)} />
+            <LogLine label={ru.settings.unique} value={String(data.stats.unique)} />
+            <LogLine label={ru.settings.portsChecked} value={String(data.stats.tested)} />
+            <LogLine label={ru.settings.proxyChecked} value={String(data.stats.proxy_tested ?? data.stats.tested)} />
+            <LogLine label={ru.settings.published} value={String(data.stats.published)} />
+          </div>
+          {reasons.length > 0 && (
+            <>
+              <p className="mt-3 font-medium text-foreground">{ru.settings.dropped}</p>
+              <div>
+                {reasons.map((row) => (
+                  <LogLine key={row.key} label={row.label} value={String(row.count)} />
+                ))}
+              </div>
+            </>
+          )}
+          <p className="mt-3 font-medium text-foreground">{ru.settings.sources}</p>
+          {sources.length === 0 && <p className="py-1">{ru.noData}</p>}
+          {sources.map((source) => {
+            const yieldPct = source.yield == null ? ru.settings.dash : `${Math.round(source.yield * 100)}%`
+            return (
+              <div key={source.id} className="border-t border-border py-2">
+                <p className="truncate text-[15px] text-foreground">{source.name}</p>
+                <p className="text-[13px]">
+                  {source.ok
+                    ? ru.settings.sourceMeta(source.fetched, source.kept ?? 0, source.verified ?? 0, yieldPct)
+                    : ru.settings.sourceError}
+                  {source.deprioritized ? ` · ${ru.settings.lowYield}` : ''}
+                </p>
+              </div>
+            )
+          })}
+        </>
+      )}
+    </div>
   )
 }
 
@@ -147,14 +196,6 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
     setBaseDraft(settings.publicBase)
     setPicker('base')
   }
-
-  const rejected = data?.stats.rejected
-  const rejectedParts = rejected
-    ? Object.entries(rejected)
-        .filter(([, count]) => count > 0)
-        .map(([key, count]) => `${reasonLabel(key)} ${count}`)
-    : []
-  const rejectedLine = rejectedParts.length ? `Отброшено: ${rejectedParts.join(', ')}` : ''
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
@@ -269,12 +310,6 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
               : 'Стран: —'
           }
         />
-        {rejectedLine && (
-          <>
-            <Separator />
-            <InfoRow icon={<Gauge className="size-4" />} text={rejectedLine} />
-          </>
-        )}
       </Group>
 
       <Collapsible className="mb-6">
@@ -298,11 +333,6 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
                   <CollapsibleContent>
                     <div className="px-4 pb-3 text-[14px] leading-relaxed text-muted-foreground">
                       <p>{item.body}</p>
-                      {item.id === 'check' && (
-                        <div className="mt-3">
-                          <FailureCounts data={data} />
-                        </div>
-                      )}
                       {item.id === 'inspect' && (
                         <div className="mt-3">
                           <InspectScreen embedded />
@@ -321,31 +351,14 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         <div className="overflow-hidden rounded-2xl bg-card">
           <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left">
             <IconTile>
-              <Server className="size-4" />
+              <ScrollText className="size-4" />
             </IconTile>
-            <span className="flex-1 text-[17px]">Источники</span>
+            <span className="flex-1 text-[17px]">{ru.settings.logs}</span>
             <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
           </CollapsibleTrigger>
           <CollapsibleContent>
-            {(data?.sources ?? []).map((source) => (
-              <div key={source.id}>
-                <Separator />
-                <div className="px-4 py-2.5">
-                  <p className="text-[15px]">{source.name}</p>
-                  <p className="text-[13px] text-muted-foreground">
-                    {source.ok ? source.fetched : 'ошибка'}
-                    {source.yield == null ? '' : ` · ${Math.round(source.yield * 100)}%`}
-                    {source.deprioritized ? ' · низкий выход' : ''}
-                  </p>
-                </div>
-              </div>
-            ))}
-            {(!data || data.sources.length === 0) && (
-              <>
-                <Separator />
-                <p className="px-4 py-3 text-[14px] text-muted-foreground">Нет данных</p>
-              </>
-            )}
+            <Separator />
+            <RunLogs data={data} />
           </CollapsibleContent>
         </div>
       </Collapsible>

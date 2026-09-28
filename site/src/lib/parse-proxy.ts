@@ -151,6 +151,15 @@ function cleanUri(uri: string): string {
 
 function splitHostPort(hostport: string): { host: string; port: number } | null {
   if (!hostport) return null
+  hostport = hostport.trim()
+  if (hostport.startsWith('[')) {
+    const end = hostport.indexOf(']')
+    const slash = end >= 0 ? hostport.indexOf('/', end) : -1
+    if (slash >= 0) hostport = hostport.slice(0, slash)
+  } else {
+    const slash = hostport.indexOf('/')
+    if (slash >= 0) hostport = hostport.slice(0, slash)
+  }
   let host = ''
   let portStr = ''
   if (hostport.startsWith('[')) {
@@ -412,19 +421,29 @@ function parseSs(uri: string): Fields | null {
   let password = ''
   let host = ''
   let port: number | null = null
-  if (marked.body.includes('@')) {
-    const at = marked.body.lastIndexOf('@')
-    const decoded = b64Text(unquote(marked.body.slice(0, at)))
-    if (!decoded || !decoded.includes(':')) return null
-    const colon = decoded.indexOf(':')
-    method = decoded.slice(0, colon)
-    password = decoded.slice(colon + 1)
-    const hostport = splitHostPort(marked.body.slice(at + 1))
+  const queryAt = marked.body.indexOf('?')
+  const ssBody = queryAt >= 0 ? marked.body.slice(0, queryAt) : marked.body
+  if (ssBody.includes('@')) {
+    const at = ssBody.lastIndexOf('@')
+    const userinfo = unquote(ssBody.slice(0, at))
+    const colon = userinfo.indexOf(':')
+    const methodName = colon >= 0 ? userinfo.slice(0, colon).toLowerCase() : ''
+    if (SS_METHODS.has(methodName)) {
+      method = methodName
+      password = userinfo.slice(colon + 1)
+    } else {
+      const decoded = b64Text(userinfo)
+      if (!decoded || !decoded.includes(':')) return null
+      const decodedColon = decoded.indexOf(':')
+      method = decoded.slice(0, decodedColon)
+      password = decoded.slice(decodedColon + 1)
+    }
+    const hostport = splitHostPort(ssBody.slice(at + 1))
     if (!hostport) return null
     host = hostport.host
     port = hostport.port
   } else {
-    const decoded = b64Text(unquote(marked.body))
+    const decoded = b64Text(unquote(ssBody))
     if (!decoded || !decoded.includes('@')) return null
     const at = decoded.lastIndexOf('@')
     const user = decoded.slice(0, at)

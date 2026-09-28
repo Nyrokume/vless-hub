@@ -584,7 +584,7 @@ def _rejected_counts(rejections: dict[str, int] | None) -> dict[str, int]:
     counts["dead"] = sum(
         value
         for key, value in counts.items()
-        if key not in {"parse_error", "invalid_field", "timeout", "dead"}
+        if key not in {"parse_error", "invalid_field", "unsupported_protocol", "timeout", "dead"}
     )
     return counts
 

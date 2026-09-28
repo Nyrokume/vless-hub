@@ -53,6 +53,7 @@ class SourceReport:
     error: str = ""
     parse_error: int = 0
     invalid_field: int = 0
+    unsupported_protocol: int = 0
     verified: int = 0
     tested: int = 0
     yield_ratio: float | None = None

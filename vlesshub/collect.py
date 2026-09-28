@@ -48,7 +48,7 @@ def collect_all(
     enabled = [source for source in sources if source.enabled and source.kind != "telegram-proxy"]
     reports: list[SourceReport] = []
     configs: list[VlessConfig] = []
-    reasons = {"parse_error": 0, "invalid_field": 0}
+    reasons = {"parse_error": 0, "invalid_field": 0, "unsupported_protocol": 0}
     workers = max(1, settings.fetch_concurrency)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_fetch_source, settings, source): source for source in enabled}
@@ -68,6 +68,7 @@ def collect_all(
             configs.extend(parsed)
             reasons["parse_error"] += report.parse_error
             reasons["invalid_field"] += report.invalid_field
+            reasons["unsupported_protocol"] += report.unsupported_protocol
             state = "ok" if report.ok else "fail"
             log(
                 f"source {report.name}: {state} status={report.status} "
@@ -98,7 +99,10 @@ def _fetch_source(settings: Settings, source: Source) -> tuple[SourceReport, lis
         parsed, doc_reasons = parse_document(text, source=source.name, validate=True)
         report.parse_error = doc_reasons["parse_error"]
         report.invalid_field = doc_reasons["invalid_field"]
-        report.links = report.parse_error + report.invalid_field + len(parsed)
+        report.unsupported_protocol = doc_reasons.get("unsupported_protocol", 0)
+        report.links = (
+            report.parse_error + report.invalid_field + report.unsupported_protocol + len(parsed)
+        )
         report.kept = min(len(parsed), settings.max_links_per_source)
         report.ok = True
         report.elapsed_ms = round((time.perf_counter() - started) * 1000, 1)

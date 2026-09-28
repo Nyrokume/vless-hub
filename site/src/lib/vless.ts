@@ -107,6 +107,15 @@ function normalizeSecurity(value: string): string {
 
 function splitHostPort(hostport: string): { host: string; port: number } | null {
   if (!hostport) return null
+  hostport = hostport.trim()
+  if (hostport.startsWith('[')) {
+    const end = hostport.indexOf(']')
+    const slash = end >= 0 ? hostport.indexOf('/', end) : -1
+    if (slash >= 0) hostport = hostport.slice(0, slash)
+  } else {
+    const slash = hostport.indexOf('/')
+    if (slash >= 0) hostport = hostport.slice(0, slash)
+  }
   let host = ''
   let portStr = ''
   if (hostport.startsWith('[')) {

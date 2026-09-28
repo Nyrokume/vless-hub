@@ -11,6 +11,7 @@ export const RAW_KEYS = [
   'http_fail',
   'no_data',
   'exit_ip_leak',
+  'unsupported_protocol',
   'dead',
   'working',
   'unstable',
@@ -30,6 +31,7 @@ const reasons = {
   http_fail: 'Сайт не открылся',
   no_data: 'Подключается, но не передаёт данные',
   exit_ip_leak: 'Трафик идёт мимо прокси',
+  unsupported_protocol: 'Протокол не поддерживается',
   dead: 'Не работает',
 } as const
 
@@ -200,7 +202,6 @@ export const ru = {
     inListEmpty: 'В списке: —',
     countryLine: (countries: number, median: string) => `Стран: ${countries} · средний пинг ${median}`,
     countryEmpty: 'Стран: —',
-    rejected: (parts: string) => `Отброшено: ${parts}`,
     guide: 'Инструкции',
     sources: 'Источники',
     sourceError: 'ошибка',
@@ -214,6 +215,22 @@ export const ru = {
     save: 'Сохранить',
     restoreAddress: 'Вернуть обычный адрес',
     dash: '—',
+    logs: 'Логи',
+    dropped: 'Отброшено',
+    collected: 'Собрано ссылок',
+    unique: 'Уникальных',
+    portsChecked: 'Проверено портов',
+    proxyChecked: 'Проверено через прокси',
+    published: 'В списке',
+    duration: (seconds: number) => {
+      const whole = Math.max(0, Math.round(seconds))
+      const minutes = Math.floor(whole / 60)
+      const rest = whole % 60
+      if (minutes === 0) return `${rest} с`
+      return `${minutes} мин ${rest} с`
+    },
+    sourceMeta: (links: number, kept: number, verified: number, yieldPct: string) =>
+      `ссылок ${links} · разобрано ${kept} · рабочих ${verified} · выход ${yieldPct}`,
   },
   guideItems: [
     {

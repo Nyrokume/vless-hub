@@ -6,7 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from vlesshub.parser import build_uri, dedup, extract_vless_uris, fingerprint, parse_many, parse_vless
+from vlesshub.parser import (
+    build_uri,
+    dedup,
+    extract_vless_uris,
+    fingerprint,
+    parse_any,
+    parse_document,
+    parse_many,
+    parse_vless,
+)
 
 FIXTURES = json.loads((Path(__file__).parent / "fixtures.json").read_text(encoding="utf-8"))
 
@@ -158,3 +167,45 @@ def test_javascript_parser_matches_python():
         assert cfg.network == row["network"]
         assert cfg.pbk == row["pbk"]
         assert cfg.host == row["host"]
+
+
+def test_slash_before_query_and_plain_shadowsocks():
+    vless = parse_any(
+        "vless://11111111-1111-4111-8111-111111111111@104.16.72.70:443/"
+        "?type=ws&security=tls&path=%2Fid#x"
+    )
+    assert vless is not None
+    assert vless.port == 443 and vless.network == "ws" and vless.path == "/id"
+    trojan = parse_any("trojan://!d8jYnLU)@172.66.46.215:8443/?type=tcp&security=tls&sni=anten.ir#t")
+    assert trojan is not None and trojan.uuid == "!d8jYnLU)" and trojan.port == 8443
+    hy2 = parse_any("hysteria2://secret@167.179.34.31:55443/?insecure=1&sni=example.com#h")
+    assert hy2 is not None and hy2.port == 55443 and hy2.allow_insecure is True
+    ss = parse_any(
+        "ss://2022-blake3-aes-256-gcm:firstKey=:secondKey=@31.57.185.82:36969?type=tcp#s"
+    )
+    assert ss is not None
+    assert ss.encryption == "2022-blake3-aes-256-gcm"
+    assert ss.uuid == "firstKey=:secondKey="
+    assert ss.port == 36969
+
+
+def test_vmess_is_unsupported_and_broken_link_stays_parse_error():
+    import base64
+
+    blob = base64.b64encode(
+        b'{"add":"1.2.3.4","id":"11111111-1111-4111-8111-111111111111","port":"443","net":"ws"}'
+    ).decode()
+    text = "\n".join(
+        [
+            f"ss://{blob}",
+            "vmess://aabb",
+            "ssr://aabb",
+            "tuic://user:pass@1.2.3.4:443",
+            "vless://not-closed",
+            "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=tcp#ok",
+        ]
+    )
+    kept, reasons = parse_document(text, validate=True)
+    assert len(kept) == 1
+    assert reasons["unsupported_protocol"] == 4
+    assert reasons["parse_error"] == 1

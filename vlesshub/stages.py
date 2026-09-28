@@ -23,6 +23,7 @@ STABILITY_MIN_RATE = 0.7
 REASONS = (
     "parse_error",
     "invalid_field",
+    "unsupported_protocol",
     "tcp_refused",
     "timeout",
     "tls_fail",
