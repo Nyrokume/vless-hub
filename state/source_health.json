@@ -1,105 +1,105 @@
 {
   "sources": {
     "barry-far-ss": {
-      "tested": 84,
-      "verified": 71,
-      "yield": 0.8452,
+      "tested": 87,
+      "verified": 72,
+      "yield": 0.8276,
       "zero_streak": 0,
       "deprioritized": false
     },
     "barry-far-trojan": {
-      "tested": 22,
-      "verified": 6,
-      "yield": 0.2727,
+      "tested": 24,
+      "verified": 2,
+      "yield": 0.0833,
       "zero_streak": 0,
       "deprioritized": false
     },
     "barry-far-vless": {
-      "tested": 242,
-      "verified": 143,
-      "yield": 0.5909,
+      "tested": 297,
+      "verified": 131,
+      "yield": 0.4411,
       "zero_streak": 0,
       "deprioritized": false
     },
     "ebrasha-ss": {
-      "tested": 126,
-      "verified": 95,
-      "yield": 0.754,
+      "tested": 140,
+      "verified": 105,
+      "yield": 0.75,
       "zero_streak": 0,
       "deprioritized": false
     },
     "ebrasha-trojan": {
-      "tested": 23,
-      "verified": 3,
-      "yield": 0.1304,
+      "tested": 17,
+      "verified": 4,
+      "yield": 0.2353,
       "zero_streak": 0,
       "deprioritized": false
     },
     "ebrasha-vless": {
-      "tested": 563,
-      "verified": 320,
-      "yield": 0.5684,
+      "tested": 745,
+      "verified": 284,
+      "yield": 0.3812,
       "zero_streak": 0,
       "deprioritized": false
     },
     "epodonios-ss": {
-      "tested": 78,
-      "verified": 67,
-      "yield": 0.859,
+      "tested": 83,
+      "verified": 68,
+      "yield": 0.8193,
       "zero_streak": 0,
       "deprioritized": false
     },
     "epodonios-trojan": {
-      "tested": 22,
-      "verified": 6,
-      "yield": 0.2727,
+      "tested": 19,
+      "verified": 2,
+      "yield": 0.1053,
       "zero_streak": 0,
       "deprioritized": false
     },
     "epodonios-vless": {
-      "tested": 237,
-      "verified": 146,
-      "yield": 0.616,
+      "tested": 208,
+      "verified": 121,
+      "yield": 0.5817,
       "zero_streak": 0,
       "deprioritized": false
     },
     "mahdibland-base64": {
-      "tested": 54,
-      "verified": 48,
-      "yield": 0.8889,
+      "tested": 53,
+      "verified": 45,
+      "yield": 0.8491,
       "zero_streak": 0,
       "deprioritized": false
     },
     "matinghanbari-mix": {
-      "tested": 57,
-      "verified": 39,
-      "yield": 0.6842,
+      "tested": 181,
+      "verified": 52,
+      "yield": 0.2873,
       "zero_streak": 0,
       "deprioritized": false
     },
     "peasoft-list": {
       "tested": 30,
-      "verified": 11,
-      "yield": 0.3667,
+      "verified": 12,
+      "yield": 0.4,
       "zero_streak": 0,
       "deprioritized": false
     },
     "radikal-vless": {
-      "tested": 571,
-      "verified": 356,
-      "yield": 0.6235,
+      "tested": 769,
+      "verified": 283,
+      "yield": 0.368,
       "zero_streak": 0,
       "deprioritized": false
     },
     "tg-v2rayng3": {
-      "tested": 12,
+      "tested": 13,
       "verified": 12,
-      "yield": 1.0,
+      "yield": 0.9231,
       "zero_streak": 0,
       "deprioritized": false
     },
     "tg-vlessconfig": {
-      "tested": 1,
+      "tested": 4,
       "verified": 0,
       "yield": 0.0,
       "zero_streak": 6,
@@ -107,15 +107,15 @@
     },
     "tg-vlessvpnfree": {
       "tested": 1,
-      "verified": 1,
-      "yield": 1.0,
+      "verified": 0,
+      "yield": 0.0,
       "zero_streak": 0,
       "deprioritized": false
     },
     "ebrasha-hysteria2": {
-      "tested": 21,
-      "verified": 18,
-      "yield": 0.8571,
+      "tested": 20,
+      "verified": 20,
+      "yield": 1.0,
       "zero_streak": 0,
       "deprioritized": false
     }
