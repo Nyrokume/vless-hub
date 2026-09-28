@@ -6,27 +6,32 @@ import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
 import { Button } from '@/components/ui/button'
 import { loadHub } from '@/lib/data'
+import { useSettings } from '@/lib/settings'
 import type { HubData } from '@/lib/types'
+
+const AUTO_REFRESH_MS = 15 * 60 * 1000
 
 function useHub() {
   const [data, setData] = useState<HubData | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const reload = useCallback(async () => {
-    setLoading(true)
+  const reload = useCallback(async (force = false) => {
+    if (!force) setLoading(true)
     setError(null)
     try {
-      setData(await loadHub())
+      setData(await loadHub(force))
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Ошибка загрузки')
+      const message = reason instanceof Error ? reason.message : 'Ошибка загрузки'
+      setError(message)
+      throw new Error(message)
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    void reload()
+    void reload().catch(() => undefined)
   }, [reload])
 
   return { data, error, loading, reload }
@@ -34,13 +39,27 @@ function useHub() {
 
 export default function App() {
   const [tab, setTab] = useState<AppTab>('configs')
+  const { settings } = useSettings()
   const { data, error, loading, reload } = useHub()
+
+  useEffect(() => {
+    if (!settings.autoRefresh) return
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void reload(true).catch(() => undefined)
+    }
+    document.addEventListener('visibilitychange', refresh)
+    const timer = window.setInterval(() => void reload(true).catch(() => undefined), AUTO_REFRESH_MS)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.clearInterval(timer)
+    }
+  }, [reload, settings.autoRefresh])
 
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <main className="pb-24">
         {tab === 'guide' ? (
-          <GuideScreen data={data} />
+          <GuideScreen data={data} onRefresh={() => reload(true)} />
         ) : loading && !data ? (
           <LoadingState />
         ) : error && !data ? (

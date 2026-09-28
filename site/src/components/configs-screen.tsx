@@ -11,7 +11,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@/components/ui/input-group'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
 import { FilterSheet } from '@/components/filter-sheet'
@@ -386,8 +387,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  const median = data.stats.median_latency_ms
-  const statsLine = `${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')} · медиана ${median == null ? '—' : median} мс`
+  const median = data.stats.median_latency_ms == null ? '—' : Math.round(data.stats.median_latency_ms)
+  const statsLine = `${formatStamp(data.generated_at)} · ${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')} · медиана HTTP ${median} мс`
   const filtersOn = sessionFilters > 0 || settings.latencyThreshold != null
 
   const menu = (
@@ -420,28 +421,41 @@ export function ConfigsScreen({ data }: { data: HubData }) {
 
   return (
     <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', selecting && chosen.length > 0 && 'pb-36')}>
-      <SiteHeader updated={formatStamp(data.generated_at)} menu={menu} />
-      <p className="mb-3 text-[13px] text-muted-foreground">{statsLine}</p>
+      <SiteHeader menu={menu} />
+      <p className="mb-2 text-xs text-muted-foreground">{statsLine}</p>
 
       <div className="mb-3 flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+        <InputGroup className="min-w-0 flex-1 bg-card">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Страна, адрес, транспорт"
-            aria-label="Поиск конфигов"
-            className="h-10 rounded-xl border-0 bg-card pl-9"
+            aria-label="Поиск конфигураций Vless"
           />
-        </div>
-        <Button
-          variant={filtersOn ? 'secondary' : 'ghost'}
-          size="icon"
-          aria-label="Фильтры"
-          onClick={() => setFiltersOpen(true)}
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton size="icon-xs" aria-label="Фильтры" onClick={() => setFiltersOpen(true)}>
+              <SlidersHorizontal />
+              {filtersOn && <span className="sr-only">Фильтры включены</span>}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          spacing={0}
+          className="shrink-0"
+          value={settings.view === 'country' || settings.view === 'flat' ? settings.view : ''}
+          onValueChange={(value) => {
+            if (value === 'country' || value === 'flat') update({ view: value })
+          }}
+          aria-label="Вид списка"
         >
-          <SlidersHorizontal />
-        </Button>
+          <ToggleGroupItem value="country">По странам</ToggleGroupItem>
+          <ToggleGroupItem value="flat">Список</ToggleGroupItem>
+        </ToggleGroup>
       </div>
 
       <div className={settings.view === 'cards' ? '' : 'overflow-hidden rounded-2xl bg-card'}>

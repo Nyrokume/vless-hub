@@ -123,6 +123,46 @@ sources:
     enabled: true
     url: https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge_base64.txt
 
+  - name: taheri-vless
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/vless
+
+  - name: taheri-ss
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/ss
+
+  - name: taheri-trojan
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/trojan
+
+  - name: radikal-trojan
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/trojan.txt
+
+  - name: radikal-hysteria2
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/hysteria2.txt
+
+  - name: ermaozi-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt
+
+  - name: kamaji-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/shabane/kamaji/master/hub/merged.txt
+
+  - name: mahdibland-ss
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/sub/sub_merge.txt
+
 # kind: telegram-proxy — публичные MTProto (tg://proxy, t.me/proxy, секреты ee/dd)
 # и SOCKS5 (tg://socks, t.me/socks, socks5://). type как у VLESS: subscription или telegram.
 # limit — сколько ссылок брать из этого источника (0 = max_tg_links_per_source).
@@ -151,6 +191,20 @@ sources:
     enabled: true
     limit: 80
     url: https://raw.githubusercontent.com/Argh94/Proxy-List/main/SOCKS5.txt
+
+  - name: proxifly-socks5
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    limit: 80
+    url: https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/socks5/data.txt
+
+  - name: speedx-socks5
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    limit: 80
+    url: https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt
 
   - name: tg-proxymtproto
     kind: telegram-proxy

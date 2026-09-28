@@ -35,7 +35,19 @@ def test_publish_writes_subs_and_metadata(tmp_path):
         site_dir=site,
         configs=[cfg],
         unverified=[tcp_only],
-        reports=[SourceReport(name="demo", url="https://example.invalid", ok=True, links=1, kept=1)],
+        reports=[
+            SourceReport(
+                name="demo",
+                url="https://example.invalid",
+                ok=True,
+                links=4,
+                kept=2,
+                parsed=3,
+                verified=1,
+                kind="vless",
+                source_type="subscription",
+            )
+        ],
         collected=1,
         tcp_tested=1,
         tcp_ok=1,
@@ -92,6 +104,10 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     assert hub["configs"][0]["verified"] == "proxy"
     assert hub["unverified"][0]["latency_ms"] is None
     assert hub["stats"]["published"] == 1
+    assert hub["sources"][0]["fetched"] == 4
+    assert hub["sources"][0]["parsed"] == 3
+    assert hub["sources"][0]["passed"] == 1
+    assert hub["sources"][0]["type"] == "subscription"
     legacy = (out / "data" / "subs" / "all.txt").read_text(encoding="utf-8")
     assert legacy.startswith("#profile-title: V2Hub")
     assert "de.example" in legacy

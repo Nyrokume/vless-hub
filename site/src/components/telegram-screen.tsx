@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Copy, QrCode, Search, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { Separator } from '@/components/ui/separator'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
@@ -47,66 +48,66 @@ export function TelegramScreen({ data }: { data: HubData }) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-      <SiteHeader updated={formatStamp(data.generated_at)} />
-      <p className="mb-3 text-[13px] text-muted-foreground">
-        MTProto {stats?.mtproto ?? 0} · SOCKS {stats?.socks ?? 0} · медиана{' '}
-        {stats?.median_latency_ms == null ? '—' : stats.median_latency_ms} мс
+      <SiteHeader />
+      <p className="mb-2 text-xs text-muted-foreground">
+        {formatStamp(data.generated_at)} · MTProto {stats?.mtproto ?? 0} · SOCKS {stats?.socks ?? 0} · медиана{' '}
+        {stats?.median_latency_ms == null ? '—' : Math.round(stats.median_latency_ms)} мс
       </p>
       {best && (
-        <Button className="mb-4 w-full" onClick={() => openExternal(best.tg)}>
+        <Button className="mb-3 w-full" onClick={() => openExternal(best.tg)}>
           <Send />
-          Лучший в Telegram · {best.country || best.host} · {latencyText(best.latency_ms)}
+          Лучший · {best.country || best.host} · {latencyText(best.latency_ms)}
         </Button>
       )}
-      <div className="mb-3 flex flex-wrap gap-2">
-        {(data.unstable_proxies?.length ?? 0) > 0 && (
-          <button
-            type="button"
-            className={cn(
-              'rounded-full px-3 py-1.5 text-[13px]',
-              showUnstable ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-            )}
-            onClick={() => setShowUnstable((value) => !value)}
-          >
-            Нестабильные · {data.unstable_proxies?.length}
-          </button>
-        )}
-        {(['all', 'mtproto', 'socks'] as const).map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={cn(
-              'rounded-full px-3 py-1.5 text-[13px]',
-              kind === item ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-            )}
-            onClick={() => setKind(item)}
-          >
-            {item === 'all' ? 'Все' : item === 'mtproto' ? 'MTProto' : 'SOCKS'}
-          </button>
-        ))}
+      <div className="mb-3 flex items-center gap-2">
+        <InputGroup className="min-w-0 flex-1 bg-card">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Адрес или страна"
+            aria-label="Поиск прокси"
+          />
+        </InputGroup>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          spacing={0}
+          className="shrink-0"
+          value={kind}
+          onValueChange={(value) => {
+            if (value === 'all' || value === 'mtproto' || value === 'socks') setKind(value)
+          }}
+          aria-label="Тип прокси"
+        >
+          <ToggleGroupItem value="all">Все</ToggleGroupItem>
+          <ToggleGroupItem value="mtproto">MT</ToggleGroupItem>
+          <ToggleGroupItem value="socks">SOCKS</ToggleGroupItem>
+        </ToggleGroup>
         <select
           aria-label="Страна"
-          className="h-9 rounded-full bg-card px-3 text-[13px]"
+          className="h-8 shrink-0 rounded-lg border border-input bg-card px-2 text-sm"
           value={country}
           onChange={(event) => setCountry(event.target.value)}
         >
-          <option value="">Все страны</option>
+          <option value="">Страна</option>
           {countries.map((code) => (
             <option key={code} value={code}>
               {flagEmoji(code)} {code}
             </option>
           ))}
         </select>
-      </div>
-      <div className="relative mb-3">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Адрес или страна"
-          aria-label="Поиск прокси"
-          className="h-10 rounded-xl border-0 bg-card pl-9"
-        />
+        {(data.unstable_proxies?.length ?? 0) > 0 && (
+          <Button
+            size="sm"
+            variant={showUnstable ? 'default' : 'outline'}
+            onClick={() => setShowUnstable((value) => !value)}
+          >
+            Нестаб.
+          </Button>
+        )}
       </div>
       <div className="overflow-hidden rounded-2xl bg-card">
         {filtered.length === 0 ? (

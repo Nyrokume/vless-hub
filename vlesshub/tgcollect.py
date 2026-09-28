@@ -103,7 +103,13 @@ def _fetch(settings: Settings, source: Source) -> tuple[SourceReport, list[TgPro
 
     started = time.perf_counter()
     url = _source_url(source)
-    report = SourceReport(name=source.name, url=url, ok=False)
+    report = SourceReport(
+        name=source.name,
+        url=url,
+        ok=False,
+        kind=source.kind,
+        source_type=source.type,
+    )
     cap = source.limit or settings.max_tg_links_per_source
     try:
         if source.type == "telegram":
@@ -113,6 +119,7 @@ def _fetch(settings: Settings, source: Source) -> tuple[SourceReport, list[TgPro
         report.status = status
         parsed = parse_many(text, source=source.name)
         report.links = len(parsed)
+        report.parsed = len(parsed)
         kept = parsed[: max(0, cap)]
         report.kept = len(kept)
         report.ok = True

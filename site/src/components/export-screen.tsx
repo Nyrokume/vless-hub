@@ -17,7 +17,7 @@ import { flagEmoji, formatStamp, protocolLabel, securityLabel, transportLabel } 
 import { useSettings } from '@/lib/settings'
 import type { CatalogEntry, HubData } from '@/lib/types'
 
-const SLICE_ORDER = ['all', 'unstable', 'top', 'clash', 'singbox', 'unverified']
+const SLICE_ORDER = ['all', 'unstable', 'top', 'unverified']
 
 export function ExportScreen({ data }: { data: HubData }) {
   const { settings } = useSettings()
@@ -43,9 +43,14 @@ export function ExportScreen({ data }: { data: HubData }) {
   const protocols = plain
     .filter((item) => item.kind === 'protocol')
     .sort((left, right) => right.count - left.count || (left.protocol ?? '').localeCompare(right.protocol ?? ''))
-  const details = plain
-    .filter((item) => item.kind === 'security' || item.kind === 'transport')
-    .sort((left, right) => left.kind.localeCompare(right.kind) || right.count - left.count)
+  const security = plain
+    .filter((item) => item.kind === 'security')
+    .sort((left, right) => right.count - left.count)
+  const transports = plain
+    .filter((item) => item.kind === 'transport')
+    .sort((left, right) => right.count - left.count)
+  const clash = plain.filter((item) => item.kind === 'clash')
+  const singbox = plain.filter((item) => item.kind === 'singbox')
 
   function titleOf(entry: CatalogEntry): string {
     if (entry.kind === 'all') return 'Все проверенные'
@@ -85,7 +90,7 @@ export function ExportScreen({ data }: { data: HubData }) {
             key={entry.path}
             divided={index > 0}
             title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
+            detail={String(entry.count)}
             onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
             onQr={() => openQr(entry)}
             onClient={
@@ -110,7 +115,7 @@ export function ExportScreen({ data }: { data: HubData }) {
               key={entry.path}
               divided={index > 0}
               title={titleOf(entry)}
-              detail={`${entry.count} · ${entry.path}`}
+              detail={String(entry.count)}
               onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
               onQr={() => openQr(entry)}
               onClient={() => {
@@ -131,7 +136,7 @@ export function ExportScreen({ data }: { data: HubData }) {
             key={entry.path}
             divided={index > 0}
             title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
+            detail={String(entry.count)}
             onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
             onQr={() => openQr(entry)}
             onClient={() => {
@@ -145,25 +150,93 @@ export function ExportScreen({ data }: { data: HubData }) {
         ))}
       </Section>
 
-      <Section title="Защита и транспорт">
-        {details.map((entry, index) => (
-          <FileRow
-            key={entry.path}
-            divided={index > 0}
-            title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
-            onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
-            onQr={() => openQr(entry)}
-            onClient={() => {
-              const url = publicFileUrl(settings.publicBase, entry.path)
-              const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
-              if (link) openExternal(link)
-              else void copyText(url, 'Для этого клиента есть только ссылка')
-            }}
-            clientLabel={clientName(settings.client)}
-          />
-        ))}
-      </Section>
+      {security.length > 0 && (
+        <Section title="Защита">
+          {security.map((entry, index) => (
+            <FileRow
+              key={entry.path}
+              divided={index > 0}
+              title={titleOf(entry)}
+              detail={String(entry.count)}
+              onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+              onQr={() => openQr(entry)}
+              onClient={() => {
+                const url = publicFileUrl(settings.publicBase, entry.path)
+                const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
+                if (link) openExternal(link)
+                else void copyText(url, 'Для этого клиента есть только ссылка')
+              }}
+              clientLabel={clientName(settings.client)}
+            />
+          ))}
+        </Section>
+      )}
+
+      {transports.length > 0 && (
+        <Section title="Транспорт">
+          {transports.map((entry, index) => (
+            <FileRow
+              key={entry.path}
+              divided={index > 0}
+              title={titleOf(entry)}
+              detail={String(entry.count)}
+              onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+              onQr={() => openQr(entry)}
+              onClient={() => {
+                const url = publicFileUrl(settings.publicBase, entry.path)
+                const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
+                if (link) openExternal(link)
+                else void copyText(url, 'Для этого клиента есть только ссылка')
+              }}
+              clientLabel={clientName(settings.client)}
+            />
+          ))}
+        </Section>
+      )}
+
+      {clash.length > 0 && (
+        <Section title="Clash">
+          {clash.map((entry, index) => (
+            <FileRow
+              key={entry.path}
+              divided={index > 0}
+              title={titleOf(entry)}
+              detail={String(entry.count)}
+              onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+              onQr={() => openQr(entry)}
+              onClient={() => {
+                const url = publicFileUrl(settings.publicBase, entry.path)
+                const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
+                if (link) openExternal(link)
+                else void copyText(url, 'Для этого клиента есть только ссылка')
+              }}
+              clientLabel={clientName(settings.client)}
+            />
+          ))}
+        </Section>
+      )}
+
+      {singbox.length > 0 && (
+        <Section title="sing-box">
+          {singbox.map((entry, index) => (
+            <FileRow
+              key={entry.path}
+              divided={index > 0}
+              title={titleOf(entry)}
+              detail={String(entry.count)}
+              onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+              onQr={() => openQr(entry)}
+              onClient={() => {
+                const url = publicFileUrl(settings.publicBase, entry.path)
+                const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
+                if (link) openExternal(link)
+                else void copyText(url, 'Для этого клиента есть только ссылка')
+              }}
+              clientLabel={clientName(settings.client)}
+            />
+          ))}
+        </Section>
+      )}
 
       {data.stats.telegram && (
         <Section title="Telegram">
@@ -177,7 +250,7 @@ export function ExportScreen({ data }: { data: HubData }) {
               key={String(path)}
               divided={index > 0}
               title={String(title)}
-              detail={`${count} · ${path}`}
+              detail={String(count)}
               onCopy={() => void copyText(publicFileUrl(settings.publicBase, String(path)), 'Ссылка скопирована')}
               onQr={() =>
                 setQr({
@@ -206,7 +279,7 @@ export function ExportScreen({ data }: { data: HubData }) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="mb-5">
+    <section className="mb-4">
       <h2 className="px-1 pb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
         {title}
       </h2>
@@ -235,7 +308,7 @@ function FileRow({
   return (
     <div>
       {divided && <Separator />}
-      <div className="flex items-center gap-2 px-3 py-3 sm:px-4">
+      <div className="flex items-center gap-2 px-3 py-2.5 sm:px-4">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium sm:text-[16px]">{title}</p>
           <p className="truncate text-[12px] text-muted-foreground sm:text-[13px]">{detail}</p>

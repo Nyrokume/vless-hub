@@ -1,82 +1,86 @@
-import { InspectScreen } from '@/components/inspect-screen'
+import { useState } from 'react'
+import { ChevronLeft } from 'lucide-react'
 import { SettingsScreen } from '@/components/settings-screen'
 import { SiteHeader } from '@/components/site-header'
+import { Button } from '@/components/ui/button'
 import { FAILURE_LABELS, formatStamp } from '@/lib/format'
 import type { HubData } from '@/lib/types'
 
-function FailureCounts({ data }: { data: HubData | null }) {
-  const rejected = data?.stats.rejected
-  if (!rejected) return null
-  const rows = Object.keys(FAILURE_LABELS)
-    .map((key) => ({ key, label: FAILURE_LABELS[key], count: rejected[key] ?? 0 }))
-    .filter((row) => row.count > 0)
-  if (rows.length === 0) return null
+const HELP = [
+  {
+    title: 'V2Hub',
+    body: 'Публичные конфиги VLESS и прокси Telegram. Сайт не поднимает туннель и не подключается к серверу за вас.',
+  },
+  {
+    title: 'Как читать результат',
+    body: 'Точка на строке — рабочий или нестабильный конфиг. Пинг — медиана HTTP-запросов через Xray или sing-box. «Порт открыт» значит, что TCP ответил, а полный проход в этом запуске не выполнялся.',
+  },
+  {
+    title: 'Как забрать конфиги',
+    body: '«Экспорт» — срезы, страны, защита, транспорт, Clash и sing-box. На «Конфигурации Vless» отметьте строки и выгрузите текст, base64, файл, QR, Clash или sing-box.',
+  },
+  {
+    title: 'Проверка',
+    body: 'Разбор ссылки, TCP, рукопожатие, HTTP, короткая загрузка и адрес выхода. Рабочий прошёл сейчас и держится хотя бы в 70% последних прогонов. Нестабильный прошёл сейчас, но реже. Мёртвый в список не попадает. Проверка идёт с GitHub Actions вне России.',
+  },
+  {
+    title: 'Telegram',
+    body: 'Кнопка открывает tg://. Если клиент не открылся, рядом есть HTTPS и QR.',
+  },
+]
+
+export function GuideScreen({
+  data,
+  onRefresh,
+}: {
+  data: HubData | null
+  onRefresh?: () => Promise<void>
+}) {
+  const [help, setHelp] = useState(false)
+  if (help) return <HelpScreen data={data} onBack={() => setHelp(false)} />
   return (
-    <ul className="mt-3 flex flex-col gap-1 text-[13px] text-muted-foreground">
-      {rows.map((row) => (
-        <li key={row.key} className="flex justify-between gap-3">
-          <span>{row.label}</span>
-          <span className="tabular-nums">{row.count}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+      <SiteHeader />
+      <p className="mb-3 text-xs text-muted-foreground">{data ? formatStamp(data.generated_at) : 'Настройки'}</p>
+      <SettingsScreen data={data} embedded onOpenHelp={() => setHelp(true)} onRefresh={onRefresh} />
+    </div>
   )
 }
 
-export function GuideScreen({ data }: { data: HubData | null }) {
+function HelpScreen({ data, onBack }: { data: HubData | null; onBack: () => void }) {
+  const rejected = data?.stats.rejected
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
-      <SiteHeader updated={data ? formatStamp(data.generated_at) : undefined} />
-      <div className="mb-6 flex flex-col gap-3 text-[15px] leading-relaxed">
-        <p>
-          V2Hub собирает публичные конфиги VLESS и прокси Telegram, проверяет их и отдаёт списками.
-          Сайт не поднимает туннель и не подключается к серверу за вас.
-        </p>
-        <div className="rounded-2xl bg-card px-4 py-3">
-          <p className="font-medium">Как читать результат</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            Точка на строке — рабочий или нестабильный конфиг. Пинг — медиана нескольких HTTP-запросов
-            через уже запущенный Xray или sing-box, без прогрева. Рядом доля успешных прогонов и
-            скорость. «Порт открыт» значит, что TCP ответил, а полный проход в этом запуске не
-            выполнялся.
-          </p>
-        </div>
-        <div className="rounded-2xl bg-card px-4 py-3">
-          <p className="font-medium">Как забрать конфиги</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            «Экспорт» — файлы по срезу, стране, защите и транспорту, Clash, sing-box и конструктор
-            подписки. На «Конфигах» отметьте строки и выгрузите текст, base64, файл, QR, Clash или
-            sing-box. QR и кнопки клиента используют только проверенные схемы: Happ, v2rayNG,
-            Hiddify, v2RayTun для VLESS; Clash Meta, Mihomo, NekoBox и sing-box — для своих файлов.
-          </p>
-        </div>
-        <div className="rounded-2xl bg-card px-4 py-3">
-          <p className="font-medium">Проверка</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            Сначала разбор ссылки, затем TCP, рукопожатие ядра, большинство из трёх HTTP-адресов,
-            короткая загрузка и чужой адрес выхода. Рабочий — прошёл сейчас и держится хотя бы в 70%
-            последних прогонов. Нестабильный прошёл сейчас, но реже. Мёртвый в список не попадает, а
-            после нескольких провалов подряд выбывает из пула. Проверка идёт с серверов GitHub Actions
-            вне России, поэтому местный провайдер может закрыть то, что здесь открылось.
-          </p>
-          <FailureCounts data={data} />
-        </div>
-        <div className="rounded-2xl bg-card px-4 py-3">
-          <p className="font-medium">Telegram</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            Кнопка «В Telegram» открывает tg:// и подставляет прокси. Если клиент не открылся, рядом
-            есть HTTPS-ссылка и QR.
-          </p>
-        </div>
+      <div className="mb-3 flex items-center gap-2">
+        <Button variant="ghost" size="icon" aria-label="Назад" onClick={onBack}>
+          <ChevronLeft />
+        </Button>
+        <h1 className="text-[17px] font-semibold">Справка</h1>
       </div>
-      <h2 className="px-1 pb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-        Разбор ссылки
-      </h2>
-      <InspectScreen embedded />
-      <h2 className="mt-6 px-1 pb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-        Отображение
-      </h2>
-      <SettingsScreen data={data} embedded />
+      <div className="flex flex-col gap-3">
+        {HELP.map((item) => (
+          <section key={item.title} className="rounded-2xl bg-card px-4 py-3">
+            <h2 className="text-[15px] font-medium">{item.title}</h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{item.body}</p>
+          </section>
+        ))}
+        {rejected && (
+          <section className="rounded-2xl bg-card px-4 py-3">
+            <h2 className="text-[15px] font-medium">Почему отброшено</h2>
+            <ul className="mt-2 flex flex-col gap-1 text-[13px] text-muted-foreground">
+              {Object.keys(FAILURE_LABELS)
+                .map((key) => ({ key, label: FAILURE_LABELS[key], count: rejected[key] ?? 0 }))
+                .filter((row) => row.count > 0)
+                .map((row) => (
+                  <li key={row.key} className="flex justify-between gap-3">
+                    <span>{row.label}</span>
+                    <span className="tabular-nums">{row.count}</span>
+                  </li>
+                ))}
+            </ul>
+          </section>
+        )}
+      </div>
     </div>
   )
 }
