@@ -46,19 +46,10 @@ export function TelegramScreen({ data }: { data: HubData }) {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
       <SiteHeader updated={formatStamp(data.generated_at)} />
-      <h1 className="mb-2 text-[22px] leading-none font-semibold tracking-tight">Telegram Proxy</h1>
-      <p className="mb-4 text-[14px] text-muted-foreground">
-        MTProto отвечает resPQ с тем же nonce, SOCKS доходит до датацентра Telegram. «В Telegram»
-        открывает tg:// и подставляет прокси.
+      <p className="mb-3 text-[13px] text-muted-foreground">
+        MTProto {stats?.mtproto ?? 0} · SOCKS {stats?.socks ?? 0} · медиана{' '}
+        {stats?.median_latency_ms == null ? '—' : stats.median_latency_ms} мс
       </p>
-      <div className="mb-4 grid grid-cols-3 gap-2 rounded-2xl bg-card px-2 py-3 text-center">
-        <Stat value={String(stats?.mtproto ?? 0)} label="MTProto" />
-        <Stat value={String(stats?.socks ?? 0)} label="SOCKS" />
-        <Stat
-          value={stats?.median_latency_ms == null ? '—' : String(stats.median_latency_ms)}
-          label="медиана, мс"
-        />
-      </div>
       {best && (
         <Button className="mb-4 w-full" onClick={() => openExternal(best.tg)}>
           <Send />
@@ -169,15 +160,6 @@ function ProxyRow({
           <QrCode />
         </Button>
       </div>
-    </div>
-  )
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div>
-      <div className="text-lg font-semibold tabular-nums">{value}</div>
-      <div className="text-[12px] text-muted-foreground">{label}</div>
     </div>
   )
 }

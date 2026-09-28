@@ -254,13 +254,6 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
         <InfoRow icon={<Link2 className="size-4" />} text={sourceLine} />
       </Group>
 
-      <p className="px-4 pb-4 text-[13px] leading-relaxed text-muted-foreground">
-        Сборщик забирает публичные VLESS, Shadowsocks, Trojan, Hysteria2 и прокси Telegram. В список
-        попадают только те, что ответили HTTP через Xray или sing-box, либо прошли рукопожатие
-        MTProto/SOCKS. Задержка измерена с раннера сборщика, а не с вашего телефона. Сайт не
-        устанавливает туннель.
-      </p>
-
       <ChoiceSheet
         open={picker === 'sort'}
         title="Сортировка"

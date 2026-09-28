@@ -71,11 +71,9 @@ export function SubscriptionSheet({
       >
         <SheetHeader className="pr-10 text-left">
           <SheetTitle>{subscription ? subscription.name : title}</SheetTitle>
-          <SheetDescription>
-            {subscription
-              ? `${subscription.description}. ${subscription.count} конфигов.`
-              : 'Файлы, которые публикует сборщик. Ссылка ведёт на GitHub Pages.'}
-          </SheetDescription>
+          {subscription && (
+            <SheetDescription>{subscription.count} конфигов</SheetDescription>
+          )}
         </SheetHeader>
 
         {subscription ? (
@@ -225,9 +223,6 @@ export function SubscriptionBuilder({
   return (
     <div className={cn('rounded-2xl bg-card p-4', className)}>
       <p className="text-[15px] font-medium">Собрать подписку</p>
-      <p className="mt-1 text-[13px] text-muted-foreground">
-        Готовые файлы лежат в /sub/. Если сочетания нет, список скачивается из уже загруженных конфигов.
-      </p>
       <div className="mt-3 grid grid-cols-3 gap-2">
         <Select label="Страна" value={country} onChange={setCountry} options={countries} />
         <Select

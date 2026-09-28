@@ -6,17 +6,10 @@ export function SiteHeader({ updated }: { updated?: string }) {
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
   return (
-    <header className="flex items-center gap-3 pb-4">
-      <img
-        src={`${import.meta.env.BASE_URL}favicon.svg`}
-        alt=""
-        className="size-8 rounded-lg dark:invert"
-      />
+    <header className="flex items-center gap-3 pb-2">
       <div className="min-w-0 flex-1">
         <p className="text-[17px] leading-none font-semibold tracking-tight">V2Hub</p>
-        <p className="mt-1 text-[13px] text-muted-foreground">
-          {updated ? `Обновлено ${updated}` : 'Сбор и проверка конфигов'}
-        </p>
+        {updated && <p className="mt-1 text-[13px] text-muted-foreground">{updated}</p>}
       </div>
       <Button
         variant="ghost"

@@ -77,10 +77,6 @@ export function ExportScreen({ data }: { data: HubData }) {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
       <SiteHeader updated={formatStamp(data.generated_at)} />
-      <p className="mb-4 text-[14px] leading-relaxed text-muted-foreground">
-        Готовые файлы по срезу, страна и транспорт. Ссылка ведёт на GitHub Pages. Свою подборку
-        отмечают на вкладке «Конфиги».
-      </p>
 
       <Section title="Срезы">
         {slices.map((entry, index) => (

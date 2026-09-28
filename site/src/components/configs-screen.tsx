@@ -353,18 +353,9 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   return (
     <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', chosen.length > 0 && 'pb-36')}>
       <SiteHeader updated={formatStamp(data.generated_at)} />
-      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat value={String(data.stats.published)} label="в списке" />
-        <Stat value={String(data.stats.countries)} label="стран" />
-        <Stat
-          value={data.stats.median_latency_ms == null ? '—' : String(data.stats.median_latency_ms)}
-          label="медиана, мс"
-        />
-        <Stat value={String(data.stats.proxy_ok ?? data.stats.published)} label="через Xray" />
-      </div>
-      <p className="mb-4 text-[13px] leading-relaxed text-muted-foreground">
-        В списке только ответы HTTP через Xray или sing-box. Задержка и аптайм измерены сборщиком.
-        Отметьте строки, чтобы выгрузить текст, base64, файл, QR, Clash или sing-box.
+      <p className="mb-3 text-[13px] text-muted-foreground">
+        {data.stats.published} в списке · {data.stats.countries} стран · медиана{' '}
+        {data.stats.median_latency_ms == null ? '—' : data.stats.median_latency_ms} мс
       </p>
 
       <div className="mb-3 flex flex-col gap-2">
@@ -579,15 +570,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           if (!open) setQr(null)
         }}
       />
-    </div>
-  )
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="rounded-2xl bg-card px-3 py-3 text-center">
-      <div className="text-lg font-semibold tabular-nums">{value}</div>
-      <div className="text-[12px] leading-tight text-muted-foreground">{label}</div>
     </div>
   )
 }
