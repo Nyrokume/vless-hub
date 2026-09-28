@@ -224,7 +224,10 @@ export function LiveParseSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-dvh! max-h-dvh! gap-0 overflow-hidden rounded-none p-0">
+      <SheetContent
+        side="bottom"
+        className="max-md:h-dvh! max-md:max-h-dvh! max-md:rounded-none! md:h-[min(85dvh,720px)] md:data-[side=bottom]:w-[min(40rem,calc(100%-2rem))]! gap-0 overflow-hidden p-0"
+      >
         <SheetHeader className="shrink-0 pr-12 text-left">
           <SheetTitle>{ru.live.title}</SheetTitle>
         </SheetHeader>
@@ -235,10 +238,10 @@ export function LiveParseSheet({
                 <div className="h-full bg-foreground transition-[width]" style={{ width: `${percent}%` }} />
               </div>
               <div className="mt-2 flex items-center justify-between gap-3">
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-[13px] text-foreground/75">
                   {ru.live.sources(progress?.done ?? 0, progress?.total ?? 0)}
                 </p>
-                <Button variant="ghost" size="sm" onClick={cancel}>
+                <Button variant="ghost" onClick={cancel}>
                   {ru.live.cancel}
                 </Button>
               </div>
@@ -253,7 +256,7 @@ export function LiveParseSheet({
           {searched && !running && found.length === 0 && <EmptyState text={ru.live.found(0)} />}
 
           {searched && !running && (progress?.skips.length ?? 0) > 0 && (
-            <details className="text-[13px] text-muted-foreground">
+            <details className="text-[14px] text-foreground/75">
               <summary className="cursor-pointer">{ru.live.skipped(progress?.skips.length ?? 0)}</summary>
               <ul className="mt-2 space-y-1">
                 {progress?.skips.map((skip) => (
@@ -265,10 +268,9 @@ export function LiveParseSheet({
             </details>
           )}
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
-              className="h-auto min-h-10 whitespace-normal px-2 py-2 text-center text-[13px] leading-tight"
               disabled={found.length === 0}
               onClick={() => void copyText(text, ru.live.copied)}
             >
@@ -276,22 +278,17 @@ export function LiveParseSheet({
             </Button>
             <Button
               variant="secondary"
-              className="h-auto min-h-10 whitespace-normal px-2 py-2 text-center text-[13px] leading-tight"
               disabled={found.length === 0}
               onClick={() => downloadText('v2hub-unverified.txt', text)}
             >
               {ru.live.download}
             </Button>
-            <Button
-              variant="secondary"
-              className="h-auto min-h-10 whitespace-normal px-2 py-2 text-center text-[13px] leading-tight"
-              onClick={() => window.open(CHECK_WORKFLOW_URL, '_blank', 'noopener')}
-            >
+            <Button variant="secondary" onClick={() => window.open(CHECK_WORKFLOW_URL, '_blank', 'noopener')}>
               {ru.live.check}
             </Button>
           </div>
 
-          {status && <p className="text-[13px] text-muted-foreground">{status}</p>}
+          {status && <p className="text-[13px] text-foreground/75">{status}</p>}
 
           {offerRefresh && (
             <Button variant="ghost" onClick={() => void refresh()}>
@@ -300,7 +297,7 @@ export function LiveParseSheet({
           )}
 
           {selected?.source && (
-            <p className="truncate text-[13px] text-muted-foreground">{ru.live.source(selected.source)}</p>
+            <p className="truncate text-[13px] text-foreground/75">{ru.live.source(selected.source)}</p>
           )}
 
           <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto rounded-2xl bg-card">
@@ -328,7 +325,9 @@ export function LiveParseSheet({
                         {flagEmoji(row.group.code) || <Globe className="size-5 text-muted-foreground" />}
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{row.group.name}</span>
-                      <Badge variant="secondary">{formatCount(row.group.items.length)}</Badge>
+                      <Badge variant="secondary" className="h-6 text-[13px]">
+                        {formatCount(row.group.items.length)}
+                      </Badge>
                     </button>
                   ) : (
                     <button
@@ -349,7 +348,7 @@ export function LiveParseSheet({
                           )}
                           <span className="truncate text-[15px] font-medium">{rowTitle(row.item).name}</span>
                         </span>
-                        <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">{rowSubtitle(row.item)}</span>
+                        <span className="mt-0.5 block truncate text-[14px] text-foreground/75">{rowSubtitle(row.item)}</span>
                       </span>
                     </button>
                   ),

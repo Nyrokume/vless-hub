@@ -87,10 +87,13 @@ function ChoiceSheet<T extends string>({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[80dvh] gap-0 overflow-y-auto rounded-t-3xl">
-        <SheetHeader className="pr-10 text-left">
-          <SheetTitle>{title}</SheetTitle>
-          {description ? <SheetDescription>{description}</SheetDescription> : null}
+      <SheetContent side="bottom" className="gap-0 overflow-hidden p-0">
+        <div className="max-h-[inherit] overflow-y-auto">
+        <SheetHeader className="pr-12 text-left">
+          <SheetTitle className="text-[22px] leading-tight font-semibold">{title}</SheetTitle>
+          {description ? (
+            <SheetDescription className="text-[14px] text-foreground/75">{description}</SheetDescription>
+          ) : null}
         </SheetHeader>
         <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-card">
           {choices.map((choice, index) => (
@@ -107,13 +110,14 @@ function ChoiceSheet<T extends string>({
                 <span className="min-w-0 flex-1">
                   <span className="block text-[17px]">{choice.label}</span>
                   {choice.hint && (
-                    <span className="block text-[13px] text-muted-foreground">{choice.hint}</span>
+                    <span className="block text-[13px] leading-5 text-foreground/75">{choice.hint}</span>
                   )}
                 </span>
                 {value === choice.value && <Check className="size-5 text-primary" />}
               </button>
             </div>
           ))}
+        </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -422,9 +426,10 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
       />
 
       <Sheet open={picker === 'base'} onOpenChange={(open) => setPicker(open ? 'base' : null)}>
-        <SheetContent side="bottom" className="rounded-t-3xl">
-          <SheetHeader className="pr-10 text-left">
-            <SheetTitle>Адрес сайта</SheetTitle>
+        <SheetContent side="bottom" className="gap-0 overflow-hidden p-0">
+          <div className="max-h-[inherit] overflow-y-auto">
+          <SheetHeader className="pr-12 text-left">
+            <SheetTitle className="text-[22px] leading-tight font-semibold">Адрес сайта</SheetTitle>
           </SheetHeader>
           <form
             className="flex flex-col gap-3 px-4 pb-6"
@@ -448,19 +453,22 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
               spellCheck={false}
               className="h-11"
             />
-            <Button type="submit">Сохранить</Button>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                update({ publicBase: DEFAULT_PUBLIC_BASE })
-                setBaseDraft(DEFAULT_PUBLIC_BASE)
-                setPicker(null)
-              }}
-            >
-              {ru.settings.restoreAddress}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit">Сохранить</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  update({ publicBase: DEFAULT_PUBLIC_BASE })
+                  setBaseDraft(DEFAULT_PUBLIC_BASE)
+                  setPicker(null)
+                }}
+              >
+                {ru.settings.restoreAddress}
+              </Button>
+            </div>
           </form>
+          </div>
         </SheetContent>
       </Sheet>
     </div>

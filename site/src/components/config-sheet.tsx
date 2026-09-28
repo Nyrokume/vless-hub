@@ -31,9 +31,9 @@ import { cn } from '@/lib/utils'
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start gap-3 px-4 py-2.5">
-      <div className="w-28 shrink-0 text-[13px] text-muted-foreground">{label}</div>
-      <div className="min-w-0 flex-1 break-all text-[15px]">{value}</div>
+    <div className="flex items-start gap-3 px-4 py-3">
+      <div className="w-32 shrink-0 text-[13px] leading-5 text-foreground/75">{label}</div>
+      <div className="min-w-0 flex-1 text-[15px] leading-5 break-all text-foreground">{value}</div>
     </div>
   )
 }
@@ -42,14 +42,12 @@ export function ConfigSheet({
   config,
   sources,
   client,
-  desktop,
   onOpenChange,
   onQr,
 }: {
   config: ConfigRecord | null
   sources: SourceReport[]
   client: ClientId
-  desktop: boolean
   onOpenChange: (open: boolean) => void
   onQr: (request: QrRequest) => void
 }) {
@@ -101,58 +99,50 @@ export function ConfigSheet({
 
   return (
     <Sheet open={Boolean(config)} onOpenChange={onOpenChange}>
-      <SheetContent
-        side={desktop ? 'right' : 'bottom'}
-        className={cn(
-          'gap-0 overflow-y-auto',
-          desktop ? 'w-full sm:max-w-md' : 'max-h-[88dvh] rounded-t-3xl',
-        )}
-      >
+      <SheetContent side="bottom" className="gap-0 overflow-hidden p-0">
         {config && (
-          <>
-            <SheetHeader className="pr-10 text-left">
-              <SheetTitle className="flex items-center gap-2 text-xl">
-                <span className="text-2xl leading-none" aria-hidden>
+          <div className="max-h-[inherit] overflow-y-auto">
+            <SheetHeader className="pr-12 text-left">
+              <SheetTitle className="flex items-center gap-2.5 text-[22px] leading-tight font-semibold">
+                <span className="text-[28px] leading-none" aria-hidden>
                   {flag || '🌐'}
                 </span>
-                {title}
+                <span className="min-w-0 break-words">{title}</span>
               </SheetTitle>
-              <SheetDescription className="flex items-center justify-between gap-3 text-[15px]">
-                <span>{protocolLine(config.transport, config.protocol)}</span>
-                <span className={cn('font-semibold tabular-nums', latencyClass(config.latency_ms))}>
+              <SheetDescription className="flex items-center justify-between gap-3 text-[14px] text-foreground/75">
+                <span className="min-w-0 break-words">{protocolLine(config.transport, config.protocol)}</span>
+                <span className={cn('shrink-0 text-[15px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
                   {latencyText(config.latency_ms)}
                 </span>
               </SheetDescription>
             </SheetHeader>
-            <div className="flex flex-col gap-2 px-4 pb-2">
+            <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
               <Button onClick={() => void copyText(config.uri, ru.copyConfig)}>
                 <Copy />
                 {ru.copyLink}
               </Button>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={() =>
-                    onQr({
-                      title: `${flag} ${title}`.trim(),
-                      value: config.uri,
-                      share: 'text',
-                      actions: configImportActions(config.uri),
-                    })
-                  }
-                >
-                  <QrCode />
-                  {ru.qr}
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={!deepLink}
-                  onClick={() => deepLink && openExternal(deepLink)}
-                >
-                  <ExternalLink />
-                  {deepLink ? clientName(client) : ru.linkOnly}
-                </Button>
-              </div>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  onQr({
+                    title: `${flag} ${title}`.trim(),
+                    value: config.uri,
+                    share: 'text',
+                    actions: configImportActions(config.uri),
+                  })
+                }
+              >
+                <QrCode />
+                {ru.qr}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={!deepLink}
+                onClick={() => deepLink && openExternal(deepLink)}
+              >
+                <ExternalLink />
+                {deepLink ? clientName(client) : ru.linkOnly}
+              </Button>
             </div>
             <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-secondary/60">
               {rows.map(([label, value], index) => (
@@ -162,7 +152,7 @@ export function ConfigSheet({
                 </div>
               ))}
             </div>
-          </>
+          </div>
         )}
       </SheetContent>
     </Sheet>

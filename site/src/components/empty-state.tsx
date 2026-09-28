@@ -31,7 +31,7 @@ export function EmptyState({
     <div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
       <EmptyMascot className="size-24 text-foreground" />
       {title ? <p className="text-[17px] font-medium">{title}</p> : null}
-      <p className="max-w-xs text-[15px] text-muted-foreground">{text}</p>
+      <p className="max-w-xs text-[15px] text-foreground/75">{text}</p>
       {action ? (
         <Button variant="secondary" onClick={action.onClick}>
           {action.label}

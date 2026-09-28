@@ -34,7 +34,6 @@ export function SubscriptionSheet({
   fastMs,
   publicBase,
   client,
-  desktop,
   onOpenChange,
   onSelect,
   onQr,
@@ -48,7 +47,6 @@ export function SubscriptionSheet({
   fastMs: number
   publicBase: string
   client: ClientId
-  desktop: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (subscription: SubscriptionInfo | null) => void
   onQr: (request: QrRequest) => void
@@ -64,45 +62,44 @@ export function SubscriptionSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side={desktop ? 'right' : 'bottom'}
-        className={cn(
-          'gap-0 overflow-y-auto',
-          desktop ? 'w-full sm:max-w-md' : 'max-h-[88dvh] rounded-t-3xl',
-        )}
-      >
-        <SheetHeader className="pr-10 text-left">
-          <SheetTitle>{subscription ? subscription.name : title}</SheetTitle>
+      <SheetContent side="bottom" className="gap-0 overflow-hidden p-0">
+        <div className="max-h-[inherit] overflow-y-auto">
+        <SheetHeader className="pr-12 text-left">
+          <SheetTitle className="text-[22px] leading-tight font-semibold break-words">
+            {subscription ? subscription.name : title}
+          </SheetTitle>
           {subscription && (
-            <SheetDescription>{subscription.count} конфигов</SheetDescription>
+            <SheetDescription className="text-[14px] text-foreground/75">
+              {subscription.count} конфигов
+            </SheetDescription>
           )}
         </SheetHeader>
 
         {subscription ? (
-          <div className="flex flex-col gap-2 px-4 pb-6">
-            <p className="break-all rounded-xl bg-secondary px-3 py-2 font-mono text-[11px] text-muted-foreground">
+          <div className="flex flex-col gap-3 px-4 pb-6">
+            <p className="rounded-xl bg-secondary px-3 py-2 font-mono text-[14px] leading-5 break-all text-foreground">
               {url}
             </p>
-            <Button onClick={() => void copyText(url, ru.copySubscription)}>
-              <Copy />
-              {ru.copySubscriptionUrl}
-            </Button>
-            {subscription.b64 && (
-              <Button variant="secondary" onClick={() => void copyText(b64Url, ru.encodedUrlCopied)}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={() => void copyText(url, ru.copySubscription)}>
                 <Copy />
-                {ru.copyEncodedUrl}
+                {ru.copySubscriptionUrl}
               </Button>
-            )}
-            {subscription.id !== 'clash' && subscription.id !== 'singbox' && (
-              <Button
-                variant="secondary"
-                onClick={() => void copyText(body, ru.copiedConfigs(subscription.count))}
-              >
-                <Copy />
-                {ru.copyAllLinks}
-              </Button>
-            )}
-            <div className="grid grid-cols-2 gap-2">
+              {subscription.b64 && (
+                <Button variant="secondary" onClick={() => void copyText(b64Url, ru.encodedUrlCopied)}>
+                  <Copy />
+                  {ru.copyEncodedUrl}
+                </Button>
+              )}
+              {subscription.id !== 'clash' && subscription.id !== 'singbox' && (
+                <Button
+                  variant="secondary"
+                  onClick={() => void copyText(body, ru.copiedConfigs(subscription.count))}
+                >
+                  <Copy />
+                  {ru.copyAllLinks}
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 onClick={() =>
@@ -125,7 +122,7 @@ export function SubscriptionSheet({
             {subscriptions.length > 1 && (
               <button
                 type="button"
-                className="mt-1 text-left text-sm text-primary"
+                className="text-left text-[14px] text-primary"
                 onClick={() => onSelect(null)}
               >
                 {ru.allSubscriptions}
@@ -152,7 +149,7 @@ export function SubscriptionSheet({
                 >
                   <span className="flex-1">
                     <span className="block text-[17px]">{item.name}</span>
-                    <span className="block text-[13px] text-muted-foreground">
+                    <span className="block text-[13px] text-foreground/75">
                       {item.count} · {item.description}
                     </span>
                   </span>
@@ -162,6 +159,7 @@ export function SubscriptionSheet({
           </div>
           </>
         )}
+        </div>
       </SheetContent>
     </Sheet>
   )
@@ -240,10 +238,10 @@ export function SubscriptionBuilder({
           options={['tcp', 'ws', 'grpc', 'xhttp', 'h2'].map((value) => ({ value, label: transportLabel(value) }))}
         />
       </div>
-      <p className="mt-2 text-[12px] text-muted-foreground">
+      <p className="mt-3 text-[14px] leading-5 break-all text-foreground">
         {url ? url : ru.inListNow(picked.length)}
       </p>
-      <div className="mt-2 grid grid-cols-2 gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button
           variant="secondary"
           disabled={!url}
@@ -268,11 +266,11 @@ export function SubscriptionBuilder({
           <QrCode />
           {ru.qrShort}
         </Button>
+        <Button variant="secondary" disabled={picked.length === 0} onClick={downloadLocal}>
+          <Download />
+          {ru.downloadCount(picked.length)}
+        </Button>
       </div>
-      <Button className="mt-2 w-full" variant="secondary" disabled={picked.length === 0} onClick={downloadLocal}>
-        <Download />
-        {ru.downloadCount(picked.length)}
-      </Button>
     </div>
   )
 }
@@ -289,7 +287,7 @@ function Select({
   onChange: (value: string) => void
 }) {
   return (
-    <label className="block text-[12px] text-muted-foreground">
+    <label className="block text-[13px] text-foreground/75">
       {label}
       <select
         className="mt-1 h-10 w-full rounded-xl bg-secondary px-2 text-[14px] text-foreground"

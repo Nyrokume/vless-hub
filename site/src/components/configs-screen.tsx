@@ -59,7 +59,6 @@ import { formatCount } from '@/lib/plural'
 import { ru, statusLabel } from '@/lib/ru'
 import { STORAGE_KEY, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
-import { useMediaQuery } from '@/lib/use-media'
 import { cn } from '@/lib/utils'
 
 const HEADER_H = 56
@@ -190,7 +189,6 @@ function lowerBound(prefix: number[], target: number): number {
 
 export function ConfigsScreen({ data }: { data: HubData }) {
   const { settings, update } = useSettings()
-  const desktop = useMediaQuery('(min-width: 1024px)')
   const [list, setList] = useState<ListState>(readListState)
   const [draft, setDraft] = useState<FilterDraft | null>(null)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
@@ -643,7 +641,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         config={selectedId}
         sources={data.sources}
         client={settings.client}
-        desktop={desktop}
         onOpenChange={(open) => {
           if (!open) setSelectedId(null)
         }}

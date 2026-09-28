@@ -85,10 +85,12 @@ export function QrDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{request?.title ?? ru.qr}</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-h-[min(90dvh,720px)] overflow-y-auto sm:max-w-[32rem]">
+        <DialogHeader className="pr-8 text-left">
+          <DialogTitle className="text-[20px] leading-tight font-semibold break-words">
+            {request?.title ?? ru.qr}
+          </DialogTitle>
+          <DialogDescription className="text-[14px] text-foreground/75">
             {value && value.length > 900 ? ru.qrLong : ru.qrHint}
           </DialogDescription>
         </DialogHeader>
@@ -100,20 +102,17 @@ export function QrDialog({
               className="size-64 rounded-xl bg-white p-2"
             />
           ) : (
-            <div className="grid size-64 place-items-center rounded-xl bg-secondary text-sm text-muted-foreground">
+            <div className="grid size-64 place-items-center rounded-xl bg-secondary text-[14px] text-foreground/75">
               {failed ? ru.qrFailed : ru.qrBuilding}
             </div>
           )}
           {value && (
-            <p className="max-h-20 w-full overflow-auto break-all rounded-xl bg-secondary px-3 py-2 font-mono text-[11px] text-muted-foreground">
+            <p className="max-h-24 w-full overflow-auto rounded-xl bg-secondary px-3 py-2 font-mono text-[14px] leading-5 break-all text-foreground">
               {value}
             </p>
           )}
-          <div className="grid w-full grid-cols-2 gap-2">
-            <Button
-              disabled={!value}
-              onClick={() => value && void copyText(value, ru.linkCopied)}
-            >
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button disabled={!value} onClick={() => value && void copyText(value, ru.linkCopied)}>
               <Copy />
               {ru.copy}
             </Button>
@@ -121,31 +120,22 @@ export function QrDialog({
               <Download />
               {ru.picture}
             </Button>
+            <Button
+              variant="secondary"
+              disabled={!value}
+              onClick={() =>
+                value && void shareValue(request?.title ?? ru.brand, value, request?.share ?? 'text')
+              }
+            >
+              <Share2 />
+              {ru.share}
+            </Button>
+            {request?.actions?.map((action) => (
+              <Button key={action.label} variant="secondary" onClick={() => openExternal(action.href)}>
+                {action.label}
+              </Button>
+            ))}
           </div>
-          <Button
-            variant="secondary"
-            className="w-full"
-            disabled={!value}
-            onClick={() =>
-              value && void shareValue(request?.title ?? ru.brand, value, request?.share ?? 'text')
-            }
-          >
-            <Share2 />
-            {ru.share}
-          </Button>
-          {request?.actions && request.actions.length > 0 && (
-            <div className="grid w-full grid-cols-2 gap-2">
-              {request.actions.map((action) => (
-                <Button
-                  key={action.label}
-                  variant="secondary"
-                  onClick={() => openExternal(action.href)}
-                >
-                  {action.label}
-                </Button>
-              ))}
-            </div>
-          )}
         </div>
       </DialogContent>
     </Dialog>

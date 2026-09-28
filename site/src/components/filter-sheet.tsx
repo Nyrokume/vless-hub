@@ -68,13 +68,16 @@ export function FilterSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-[88dvh]! max-h-[88dvh]! gap-0 overflow-hidden rounded-t-3xl p-0">
+      <SheetContent
+        side="bottom"
+        className="max-md:h-[88dvh]! max-md:max-h-[88dvh]! md:h-[min(85dvh,720px)] gap-0 overflow-hidden p-0"
+      >
         <SheetHeader className="shrink-0 pr-10 text-left">
           <SheetTitle>{ru.filters}</SheetTitle>
         </SheetHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">{ru.view}</div>
+            <div className="mb-2 text-[14px] font-medium text-foreground">{ru.view}</div>
             <div className="flex flex-wrap gap-2">
               {VIEWS.map((item) => (
                 <Chip key={item.value} active={draft.view === item.value} onClick={() => onDraft({ view: item.value })}>
@@ -94,7 +97,7 @@ export function FilterSheet({
             )}
           </div>
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">{ru.sort}</div>
+            <div className="mb-2 text-[14px] font-medium text-foreground">{ru.sort}</div>
             <div className="flex flex-wrap gap-2">
               {SORTS.map((item) => (
                 <Chip key={item.value} active={draft.sort === item.value} onClick={() => onDraft({ sort: item.value })}>
@@ -106,7 +109,7 @@ export function FilterSheet({
           {(unverifiedCount > 0 || unstableCount > 0) && (
             <div className="overflow-hidden rounded-2xl bg-card">
               {unstableCount > 0 && (
-                <label className="flex items-center justify-between gap-3 px-4 py-3">
+                <label className="flex items-center justify-between gap-3 px-4 py-3 text-[15px]">
                   <span>{ru.showUnstable}</span>
                   <Switch
                     checked={draft.showUnstable}
@@ -116,7 +119,7 @@ export function FilterSheet({
               )}
               {unverifiedCount > 0 && unstableCount > 0 && <Separator />}
               {unverifiedCount > 0 && (
-                <label className="flex items-center justify-between gap-3 px-4 py-3">
+                <label className="flex items-center justify-between gap-3 px-4 py-3 text-[15px]">
                   <span>{ru.showUnverified}</span>
                   <Switch
                     checked={draft.showUnverified}
@@ -127,7 +130,7 @@ export function FilterSheet({
             </div>
           )}
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">{ru.ping}</div>
+            <div className="mb-2 text-[14px] font-medium text-foreground">{ru.ping}</div>
             <div className="flex flex-wrap gap-2">
               {THRESHOLDS.map((item) => (
                 <Chip
@@ -141,7 +144,7 @@ export function FilterSheet({
             </div>
           </div>
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
+            <div className="mb-2 text-[14px] font-medium text-foreground">
               {ru.protocol}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -160,7 +163,7 @@ export function FilterSheet({
             </div>
           </div>
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
+            <div className="mb-2 text-[14px] font-medium text-foreground">
               {ru.connection}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -179,7 +182,7 @@ export function FilterSheet({
             </div>
           </div>
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
+            <div className="mb-2 text-[14px] font-medium text-foreground">
               {ru.security}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -198,7 +201,7 @@ export function FilterSheet({
             </div>
           </div>
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
+            <div className="mb-2 text-[14px] font-medium text-foreground">
               {ru.country}
             </div>
             <div className="overflow-hidden rounded-2xl bg-card">
@@ -208,7 +211,7 @@ export function FilterSheet({
                   className="flex w-full items-center justify-between px-4 py-3 text-left"
                   onClick={() => onDraft({ country: null })}
                 >
-                  <span>{ru.allCountries}</span>
+                  <span className="text-[15px]">{ru.allCountries}</span>
                   {draft.country === null && <span className="text-primary">●</span>}
                 </button>
                 {countries.map((item) => (
@@ -219,10 +222,10 @@ export function FilterSheet({
                       className="flex w-full items-center justify-between px-4 py-3 text-left"
                       onClick={() => onDraft({ country: item.code })}
                     >
-                      <span>
-                        {item.name} <span className="text-muted-foreground">{item.code}</span>
+                      <span className="text-[15px]">
+                        {item.name} <span className="text-foreground/75">{item.code}</span>
                       </span>
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-sm text-foreground/75">
                         {draft.country === item.code ? '●' : formatCount(item.count)}
                       </span>
                     </button>
