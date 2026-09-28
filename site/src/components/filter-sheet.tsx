@@ -1,12 +1,13 @@
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
+import type { FilterDraft } from '@/lib/filters'
 import { protocolLabel, securityLabel, transportLabel } from '@/lib/format'
 import { formatCount } from '@/lib/plural'
 import { ru } from '@/lib/ru'
-import { SORTS, THRESHOLDS, VIEWS, thresholdKey, type SortKey, type ViewMode } from '@/lib/settings'
+import { SORTS, THRESHOLDS, VIEWS, thresholdKey } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
 function Chip({
@@ -39,28 +40,14 @@ export function FilterSheet({
   transports,
   securities,
   protocols,
-  country,
-  transport,
-  security,
-  protocol,
-  threshold,
-  sort,
-  view,
-  showUnverified,
-  showUnstable,
+  draft,
+  onDraft,
   unverifiedCount,
   unstableCount,
-  onCountry,
-  onTransport,
-  onSecurity,
-  onProtocol,
-  onThreshold,
-  onSort,
-  onView,
+  resultCount,
+  onApply,
   onExpandGroups,
   onCollapseGroups,
-  onShowUnverified,
-  onShowUnstable,
   onReset,
 }: {
   open: boolean
@@ -69,47 +56,33 @@ export function FilterSheet({
   transports: { id: string; count: number }[]
   securities: { id: string; count: number }[]
   protocols: { id: string; count: number }[]
-  country: string | null
-  transport: string | null
-  security: string | null
-  protocol: string | null
-  threshold: number | null
-  sort: SortKey
-  view: ViewMode
-  showUnverified: boolean
-  showUnstable: boolean
+  draft: FilterDraft
+  onDraft: (patch: Partial<FilterDraft>) => void
   unverifiedCount: number
   unstableCount: number
-  onCountry: (code: string | null) => void
-  onTransport: (id: string | null) => void
-  onSecurity: (id: string | null) => void
-  onProtocol: (id: string | null) => void
-  onThreshold: (value: number | null) => void
-  onSort: (value: SortKey) => void
-  onView: (value: ViewMode) => void
+  resultCount: number
+  onApply: () => void
   onExpandGroups: () => void
   onCollapseGroups: () => void
-  onShowUnverified: (value: boolean) => void
-  onShowUnstable: (value: boolean) => void
   onReset: () => void
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[88dvh] gap-3 overflow-y-auto rounded-t-3xl">
-        <SheetHeader className="pr-10 text-left">
-          <SheetTitle>Фильтры</SheetTitle>
+      <SheetContent side="bottom" className="h-[88dvh]! max-h-[88dvh]! gap-0 overflow-hidden rounded-t-3xl p-0">
+        <SheetHeader className="shrink-0 pr-10 text-left">
+          <SheetTitle>{ru.filters}</SheetTitle>
         </SheetHeader>
-        <div className="space-y-4 px-4 pb-6">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">Вид</div>
+            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">{ru.view}</div>
             <div className="flex flex-wrap gap-2">
               {VIEWS.map((item) => (
-                <Chip key={item.value} active={view === item.value} onClick={() => onView(item.value)}>
+                <Chip key={item.value} active={draft.view === item.value} onClick={() => onDraft({ view: item.value })}>
                   {item.label}
                 </Chip>
               ))}
             </div>
-            {view === 'country' && (
+            {draft.view === 'country' && (
               <div className="mt-2 flex flex-wrap gap-2">
                 <Chip active={false} onClick={onExpandGroups}>
                   {ru.expandGroups}
@@ -121,12 +94,10 @@ export function FilterSheet({
             )}
           </div>
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Сортировка
-            </div>
+            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">{ru.sort}</div>
             <div className="flex flex-wrap gap-2">
               {SORTS.map((item) => (
-                <Chip key={item.value} active={sort === item.value} onClick={() => onSort(item.value)}>
+                <Chip key={item.value} active={draft.sort === item.value} onClick={() => onDraft({ sort: item.value })}>
                   {item.label}
                 </Chip>
               ))}
@@ -136,29 +107,33 @@ export function FilterSheet({
             <div className="overflow-hidden rounded-2xl bg-card">
               {unstableCount > 0 && (
                 <label className="flex items-center justify-between gap-3 px-4 py-3">
-                  <span>Показать нестабильные</span>
-                  <Switch checked={showUnstable} onCheckedChange={onShowUnstable} />
+                  <span>{ru.showUnstable}</span>
+                  <Switch
+                    checked={draft.showUnstable}
+                    onCheckedChange={(value) => onDraft({ showUnstable: value })}
+                  />
                 </label>
               )}
               {unverifiedCount > 0 && unstableCount > 0 && <Separator />}
               {unverifiedCount > 0 && (
                 <label className="flex items-center justify-between gap-3 px-4 py-3">
-                  <span>Показать непроверенные</span>
-                  <Switch checked={showUnverified} onCheckedChange={onShowUnverified} />
+                  <span>{ru.showUnverified}</span>
+                  <Switch
+                    checked={draft.showUnverified}
+                    onCheckedChange={(value) => onDraft({ showUnverified: value })}
+                  />
                 </label>
               )}
             </div>
           )}
           <div>
-            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Пинг
-            </div>
+            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">{ru.ping}</div>
             <div className="flex flex-wrap gap-2">
               {THRESHOLDS.map((item) => (
                 <Chip
                   key={item.value}
-                  active={thresholdKey(threshold) === item.value}
-                  onClick={() => onThreshold(item.value === 'all' ? null : Number(item.value))}
+                  active={thresholdKey(draft.threshold) === item.value}
+                  onClick={() => onDraft({ threshold: item.value === 'all' ? null : Number(item.value) })}
                 >
                   {item.label}
                 </Chip>
@@ -167,17 +142,17 @@ export function FilterSheet({
           </div>
           <div>
             <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Протокол
+              {ru.protocol}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Chip active={protocol === null} onClick={() => onProtocol(null)}>
-                Все
+              <Chip active={draft.protocol === null} onClick={() => onDraft({ protocol: null })}>
+                {ru.all}
               </Chip>
               {protocols.map((item) => (
                 <Chip
                   key={item.id}
-                  active={protocol === item.id}
-                  onClick={() => onProtocol(item.id)}
+                  active={draft.protocol === item.id}
+                  onClick={() => onDraft({ protocol: item.id })}
                 >
                   {`${protocolLabel(item.id)} · ${formatCount(item.count)}`}
                 </Chip>
@@ -186,17 +161,17 @@ export function FilterSheet({
           </div>
           <div>
             <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Тип соединения
+              {ru.connection}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Chip active={transport === null} onClick={() => onTransport(null)}>
-                Все
+              <Chip active={draft.transport === null} onClick={() => onDraft({ transport: null })}>
+                {ru.all}
               </Chip>
               {transports.map((item) => (
                 <Chip
                   key={item.id}
-                  active={transport === item.id}
-                  onClick={() => onTransport(item.id)}
+                  active={draft.transport === item.id}
+                  onClick={() => onDraft({ transport: item.id })}
                 >
                   {`${transportLabel(item.id)} · ${formatCount(item.count)}`}
                 </Chip>
@@ -205,17 +180,17 @@ export function FilterSheet({
           </div>
           <div>
             <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Защита
+              {ru.security}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Chip active={security === null} onClick={() => onSecurity(null)}>
-                Все
+              <Chip active={draft.security === null} onClick={() => onDraft({ security: null })}>
+                {ru.all}
               </Chip>
               {securities.map((item) => (
                 <Chip
                   key={item.id}
-                  active={security === item.id}
-                  onClick={() => onSecurity(item.id)}
+                  active={draft.security === item.id}
+                  onClick={() => onDraft({ security: item.id })}
                 >
                   {`${securityLabel(item.id)} · ${formatCount(item.count)}`}
                 </Chip>
@@ -224,17 +199,17 @@ export function FilterSheet({
           </div>
           <div>
             <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-              Страна
+              {ru.country}
             </div>
             <div className="overflow-hidden rounded-2xl bg-card">
               <ScrollArea className="h-56">
                 <button
                   type="button"
                   className="flex w-full items-center justify-between px-4 py-3 text-left"
-                  onClick={() => onCountry(null)}
+                  onClick={() => onDraft({ country: null })}
                 >
-                  <span>Все страны</span>
-                  {country === null && <span className="text-primary">●</span>}
+                  <span>{ru.allCountries}</span>
+                  {draft.country === null && <span className="text-primary">●</span>}
                 </button>
                 {countries.map((item) => (
                   <div key={item.code}>
@@ -242,14 +217,13 @@ export function FilterSheet({
                     <button
                       type="button"
                       className="flex w-full items-center justify-between px-4 py-3 text-left"
-                      onClick={() => onCountry(item.code)}
+                      onClick={() => onDraft({ country: item.code })}
                     >
                       <span>
-                        {item.name}{' '}
-                        <span className="text-muted-foreground">{item.code}</span>
+                        {item.name} <span className="text-muted-foreground">{item.code}</span>
                       </span>
                       <span className="text-sm text-muted-foreground">
-                        {country === item.code ? '●' : formatCount(item.count)}
+                        {draft.country === item.code ? '●' : formatCount(item.count)}
                       </span>
                     </button>
                   </div>
@@ -257,10 +231,15 @@ export function FilterSheet({
               </ScrollArea>
             </div>
           </div>
-          <Button variant="secondary" className="w-full" onClick={onReset}>
-            Сбросить фильтры
-          </Button>
         </div>
+        <SheetFooter className="shrink-0 flex-row gap-2 border-t border-border bg-popover pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <Button variant="secondary" className="flex-1" onClick={onReset}>
+            {ru.resetFilters}
+          </Button>
+          <Button className="flex-1" onClick={onApply}>
+            {ru.showCount(resultCount)}
+          </Button>
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   )

@@ -3,6 +3,7 @@ import { Copy, QrCode, Search, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { EmptyState } from '@/components/empty-state'
 import { LatencyRange } from '@/components/latency-range'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
@@ -116,7 +117,18 @@ export function TelegramScreen({ data }: { data: HubData }) {
       </div>
       <div className="overflow-hidden rounded-2xl bg-card">
         {filtered.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">{ru.noProxies}</p>
+          <EmptyState
+            text={ru.nothingFound}
+            action={{
+              label: ru.resetFilters,
+              onClick: () => {
+                setQuery('')
+                setKind('all')
+                setCountry('')
+                setShowUnstable(false)
+              },
+            }}
+          />
         ) : (
           filtered.map((proxy, index) => (
             <ProxyRow

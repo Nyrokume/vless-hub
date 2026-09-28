@@ -4,7 +4,7 @@ import { ExportScreen } from '@/components/export-screen'
 import { SettingsScreen } from '@/components/settings-screen'
 import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
-import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/empty-state'
 import { useHub } from '@/lib/hub'
 import { ru } from '@/lib/ru'
 
@@ -44,12 +44,8 @@ function LoadingState() {
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="mx-auto flex min-h-[70dvh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="rounded-2xl bg-card px-4 py-5">
-        <p className="text-[17px] font-medium">{ru.noData}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{message}</p>
-      </div>
-      <Button onClick={onRetry}>{ru.retry}</Button>
+    <div className="mx-auto flex min-h-[70dvh] max-w-md flex-col items-center justify-center px-6">
+      <EmptyState title={ru.noData} text={message} action={{ label: ru.retry, onClick: onRetry }} />
     </div>
   )
 }

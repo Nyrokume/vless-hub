@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Globe } from 'lucide-react'
+import { EmptyState } from '@/components/empty-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -246,9 +247,10 @@ export function LiveParseSheet({
             <Button onClick={() => void start()}>{ru.live.find}</Button>
           )}
 
-          {searched && !running && (
+          {searched && !running && found.length > 0 && (
             <p className="text-[15px]">{ru.live.found(found.length)}</p>
           )}
+          {searched && !running && found.length === 0 && <EmptyState text={ru.live.found(0)} />}
 
           {searched && !running && (progress?.skips.length ?? 0) > 0 && (
             <details className="text-[13px] text-muted-foreground">

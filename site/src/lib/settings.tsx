@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { ClientId } from '@/lib/clients'
+import { migrateSettings, SETTINGS_VERSION } from '@/lib/filters'
 
 export type SortKey = 'latency-asc' | 'latency-desc' | 'country' | 'transport'
 export type ViewMode = 'country' | 'flat' | 'compact' | 'cards'
@@ -13,7 +14,7 @@ export type Settings = {
 }
 
 export const DEFAULT_PUBLIC_BASE = 'https://nyrokume.github.io/vless-hub'
-const STORAGE_KEY = 'vless-hub-settings'
+export const STORAGE_KEY = 'vless-hub-settings'
 
 export const SORTS: { value: SortKey; label: string }[] = [
   { value: 'latency-asc', label: 'Сначала быстрые' },
@@ -45,32 +46,14 @@ export const DEFAULT_SETTINGS: Settings = {
   publicBase: DEFAULT_PUBLIC_BASE,
 }
 
-function isSort(value: unknown): value is SortKey {
-  return SORTS.some((item) => item.value === value)
-}
-
-function isView(value: unknown): value is ViewMode {
-  return VIEWS.some((item) => item.value === value)
-}
-
-const CLIENT_IDS: ClientId[] = [
-  'happ',
-  'v2rayng',
-  'hiddify',
-  'v2raytun',
-  'nekobox',
-  'clashmeta',
-  'mihomo',
-  'singbox',
-  'link',
-]
-
-function isClient(value: unknown): value is ClientId {
-  return typeof value === 'string' && CLIENT_IDS.includes(value as ClientId)
-}
-
-function isThreshold(value: unknown): value is number | null {
-  return value === null || value === 150 || value === 300 || value === 600 || value === 1000
+function loadSettings(): Settings {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return DEFAULT_SETTINGS
+    return migrateSettings(JSON.parse(raw), DEFAULT_SETTINGS)
+  } catch {
+    return DEFAULT_SETTINGS
+  }
 }
 
 export function thresholdKey(value: number | null): string {
@@ -85,26 +68,6 @@ export function sortLabel(value: SortKey): string {
   return SORTS.find((item) => item.value === value)?.label ?? value
 }
 
-function loadSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return DEFAULT_SETTINGS
-    const parsed = JSON.parse(raw) as Partial<Settings>
-    return {
-      sort: isSort(parsed.sort) ? parsed.sort : DEFAULT_SETTINGS.sort,
-      view: isView(parsed.view) ? parsed.view : DEFAULT_SETTINGS.view,
-      latencyThreshold: isThreshold(parsed.latencyThreshold) ? parsed.latencyThreshold : null,
-      client: isClient(parsed.client) ? parsed.client : DEFAULT_SETTINGS.client,
-      publicBase:
-        typeof parsed.publicBase === 'string' && parsed.publicBase.trim()
-          ? parsed.publicBase.trim().replace(/\/+$/, '')
-          : DEFAULT_PUBLIC_BASE,
-    }
-  } catch {
-    return DEFAULT_SETTINGS
-  }
-}
-
 type SettingsContextValue = {
   settings: Settings
   update: (patch: Partial<Settings>) => void
@@ -116,14 +79,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(loadSettings)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...settings, version: SETTINGS_VERSION }))
   }, [settings])
 
   return (
     <SettingsContext.Provider
       value={{
         settings,
-        update: (patch) => setSettings((current) => ({ ...current, ...patch })),
+        update: (patch) => setSettings((current) => migrateSettings({ ...current, ...patch }, DEFAULT_SETTINGS)),
       }}
     >
       {children}

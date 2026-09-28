@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { ChevronDown, ChevronRight, Globe, Info, MoreVertical, QrCode, Search, SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +14,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
+import { EmptyState } from '@/components/empty-state'
 import { LatencyRange } from '@/components/latency-range'
 import { FilterSheet } from '@/components/filter-sheet'
 import { LiveParseSheet } from '@/components/live-parse-sheet'
@@ -29,6 +30,21 @@ import {
 } from '@/lib/bundle'
 import { copyText } from '@/lib/copy'
 import {
+  LIST_STORAGE_KEY,
+  countMatches,
+  defaultListState,
+  draftFilters,
+  facetCounts,
+  matches,
+  migrateListState,
+  sameListState,
+  sanitizeListState,
+  toFacet,
+  type FacetItem,
+  type FilterDraft,
+  type ListState,
+} from '@/lib/filters'
+import {
   configTitle,
   displayedLatencyBounds,
   flagEmoji,
@@ -41,7 +57,7 @@ import {
 } from '@/lib/format'
 import { formatCount } from '@/lib/plural'
 import { ru, statusLabel } from '@/lib/ru'
-import { useSettings, type SortKey, type ViewMode } from '@/lib/settings'
+import { STORAGE_KEY, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
 import { useMediaQuery } from '@/lib/use-media'
 import { cn } from '@/lib/utils'
@@ -64,6 +80,47 @@ type CountryGroup = {
 type ListRow =
   | { kind: 'group'; key: string; group: CountryGroup; open: boolean }
   | { kind: 'config'; key: string; config: ConfigRecord }
+
+function configBlob(config: ConfigRecord): string {
+  return [
+    config.country,
+    config.country_code,
+    config.host,
+    config.remark,
+    config.protocol,
+    config.transport,
+    config.security,
+    config.sni,
+    String(config.port),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function readListState(): ListState {
+  try {
+    const listRaw = localStorage.getItem(LIST_STORAGE_KEY)
+    const settingsRaw = localStorage.getItem(STORAGE_KEY)
+    return migrateListState(listRaw ? JSON.parse(listRaw) : null, settingsRaw ? JSON.parse(settingsRaw) : null)
+  } catch {
+    return defaultListState()
+  }
+}
+
+function indexConfigs(configs: ConfigRecord[]): { config: ConfigRecord; facet: FacetItem }[] {
+  return configs.map((config) => ({
+    config,
+    facet: toFacet({
+      protocol: config.protocol,
+      transport: config.transport,
+      security: config.security,
+      country_code: config.country_code,
+      latency_ms: config.latency_ms,
+      blob: configBlob(config),
+    }),
+  }))
+}
 
 function latencyRank(ms: number | null, desc = false): number {
   if (ms == null) return desc ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY
@@ -134,16 +191,11 @@ function lowerBound(prefix: number[], target: number): number {
 export function ConfigsScreen({ data }: { data: HubData }) {
   const { settings, update } = useSettings()
   const desktop = useMediaQuery('(min-width: 1024px)')
-  const [query, setQuery] = useState('')
-  const [country, setCountry] = useState<string | null>(null)
-  const [transport, setTransport] = useState<string | null>(null)
-  const [security, setSecurity] = useState<string | null>(null)
-  const [protocol, setProtocol] = useState<string | null>(null)
+  const [list, setList] = useState<ListState>(readListState)
+  const [draft, setDraft] = useState<FilterDraft | null>(null)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [liveOpen, setLiveOpen] = useState(false)
-  const [showUnverified, setShowUnverified] = useState(false)
-  const [showUnstable, setShowUnstable] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [qr, setQr] = useState<QrRequest | null>(null)
@@ -151,98 +203,87 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const listRef = useRef<HTMLDivElement>(null)
   const [range, setRange] = useState({ start: 0, end: 40 })
 
-  const visible = useMemo(() => {
-    const rows = [...data.configs]
-    if (showUnstable) rows.push(...(data.unstable ?? []))
-    if (showUnverified) rows.push(...data.unverified)
-    return rows
-  }, [data.configs, data.unstable, data.unverified, showUnstable, showUnverified])
-
-  const indexed = useMemo(
-    () =>
-      visible.map((config) => ({
-        config,
-        blob: [
-          config.country,
-          config.country_code,
-          config.host,
-          config.remark,
-          config.protocol,
-          config.transport,
-          config.security,
-          config.sni,
-          String(config.port),
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase(),
-      })),
-    [visible],
+  const poolFor = useCallback(
+    (showUnstable: boolean, showUnverified: boolean) => {
+      const rows = [...data.configs]
+      if (showUnstable) rows.push(...(data.unstable ?? []))
+      if (showUnverified) rows.push(...data.unverified)
+      return indexConfigs(rows)
+    },
+    [data.configs, data.unstable, data.unverified],
   )
 
-  const countries = useMemo(() => {
-    const map = new Map<string, { code: string; name: string; count: number }>()
-    for (const config of visible) {
-      if (!config.country_code) continue
-      const current = map.get(config.country_code)
-      if (current) current.count += 1
-      else {
-        map.set(config.country_code, {
-          code: config.country_code,
-          name: config.country || config.country_code,
-          count: 1,
-        })
-      }
-    }
-    return [...map.values()].sort(
-      (left, right) => right.count - left.count || left.name.localeCompare(right.name, 'ru'),
-    )
-  }, [visible])
+  const appliedIndexed = useMemo(
+    () => poolFor(list.showUnstable, list.showUnverified),
+    [list.showUnstable, list.showUnverified, poolFor],
+  )
+  const safeList = useMemo(
+    () => sanitizeListState(list, appliedIndexed.map((item) => item.facet)),
+    [appliedIndexed, list],
+  )
 
-  const transports = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const config of visible) map.set(config.transport, (map.get(config.transport) ?? 0) + 1)
-    return [...map.entries()]
-      .map(([id, count]) => ({ id, count }))
-      .sort((left, right) => right.count - left.count)
-  }, [visible])
+  useEffect(() => {
+    localStorage.setItem(LIST_STORAGE_KEY, JSON.stringify(safeList))
+    if (!sameListState(list, safeList)) setList(safeList)
+  }, [list, safeList])
 
-  const protocols = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const config of visible) {
-      const id = config.protocol || 'vless'
-      map.set(id, (map.get(id) ?? 0) + 1)
-    }
-    return [...map.entries()]
-      .map(([id, count]) => ({ id, count }))
-      .sort((left, right) => right.count - left.count)
-  }, [visible])
-
-  const securities = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const config of visible) map.set(config.security, (map.get(config.security) ?? 0) + 1)
-    return [...map.entries()]
-      .map(([id, count]) => ({ id, count }))
-      .sort((left, right) => right.count - left.count)
-  }, [visible])
+  const appliedFilters = useMemo(
+    () => ({
+      query: safeList.query,
+      country: safeList.country,
+      transport: safeList.transport,
+      security: safeList.security,
+      protocol: safeList.protocol,
+      threshold: settings.latencyThreshold,
+    }),
+    [safeList, settings.latencyThreshold],
+  )
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    const threshold = settings.latencyThreshold
-    const matched: ConfigRecord[] = []
-    for (const item of indexed) {
-      const config = item.config
-      if (threshold != null && (config.latency_ms == null || config.latency_ms > threshold)) continue
-      if (country && config.country_code !== country) continue
-      if (transport && config.transport !== transport) continue
-      if (security && config.security !== security) continue
-      if (protocol && (config.protocol || 'vless') !== protocol) continue
-      if (needle && !item.blob.includes(needle)) continue
-      matched.push(config)
-    }
+    const matched = appliedIndexed
+      .filter((item) => matches(item.facet, appliedFilters))
+      .map((item) => item.config)
     if (settings.view !== 'country') matched.sort((left, right) => compareConfigs(settings.sort, left, right))
     return matched
-  }, [country, indexed, protocol, query, security, settings.latencyThreshold, settings.sort, settings.view, transport])
+  }, [appliedFilters, appliedIndexed, settings.sort, settings.view])
+
+  const sheetDraft = draft ?? {
+    country: safeList.country,
+    transport: safeList.transport,
+    security: safeList.security,
+    protocol: safeList.protocol,
+    threshold: settings.latencyThreshold,
+    sort: settings.sort,
+    view: settings.view,
+    showUnverified: safeList.showUnverified,
+    showUnstable: safeList.showUnstable,
+  }
+  const draftIndexed = useMemo(
+    () => poolFor(sheetDraft.showUnstable, sheetDraft.showUnverified),
+    [poolFor, sheetDraft.showUnstable, sheetDraft.showUnverified],
+  )
+  const draftActive = useMemo(() => draftFilters(sheetDraft, safeList.query), [safeList.query, sheetDraft])
+  const draftCount = useMemo(
+    () => countMatches(draftIndexed.map((item) => item.facet), draftActive),
+    [draftActive, draftIndexed],
+  )
+  const draftFacets = useMemo(() => {
+    const items = draftIndexed.map((item) => item.facet)
+    const names = new Map<string, string>()
+    for (const item of draftIndexed) {
+      if (item.facet.country && item.config.country) names.set(item.facet.country, item.config.country)
+    }
+    return {
+      protocols: facetCounts(items, draftActive, 'protocol'),
+      transports: facetCounts(items, draftActive, 'transport'),
+      securities: facetCounts(items, draftActive, 'security'),
+      countries: facetCounts(items, draftActive, 'country').map((row) => ({
+        code: row.id,
+        name: names.get(row.id) || row.id,
+        count: row.count,
+      })),
+    }
+  }, [draftActive, draftIndexed])
 
   const groups = useMemo(
     () =>
@@ -306,11 +347,14 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const totalHeight = prefix[rows.length] ?? 0
 
   const chosen = useMemo(
-    () => visible.filter((config) => picked.has(config.id)),
-    [picked, visible],
+    () => appliedIndexed.filter((item) => picked.has(item.config.id)).map((item) => item.config),
+    [appliedIndexed, picked],
   )
   const allFilteredPicked = filtered.length > 0 && filtered.every((config) => picked.has(config.id))
-  const sessionFilters = [country, transport, security, protocol].filter(Boolean).length
+  const filtersNarrow =
+    Boolean(safeList.country || safeList.transport || safeList.security || safeList.protocol) ||
+    settings.latencyThreshold != null ||
+    safeList.query.trim() !== ''
 
   function toggle(id: string) {
     setPicked((current) => {
@@ -377,7 +421,64 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   }
 
   const statsLine = ru.listSummary(data.stats.published, data.stats.countries)
-  const filtersOn = sessionFilters > 0 || settings.latencyThreshold != null
+  const filtersOn =
+    Boolean(safeList.country || safeList.transport || safeList.security || safeList.protocol) ||
+    settings.latencyThreshold != null
+
+  function openFilters() {
+    setDraft({
+      country: safeList.country,
+      transport: safeList.transport,
+      security: safeList.security,
+      protocol: safeList.protocol,
+      threshold: settings.latencyThreshold,
+      sort: settings.sort,
+      view: settings.view,
+      showUnverified: safeList.showUnverified,
+      showUnstable: safeList.showUnstable,
+    })
+    setFiltersOpen(true)
+  }
+
+  function applyDraft() {
+    if (!draft) return
+    const next = sanitizeListState(
+      {
+        ...safeList,
+        country: draft.country,
+        transport: draft.transport,
+        security: draft.security,
+        protocol: draft.protocol,
+        showUnverified: draft.showUnverified,
+        showUnstable: draft.showUnstable,
+      },
+      draftIndexed.map((item) => item.facet),
+    )
+    setList(next)
+    update({ latencyThreshold: draft.threshold, sort: draft.sort, view: draft.view })
+    setDraft(null)
+    setFiltersOpen(false)
+  }
+
+  function resetDraft() {
+    setDraft((current) => ({
+      country: null,
+      transport: null,
+      security: null,
+      protocol: null,
+      threshold: null,
+      sort: current?.sort ?? settings.sort,
+      view: current?.view ?? settings.view,
+      showUnverified: false,
+      showUnstable: false,
+    }))
+  }
+
+  function resetAllFilters() {
+    setList(defaultListState())
+    update({ latencyThreshold: null })
+    setDraft(null)
+  }
   const knownIds = useMemo(() => {
     const ids = new Set<string>()
     for (const item of [...data.configs, ...(data.unstable ?? []), ...data.unverified]) ids.add(item.id)
@@ -399,13 +500,19 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         {data.unverified.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem checked={showUnverified} onCheckedChange={setShowUnverified}>
+            <DropdownMenuCheckboxItem
+              checked={safeList.showUnverified}
+              onCheckedChange={(value) => setList((current) => ({ ...current, showUnverified: value }))}
+            >
               {ru.showUnverified}
             </DropdownMenuCheckboxItem>
           </>
         )}
         {(data.unstable?.length ?? 0) > 0 && (
-          <DropdownMenuCheckboxItem checked={showUnstable} onCheckedChange={setShowUnstable}>
+          <DropdownMenuCheckboxItem
+            checked={safeList.showUnstable}
+            onCheckedChange={(value) => setList((current) => ({ ...current, showUnstable: value }))}
+          >
             {ru.showUnstable}
           </DropdownMenuCheckboxItem>
         )}
@@ -427,8 +534,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            value={safeList.query}
+            onChange={(event) => setList((current) => ({ ...current, query: event.target.value }))}
             placeholder={ru.searchConfigsPlaceholder}
             aria-label={ru.searchConfigs}
             className="h-10 rounded-xl border-0 bg-card pl-9"
@@ -438,7 +545,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           variant={filtersOn ? 'secondary' : 'ghost'}
           size="icon"
           aria-label="Фильтры"
-          onClick={() => setFiltersOpen(true)}
+          onClick={openFilters}
         >
           <SlidersHorizontal />
         </Button>
@@ -458,7 +565,10 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           </div>
         )}
         {filtered.length === 0 ? (
-          <p className="px-4 pb-6 text-sm text-muted-foreground">{ru.nothingFound}</p>
+          <EmptyState
+            text={ru.nothingFound}
+            action={filtersNarrow ? { label: ru.resetFilters, onClick: resetAllFilters } : undefined}
+          />
         ) : (
           <div ref={listRef} style={{ height: totalHeight, position: 'relative' }}>
             <div style={{ height: prefix[start] ?? 0 }} />
@@ -541,39 +651,23 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       />
       <FilterSheet
         open={filtersOpen}
-        onOpenChange={setFiltersOpen}
-        countries={countries}
-        transports={transports}
-        securities={securities}
-        protocols={protocols}
-        country={country}
-        transport={transport}
-        security={security}
-        protocol={protocol}
-        threshold={settings.latencyThreshold}
-        sort={settings.sort}
-        view={settings.view}
-        showUnverified={showUnverified}
-        showUnstable={showUnstable}
+        onOpenChange={(open) => {
+          setFiltersOpen(open)
+          if (!open) setDraft(null)
+        }}
+        countries={draftFacets.countries}
+        transports={draftFacets.transports}
+        securities={draftFacets.securities}
+        protocols={draftFacets.protocols}
+        draft={sheetDraft}
+        onDraft={(patch) => setDraft((current) => ({ ...(current ?? sheetDraft), ...patch }))}
         unverifiedCount={data.unverified.length}
         unstableCount={data.unstable?.length ?? 0}
-        onCountry={setCountry}
-        onTransport={setTransport}
-        onSecurity={setSecurity}
-        onProtocol={setProtocol}
-        onThreshold={(value) => update({ latencyThreshold: value })}
-        onSort={(value) => update({ sort: value })}
-        onView={(value) => update({ view: value })}
+        resultCount={draftCount}
+        onApply={applyDraft}
         onExpandGroups={expandGroups}
         onCollapseGroups={collapseGroups}
-        onShowUnverified={setShowUnverified}
-        onShowUnstable={setShowUnstable}
-        onReset={() => {
-          setCountry(null)
-          setTransport(null)
-          setSecurity(null)
-          setProtocol(null)
-        }}
+        onReset={resetDraft}
       />
       <QrDialog
         request={qr}

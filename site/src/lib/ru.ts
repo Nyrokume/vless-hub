@@ -83,7 +83,8 @@ export const ru = {
   copyFailed: 'Не удалось скопировать',
   copied: 'Скопировано',
   linkCopied: 'Ссылка скопирована',
-  nothingFound: 'Ничего не найдено.',
+  nothingFound: 'Ничего не нашлось',
+  showCount: (count: number) => `Показать ${formatCount(count)}`,
   noProxies: 'Проверенных прокси нет.',
   tabs: {
     configs: 'Конфиги',
