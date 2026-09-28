@@ -1,6 +1,0 @@
-#profile-title: vless-hub — VLESS / XHTTP
-#profile-update-interval: 1
-#support-url: https://github.com/Nyrokume/vless-hub
-#profile-web-page-url: https://nyrokume.github.io/vless-hub/
-#generated-at: 2026-09-28T06:27:42+00:00
-vless://721bacfe-ff09-4e63-a735-686015bc1351@nl-xh02.tcp-reset-club.net:8443?mode=stream-one&path=%2Fassets%2Fv2%2Fpkg&security=reality&encryption=none&extra=%7B%0A%20%20%22xmux%22%3A%20%7B%0A%20%20%20%20%22maxConcurrency%22%3A%20%2216-32%22%0A%20%20%7D%0A%7D&pbk=Gu_QdtOX6E8pZcYvDWgHKA5dxcit7hrpU27sizCEWXg&fp=chrome&type=xhttp&sni=s3.netavex.com&sid=e0#%F0%9D%97%9D%F0%9D%97%BC%F0%9D%97%B6%F0%9D%97%BB%20%E2%9E%A0%20%40vpnplusee_free%20%7C%20%F0%9F%87%B3%F0%9F%87%B1

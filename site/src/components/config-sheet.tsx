@@ -1,23 +1,40 @@
-import { Copy, ExternalLink, QrCode } from 'lucide-react'
+import { Copy, QrCode, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Field, FieldGroup, FieldTitle } from '@/components/ui/field'
 import { Separator } from '@/components/ui/separator'
-import { ResponsivePanel } from '@/components/responsive-panel'
-import { clientName, configDeepLink, openExternal, type ClientId } from '@/lib/clients'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { clientName, configDeepLink, configImportActions, openExternal, type ClientId } from '@/lib/clients'
 import { copyText } from '@/lib/copy'
+import type { QrRequest } from '@/components/qr-dialog'
 import {
   configTitle,
   flagEmoji,
   formatStamp,
-  delayText,
   latencyClass,
+  latencyText,
   protocolLine,
-  recordDelay,
   securityLabel,
+  speedText,
+  stabilityText,
   transportLabel,
+  uptimeText,
 } from '@/lib/format'
 import type { ConfigRecord, SourceReport } from '@/lib/types'
 import { cn } from '@/lib/utils'
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-3 px-4 py-2.5">
+      <div className="w-28 shrink-0 text-[13px] text-muted-foreground">{label}</div>
+      <div className="min-w-0 flex-1 break-all text-[15px]">{value}</div>
+    </div>
+  )
+}
 
 export function ConfigSheet({
   config,
@@ -32,9 +49,9 @@ export function ConfigSheet({
   client: ClientId
   desktop: boolean
   onOpenChange: (open: boolean) => void
-  onQr: (title: string, value: string) => void
+  onQr: (request: QrRequest) => void
 }) {
-  const title = config ? configTitle(config) : 'Конфигурация'
+  const title = config ? configTitle(config) : ''
   const flag = config ? flagEmoji(config.country_code) : ''
   const sourceName = sources.find((item) => item.id === config?.source)?.name ?? config?.source
   const deepLink = config ? configDeepLink(client, config.uri) : null
@@ -61,63 +78,85 @@ export function ConfigSheet({
               ? 'GeoIP адреса'
               : '',
         ],
+        ['Стабильность', stabilityText(config.stability) || uptimeText(config.uptime)],
+        ['Скорость', speedText(config.speed_kbps)],
+        ['Рукопожатие', config.handshake_ms != null ? `${config.handshake_ms} мс` : ''],
+        ['Статус', config.status === 'working' ? 'Рабочий' : config.status === 'unstable' ? 'Нестабильный' : config.verified === 'tcp' ? 'Только открытый порт' : ''],
         ['Список', sourceName ?? ''],
         ['Проверено', config.tested_at ? formatStamp(config.tested_at) : ''],
       ].filter(([, value]) => value)
     : []
 
   return (
-    <ResponsivePanel
-      open={Boolean(config)}
-      onOpenChange={onOpenChange}
-      desktop={desktop}
-      title={flag ? `${flag} ${title}` : title}
-      description={
-        config
-          ? `${protocolLine(config.transport)} · ${delayText(config)}`
-          : 'Подробности конфигурации'
-      }
-    >
-      {config && (
-        <>
-          <p className={cn('text-sm font-medium tabular-nums', latencyClass(recordDelay(config)))}>
-            {delayText(config)} — HTTP 204 через Xray
-          </p>
-          <div className="flex flex-col gap-2">
-            <Button onClick={() => void copyText(config.uri, 'Ссылка конфига скопирована')}>
-              <Copy data-icon="inline-start" />
-              Скопировать ссылку
-            </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="secondary" onClick={() => onQr(`${flag} ${title}`.trim(), config.uri)}>
-                <QrCode data-icon="inline-start" />
-                QR-код
+    <Sheet open={Boolean(config)} onOpenChange={onOpenChange}>
+      <SheetContent
+        side={desktop ? 'right' : 'bottom'}
+        className={cn(
+          'gap-0 overflow-y-auto',
+          desktop ? 'w-full sm:max-w-md' : 'max-h-[88dvh] rounded-t-3xl',
+        )}
+      >
+        {config && (
+          <>
+            <SheetHeader className="pr-10 text-left">
+              <SheetTitle className="flex items-center gap-2 text-xl">
+                <span className="text-2xl leading-none" aria-hidden>
+                  {flag || '🌐'}
+                </span>
+                {title}
+              </SheetTitle>
+              <SheetDescription className="flex items-center justify-between gap-3 text-[15px]">
+                <span>{protocolLine(config.transport, config.protocol)}</span>
+                <span className={cn('font-semibold tabular-nums', latencyClass(config.latency_ms))}>
+                  {latencyText(config.latency_ms)}
+                </span>
+              </SheetDescription>
+            </SheetHeader>
+            <div className="flex flex-col gap-2 px-4 pb-2">
+              <Button onClick={() => void copyText(config.uri, 'Ссылка конфига скопирована')}>
+                <Copy />
+                Скопировать ссылку
               </Button>
-              <Button
-                variant="secondary"
-                disabled={!deepLink}
-                onClick={() => deepLink && openExternal(deepLink)}
-              >
-                <ExternalLink data-icon="inline-start" />
-                {deepLink ? clientName(client) : 'Только ссылка'}
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    onQr({
+                      title: `${flag} ${title}`.trim(),
+                      value: config.uri,
+                      share: 'text',
+                      actions: configImportActions(config.uri),
+                    })
+                  }
+                >
+                  <QrCode />
+                  QR-код
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={!deepLink}
+                  onClick={() => deepLink && openExternal(deepLink)}
+                >
+                  <ExternalLink />
+                  {deepLink ? clientName(client) : 'Только ссылка'}
+                </Button>
+              </div>
+              <p className="px-1 text-[12px] leading-snug text-muted-foreground">
+                Задержка — время HTTP-ответа через Xray с машины сборщика, не пинг вашего устройства.
+                Сайт не поднимает VPN.
+              </p>
             </div>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Задержка — время HTTP-запроса generate_204 через этот конфиг с машины сборщика, не пинг
-            телефона. Сайт не поднимает VPN.
-          </p>
-          <Separator />
-          <FieldGroup>
-            {rows.map(([label, value]) => (
-              <Field key={label} orientation="horizontal" className="items-start">
-                <FieldTitle className="w-28 shrink-0">{label}</FieldTitle>
-                <span className="min-w-0 flex-1 text-right break-all">{value}</span>
-              </Field>
-            ))}
-          </FieldGroup>
-        </>
-      )}
-    </ResponsivePanel>
+            <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-secondary/60">
+              {rows.map(([label, value], index) => (
+                <div key={label}>
+                  {index > 0 && <Separator />}
+                  <Field label={label} value={value} />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }

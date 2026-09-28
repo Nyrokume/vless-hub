@@ -1,0 +1,67 @@
+[
+  {
+    "name": "grpc",
+    "uri": "vless://cd3bb7d9-7df3-4644-ac05-c260990ac277@66.90.104.43:2083?encryption=none&security=none&type=grpc&mode=gun&authority=&serviceName=vless#EPODONIOS",
+    "expect": {
+      "uuid": "cd3bb7d9-7df3-4644-ac05-c260990ac277",
+      "host": "66.90.104.43",
+      "port": 2083,
+      "network": "grpc",
+      "security": "none",
+      "mode": "gun",
+      "service_name": "vless",
+      "encryption": "none",
+      "remark": "EPODONIOS"
+    }
+  },
+  {
+    "name": "ws",
+    "uri": "vless://5fcdc9b7-e70f-4a5c-85c3-e018ad818326@82.24.203.20:2087?security=none&type=ws&path=/fd5ba98a3970&packetEncoding=xudp&encryption=none#EPODONIOS",
+    "expect": {
+      "uuid": "5fcdc9b7-e70f-4a5c-85c3-e018ad818326",
+      "host": "82.24.203.20",
+      "port": 2087,
+      "network": "ws",
+      "security": "none",
+      "path": "/fd5ba98a3970",
+      "packet_encoding": "xudp"
+    }
+  },
+  {
+    "name": "xhttp-reality",
+    "uri": "vless://721bacfe-ff09-4e63-a735-686015bc1351@nl.example.net:8443?mode=stream-one&path=%2Fassets%2Fv2%2Fpkg&security=reality&encryption=none&pbk=Gu_QdtOX6E8pZcYvDWgHKA&fp=chrome&type=xhttp&sni=s3.example.com&sid=e0#name",
+    "expect": {
+      "network": "xhttp",
+      "security": "reality",
+      "mode": "stream-one",
+      "path": "/assets/v2/pkg",
+      "pbk": "Gu_QdtOX6E8pZcYvDWgHKA",
+      "sid": "e0",
+      "sni": "s3.example.com",
+      "fp": "chrome",
+      "port": 8443
+    }
+  },
+  {
+    "name": "security-false",
+    "uri": "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:80?type=ws&security=false&path=%2F#x",
+    "expect": {
+      "security": "none",
+      "network": "ws",
+      "path": "/",
+      "port": 80
+    }
+  },
+  {
+    "name": "h2",
+    "uri": "vless://33333333-3333-4333-8333-333333333333@h2.example:443?type=http&security=tls&path=%2Fh2&host=cdn.example&sni=cdn.example&alpn=h2%2Chttp%2F1.1#h2",
+    "expect": {
+      "network": "h2",
+      "security": "tls",
+      "path": "/h2",
+      "host_header": "cdn.example",
+      "sni": "cdn.example",
+      "alpn": "h2,http/1.1"
+    }
+  }
+]

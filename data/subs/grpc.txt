@@ -1,6 +1,0 @@
-#profile-title: vless-hub — VLESS / gRPC
-#profile-update-interval: 1
-#support-url: https://github.com/Nyrokume/vless-hub
-#profile-web-page-url: https://nyrokume.github.io/vless-hub/
-#generated-at: 2026-09-28T06:27:42+00:00
-vless://a8e3155b-ceb1-4fcb-bc0c-2e77ec005401@files.noneok.com:443?mode=gun&security=reality&encryption=none&pbk=q3kOYHdjmqWLLYj8oikvna1bTjofk45ktegGaJE611g&fp=firefox&type=grpc&serviceName=api.v1.StreamService&sni=files.noneok.com&sid=d3b394558cfe0266#Server%2050

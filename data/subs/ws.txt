@@ -1,6 +1,0 @@
-#profile-title: vless-hub — VLESS / WS
-#profile-update-interval: 1
-#support-url: https://github.com/Nyrokume/vless-hub
-#profile-web-page-url: https://nyrokume.github.io/vless-hub/
-#generated-at: 2026-09-28T06:27:42+00:00
-vless://e5cc16a6-ea42-46b2-82ae-ad2157e1641b@172.64.150.28:2082?encryption=none&security=none&sni=hhlfy.twiladaphne.ndjp.net&fp=chrome&type=ws&host=hhlfy.twiladaphne.ndjp.net&path=/fp#🇨🇦

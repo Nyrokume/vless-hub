@@ -21,8 +21,40 @@ export function securityLabel(value: string): string {
   return value
 }
 
-export function protocolLine(transport: string): string {
-  return `VLESS / ${transportLabel(transport)}`
+export function protocolLabel(protocol: string | undefined): string {
+  const key = protocol || 'vless'
+  if (key === 'shadowsocks') return 'SS'
+  if (key === 'trojan') return 'Trojan'
+  if (key === 'hysteria2') return 'HY2'
+  return 'VLESS'
+}
+
+export function protocolLine(transport: string, protocol?: string): string {
+  return `${protocolLabel(protocol)} / ${transportLabel(transport)}`
+}
+
+export function stabilityText(rate: number | null | undefined): string {
+  if (rate == null || Number.isNaN(rate)) return ''
+  return `${Math.round(rate * 100)}%`
+}
+
+export function speedText(kbps: number | null | undefined): string {
+  if (kbps == null || kbps <= 0) return ''
+  if (kbps >= 1024) return `${(kbps / 1024).toFixed(1)} МБ/с`
+  return `${Math.round(kbps)} КБ/с`
+}
+
+export const FAILURE_LABELS: Record<string, string> = {
+  parse_error: 'разбор',
+  invalid_field: 'поле',
+  tcp_refused: 'tcp_refused',
+  timeout: 'timeout',
+  tls_fail: 'tls_fail',
+  reality_fail: 'reality_fail',
+  handshake_fail: 'рукопожатие',
+  http_fail: 'http_fail',
+  no_data: 'no_data',
+  exit_ip_leak: 'exit_ip_leak',
 }
 
 export function flagEmoji(code: string | null | undefined): string {
@@ -33,28 +65,21 @@ export function flagEmoji(code: string | null | undefined): string {
   )
 }
 
-export function latencyClass(ms: number): string {
-  if (ms <= 300) return 'text-success'
-  if (ms <= 800) return 'text-warning'
-  return 'text-destructive'
+export function latencyClass(ms: number | null | undefined): string {
+  if (ms == null) return 'text-muted-foreground'
+  if (ms <= 300) return 'text-foreground'
+  if (ms <= 800) return 'text-muted-foreground'
+  return 'text-muted-foreground'
 }
 
-export function recordDelay(item: { delay_ms?: number | null; latency_ms?: number | null }): number {
-  if (typeof item.delay_ms === 'number') return item.delay_ms
-  return item.latency_ms ?? 0
+export function latencyText(ms: number | null | undefined): string {
+  if (ms == null) return '—'
+  return `${ms} мс`
 }
 
-export function medianNumber(values: number[]): number | null {
-  if (values.length === 0) return null
-  const ordered = [...values].sort((left, right) => left - right)
-  const mid = Math.floor(ordered.length / 2)
-  if (ordered.length % 2) return ordered[mid]
-  return Math.round((ordered[mid - 1] + ordered[mid]) / 2)
-}
-
-export function delayText(item: { delay_ms?: number | null; latency_ms?: number | null; check?: string }): string {
-  const value = recordDelay(item)
-  return item.check === 'tcp' ? `${value} мс TCP` : `${value} мс`
+export function uptimeText(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) return ''
+  return `${Math.round(value * 100)}%`
 }
 
 export function formatStamp(iso: string): string {

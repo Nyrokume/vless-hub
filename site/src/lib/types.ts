@@ -1,6 +1,8 @@
 export type ConfigRecord = {
   id: string
   uri: string
+  protocol?: string
+  encryption?: string
   remark: string
   uuid: string
   host: string
@@ -20,27 +22,18 @@ export type ConfigRecord = {
   ip_country: string | null
   extra: Record<string, string>
   source: string
-  latency_ms: number
-  delay_ms?: number
-  check?: 'real' | 'tcp'
-  successes?: number
+  latency_ms: number | null
+  handshake_ms?: number | null
+  status?: 'working' | 'unstable' | 'dead' | string
+  stability?: number | null
+  exit_ip?: string
   tested_at: string
-}
-
-export type ProxyRecord = {
-  id: string
-  kind: 'mtproto' | 'socks5' | 'http'
-  uri: string
-  host: string
-  port: number
-  secret: string
-  country_code: string | null
-  country: string | null
-  delay_ms: number
-  check: 'real' | 'tcp'
-  successes: number
-  tested_at: string
-  source: string
+  uptime?: number
+  checks_ok?: number
+  checks_fail?: number
+  bits?: string
+  verified?: string
+  speed_kbps?: number | null
 }
 
 export type SubscriptionInfo = {
@@ -50,7 +43,18 @@ export type SubscriptionInfo = {
   file: string
   b64: string
   count: number
-  kind?: string
+}
+
+export type CatalogEntry = {
+  path: string
+  kind: string
+  format: string
+  count: number
+  country?: string
+  security?: string
+  network?: string
+  protocol?: string
+  top?: number | null
 }
 
 export type SourceReport = {
@@ -59,7 +63,45 @@ export type SourceReport = {
   url: string
   ok: boolean
   fetched: number
+  kept?: number
+  tested?: number
+  verified?: number
+  yield?: number | null
+  deprioritized?: boolean
   error: string | null
+}
+
+export type TelegramStats = {
+  collected: number
+  tested: number
+  published: number
+  mtproto: number
+  socks: number
+  median_latency_ms: number | null
+}
+
+export type ProxyRecord = {
+  id: string
+  kind: 'mtproto' | 'socks' | string
+  host: string
+  port: number
+  secret: string
+  mode: string
+  domain: string
+  user: string
+  country: string
+  country_name: string
+  ip?: string
+  latency_ms: number | null
+  status?: 'working' | 'unstable' | 'dead' | string
+  stability?: number | null
+  uptime: number
+  checks_ok: number
+  checks_fail: number
+  bits: string
+  tg: string
+  https: string
+  sources: string[]
 }
 
 export type HubData = {
@@ -70,23 +112,29 @@ export type HubData = {
   probe: string
   fast_threshold_ms: number
   sources: SourceReport[]
-  best?: ConfigRecord | null
   stats: {
     fetched: number
     unique: number
     tested: number
     alive: number
     published: number
-    proxies?: number
-    proxies_real?: number
-    proxies_tcp?: number
+    working?: number
+    unstable?: number
     countries: number
-    median_delay_ms?: number | null
-    median_proxy_delay_ms?: number | null
     median_latency_ms: number | null
     transports: Record<string, number>
+    unverified?: number
+    proxy_tested?: number
+    proxy_ok?: number
+    rejected?: Record<string, number>
+    by_protocol?: Record<string, number>
+    telegram?: TelegramStats
   }
   subscriptions: SubscriptionInfo[]
+  catalog: CatalogEntry[]
   configs: ConfigRecord[]
-  proxies?: ProxyRecord[]
+  unstable?: ConfigRecord[]
+  unverified: ConfigRecord[]
+  proxies: ProxyRecord[]
+  unstable_proxies?: ProxyRecord[]
 }

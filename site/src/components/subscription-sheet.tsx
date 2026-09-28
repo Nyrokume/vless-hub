@@ -1,18 +1,26 @@
-import { Copy, ExternalLink, QrCode } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Copy, Download, ExternalLink, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import {
-  Item,
-  ItemContent,
-  ItemDescription,
-  ItemGroup,
-  ItemSeparator,
-  ItemTitle,
-} from '@/components/ui/item'
-import { ResponsivePanel } from '@/components/responsive-panel'
-import { clientName, openExternal, subscriptionDeepLink, type ClientId } from '@/lib/clients'
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import type { QrRequest } from '@/components/qr-dialog'
+import {
+  clientName,
+  openExternal,
+  subscriptionDeepLink,
+  subscriptionImportActions,
+  type ClientId,
+} from '@/lib/clients'
 import { copyText } from '@/lib/copy'
-import { membersOf, subscriptionUrl } from '@/lib/data'
-import type { ConfigRecord, SubscriptionInfo } from '@/lib/types'
+import { membersOf, publicFileUrl, subscriptionUrl } from '@/lib/data'
+import type { CatalogEntry, ConfigRecord, SubscriptionInfo } from '@/lib/types'
+import { cn } from '@/lib/utils'
 
 export function SubscriptionSheet({
   open,
@@ -20,6 +28,7 @@ export function SubscriptionSheet({
   subscription,
   subscriptions,
   configs,
+  catalog,
   fastMs,
   publicBase,
   client,
@@ -27,118 +36,271 @@ export function SubscriptionSheet({
   onOpenChange,
   onSelect,
   onQr,
-  links,
 }: {
   open: boolean
   title: string
   subscription: SubscriptionInfo | null
   subscriptions: SubscriptionInfo[]
   configs: ConfigRecord[]
+  catalog: CatalogEntry[]
   fastMs: number
   publicBase: string
   client: ClientId
   desktop: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (subscription: SubscriptionInfo | null) => void
-  onQr: (title: string, value: string) => void
-  links?: { title: string; uri: string; telegram?: boolean }[]
+  onQr: (request: QrRequest) => void
 }) {
   const url = subscription ? subscriptionUrl(publicBase, subscription.file) : ''
   const b64Url = subscription ? subscriptionUrl(publicBase, subscription.b64) : ''
   const deepLink = subscription ? subscriptionDeepLink(client, url, subscription.name) : null
-  const body = links
-    ? links.map((item) => item.uri).join('\n')
-    : subscription
-      ? membersOf(subscription.id, configs, fastMs)
-          .map((item) => item.uri)
-          .join('\n')
-      : ''
+  const body = subscription
+    ? membersOf(subscription.id, configs, fastMs)
+        .map((item) => item.uri)
+        .join('\n')
+    : ''
 
   return (
-    <ResponsivePanel
-      open={open}
-      onOpenChange={onOpenChange}
-      desktop={desktop}
-      title={subscription ? subscription.name : title}
-      description={
-        subscription
-          ? `${subscription.description}. ${subscription.count} ${subscription.kind && subscription.kind !== 'vless' ? 'прокси' : 'конфигов'}.`
-          : 'Файлы, которые публикует сборщик. Ссылка ведёт на GitHub Pages.'
-      }
-    >
-      {subscription ? (
-        <>
-          <p className="rounded-lg bg-muted p-3 font-mono text-xs break-all text-muted-foreground">
-            {url}
-          </p>
-          <Button onClick={() => void copyText(url, 'Ссылка подписки скопирована')}>
-            <Copy data-icon="inline-start" />
-            Скопировать URL
-          </Button>
-          <Button variant="secondary" onClick={() => void copyText(b64Url, 'Ссылка base64 скопирована')}>
-            <Copy data-icon="inline-start" />
-            Скопировать base64 URL
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() =>
-              void copyText(
-                body,
-                `Скопировано: ${subscription.count}`,
-              )
-            }
-          >
-            <Copy data-icon="inline-start" />
-            Скопировать все ссылки
-          </Button>
-          {links?.some((item) => item.telegram) && (
-            <div className="flex flex-col gap-2">
-              {links
-                .filter((item) => item.telegram)
-                .slice(0, 6)
-                .map((item) => (
-                  <Button key={item.uri} variant="outline" onClick={() => openExternal(item.uri)}>
-                    <ExternalLink data-icon="inline-start" />
-                    {item.title}
-                  </Button>
-                ))}
-            </div>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side={desktop ? 'right' : 'bottom'}
+        className={cn(
+          'gap-0 overflow-y-auto',
+          desktop ? 'w-full sm:max-w-md' : 'max-h-[88dvh] rounded-t-3xl',
+        )}
+      >
+        <SheetHeader className="pr-10 text-left">
+          <SheetTitle>{subscription ? subscription.name : title}</SheetTitle>
+          {subscription && (
+            <SheetDescription>{subscription.count} конфигов</SheetDescription>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" onClick={() => onQr(subscription.name, url)}>
-              <QrCode data-icon="inline-start" />
-              QR подписки
+        </SheetHeader>
+
+        {subscription ? (
+          <div className="flex flex-col gap-2 px-4 pb-6">
+            <p className="break-all rounded-xl bg-secondary px-3 py-2 font-mono text-[11px] text-muted-foreground">
+              {url}
+            </p>
+            <Button onClick={() => void copyText(url, 'Ссылка подписки скопирована')}>
+              <Copy />
+              Скопировать URL
             </Button>
-            <Button variant="outline" disabled={!deepLink} onClick={() => deepLink && openExternal(deepLink)}>
-              <ExternalLink data-icon="inline-start" />
-              {deepLink ? clientName(client) : 'Только ссылка'}
-            </Button>
+            {subscription.b64 && (
+              <Button variant="secondary" onClick={() => void copyText(b64Url, 'Ссылка base64 скопирована')}>
+                <Copy />
+                Скопировать base64 URL
+              </Button>
+            )}
+            {subscription.id !== 'clash' && subscription.id !== 'singbox' && (
+              <Button
+                variant="secondary"
+                onClick={() => void copyText(body, `Скопировано конфигов: ${subscription.count}`)}
+              >
+                <Copy />
+                Скопировать все ссылки
+              </Button>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  onQr({
+                    title: subscription.name,
+                    value: url,
+                    share: 'url',
+                    actions: subscriptionImportActions(url, subscription.name),
+                  })
+                }
+              >
+                <QrCode />
+                QR подписки
+              </Button>
+              <Button variant="secondary" disabled={!deepLink} onClick={() => deepLink && openExternal(deepLink)}>
+                <ExternalLink />
+                {deepLink ? clientName(client) : 'Только ссылка'}
+              </Button>
+            </div>
+            {subscriptions.length > 1 && (
+              <button
+                type="button"
+                className="mt-1 text-left text-sm text-primary"
+                onClick={() => onSelect(null)}
+              >
+                Все подписки
+              </button>
+            )}
           </div>
-          {subscriptions.length > 1 && (
-            <Button variant="ghost" className="w-full" onClick={() => onSelect(null)}>
-              Все подписки
-            </Button>
-          )}
-        </>
-      ) : (
-        <ItemGroup>
-          {subscriptions.map((item, index) => (
-            <div key={item.id}>
-              {index > 0 && <ItemSeparator />}
-              <Item variant="outline" asChild>
-                <button type="button" onClick={() => onSelect(item)}>
-                  <ItemContent>
-                    <ItemTitle>{item.name}</ItemTitle>
-                    <ItemDescription>
+        ) : (
+          <>
+          <SubscriptionBuilder
+            className="mx-4 mb-4"
+            configs={configs}
+            catalog={catalog}
+            publicBase={publicBase}
+            onQr={onQr}
+          />
+          <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-card">
+            {subscriptions.map((item, index) => (
+              <div key={item.id}>
+                {index > 0 && <Separator />}
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left"
+                  onClick={() => onSelect(item)}
+                >
+                  <span className="flex-1">
+                    <span className="block text-[17px]">{item.name}</span>
+                    <span className="block text-[13px] text-muted-foreground">
                       {item.count} · {item.description}
-                    </ItemDescription>
-                  </ItemContent>
+                    </span>
+                  </span>
                 </button>
-              </Item>
-            </div>
-          ))}
-        </ItemGroup>
-      )}
-    </ResponsivePanel>
+              </div>
+            ))}
+          </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+export function SubscriptionBuilder({
+  configs,
+  catalog,
+  publicBase,
+  onQr,
+  className,
+}: {
+  configs: ConfigRecord[]
+  catalog: CatalogEntry[]
+  publicBase: string
+  onQr: (request: QrRequest) => void
+  className?: string
+}) {
+  const [country, setCountry] = useState('')
+  const [security, setSecurity] = useState('')
+  const [transport, setTransport] = useState('')
+  const countries = useMemo(() => {
+    const codes = new Set<string>()
+    for (const item of catalog) {
+      if (item.kind === 'country' && item.country) codes.add(item.country)
+    }
+    for (const config of configs) {
+      if (config.country_code) codes.add(config.country_code)
+    }
+    return [...codes].sort()
+  }, [catalog, configs])
+
+  const path = useMemo(() => {
+    if (country && security && !transport) return `sub/combo/${country}-${security}.txt`
+    if (country && !security && !transport) return `sub/country/${country}.txt`
+    if (security && !country && !transport) return `sub/security/${security}.txt`
+    if (transport && !country && !security) return `sub/transport/${transport}.txt`
+    if (!country && !security && !transport) return 'sub/all.txt'
+    return ''
+  }, [country, security, transport])
+
+  const published = path ? catalog.some((item) => item.path === path) : false
+  const url = path && published ? publicFileUrl(publicBase, path) : ''
+  const picked = configs.filter((config) => {
+    if (country && config.country_code !== country) return false
+    if (security && config.security !== security) return false
+    if (transport && config.transport !== transport) return false
+    return true
+  })
+
+  function downloadLocal() {
+    const blob = new Blob([picked.map((item) => item.uri).join('\n') + '\n'], { type: 'text/plain' })
+    const href = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = href
+    anchor.download = 'v2hub-custom.txt'
+    anchor.click()
+    URL.revokeObjectURL(href)
+  }
+
+  return (
+    <div className={cn('rounded-2xl bg-card p-4', className)}>
+      <p className="text-[15px] font-medium">Собрать подписку</p>
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <Select label="Страна" value={country} onChange={setCountry} options={countries} />
+        <Select
+          label="Защита"
+          value={security}
+          onChange={setSecurity}
+          options={['reality', 'tls', 'none']}
+        />
+        <Select
+          label="Транспорт"
+          value={transport}
+          onChange={setTransport}
+          options={['tcp', 'ws', 'grpc', 'xhttp', 'h2']}
+        />
+      </div>
+      <p className="mt-2 text-[12px] text-muted-foreground">
+        {url ? url : `В списке сейчас: ${picked.length}`}
+      </p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Button
+          variant="secondary"
+          disabled={!url}
+          onClick={() => url && void copyText(url, 'Ссылка подборки скопирована')}
+        >
+          <Copy />
+          URL
+        </Button>
+        <Button
+          variant="secondary"
+          disabled={!url}
+          onClick={() =>
+            url &&
+            onQr({
+              title: 'Подборка',
+              value: url,
+              share: 'url',
+              actions: subscriptionImportActions(url, 'V2Hub'),
+            })
+          }
+        >
+          <QrCode />
+          QR
+        </Button>
+      </div>
+      <Button className="mt-2 w-full" variant="secondary" disabled={picked.length === 0} onClick={downloadLocal}>
+        <Download />
+        Скачать {picked.length}
+      </Button>
+    </div>
+  )
+}
+
+function Select({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: string[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <label className="block text-[12px] text-muted-foreground">
+      {label}
+      <select
+        className="mt-1 h-10 w-full rounded-xl bg-secondary px-2 text-[14px] text-foreground"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">все</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }

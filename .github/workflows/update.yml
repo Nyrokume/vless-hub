@@ -1,0 +1,128 @@
+name: Update and deploy
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      max_tcp:
+        description: "Лимит TCP-проверок (пусто = sources.yaml)"
+        required: false
+        default: ""
+      max_proxy:
+        description: "Лимит проверок через Xray (пусто = sources.yaml)"
+        required: false
+        default: ""
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: vless-hub-pages
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Python tests
+        run: |
+          pip install -r requirements.txt
+          python -m pytest
+      - name: Build the site
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+
+  build:
+    needs: check
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    outputs:
+      publish: ${{ steps.pipe.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Install Python tools
+        run: pip install -r requirements.txt
+      - name: Collect and test
+        id: pipe
+        env:
+          VLESSHUB_MAX_TCP: ${{ github.event.inputs.max_tcp }}
+          VLESSHUB_MAX_PROXY: ${{ github.event.inputs.max_proxy }}
+        run: |
+          set +e
+          python -m vlesshub run --out publish --site site
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "No proxy-verified configs; history saved, previous site kept."
+            exit 0
+          fi
+          if [ "$code" -ne 0 ]; then
+            exit "$code"
+          fi
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+      - name: Commit compact probe state
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "nyrokume.dev"
+          git config user.email "143820910+Nyrokume@users.noreply.github.com"
+          git add state/history.json state/tg_history.json state/geo_cache.json state/source_health.json
+          if git diff --cached --quiet; then
+            echo "state unchanged"
+          else
+            git commit -m "chore: update probe history"
+            git push
+          fi
+      - name: Build the React site
+        if: steps.pipe.outputs.publish == 'true'
+        working-directory: site
+        run: |
+          npm ci
+          npm run build
+      - name: Upload Pages artifact
+        if: steps.pipe.outputs.publish == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

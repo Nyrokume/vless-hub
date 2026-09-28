@@ -1,0 +1,17 @@
+[project]
+name = "vless-hub"
+version = "1.0.0"
+description = "Aggregator of publicly posted VLESS configs"
+requires-python = ">=3.11"
+dependencies = [
+  "PyYAML>=6.0.1",
+  "maxminddb>=2.6.1",
+  "cryptography>=42",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
