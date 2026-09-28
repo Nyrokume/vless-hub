@@ -2,11 +2,31 @@
   {
     "id": "barry-far",
     "name": "Barry-far",
+    "kind": "vless",
     "url": "https://raw.githubusercontent.com/barry-far/V2ray-config/main/Splitted-By-Protocol/vless.txt"
   },
   {
     "id": "epodonios",
     "name": "Epodonios",
+    "kind": "vless",
     "url": "https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt"
+  },
+  {
+    "id": "solispirit-mtproto",
+    "name": "SoliSpirit MTProto",
+    "kind": "mtproto",
+    "url": "https://raw.githubusercontent.com/SoliSpirit/mtproto/master/all_proxies.txt"
+  },
+  {
+    "id": "speedx-socks5",
+    "name": "TheSpeedX SOCKS5",
+    "kind": "socks5",
+    "url": "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt"
+  },
+  {
+    "id": "speedx-http",
+    "name": "TheSpeedX HTTP",
+    "kind": "http",
+    "url": "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt"
   }
 ]

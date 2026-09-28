@@ -25,7 +25,19 @@ jobs:
 
       - name: Parser tests
         working-directory: collector
-        run: python3 -m unittest test_vlesslib.py
+        run: python3 -m unittest discover -s . -p 'test_*.py'
+
+      - name: Install Xray
+        run: |
+          set -euo pipefail
+          version="v26.3.27"
+          sha="23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae"
+          mkdir -p collector/bin
+          curl -fsSL -o /tmp/xray.zip "https://github.com/XTLS/Xray-core/releases/download/${version}/Xray-linux-64.zip"
+          echo "${sha}  /tmp/xray.zip" | sha256sum -c -
+          unzip -o /tmp/xray.zip -d collector/bin
+          chmod +x collector/bin/xray
+          collector/bin/xray version
 
       - name: Collect and probe
         run: python3 collector/collect.py

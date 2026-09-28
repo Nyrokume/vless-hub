@@ -21,7 +21,26 @@ export type ConfigRecord = {
   extra: Record<string, string>
   source: string
   latency_ms: number
+  delay_ms?: number
+  check?: 'real' | 'tcp'
+  successes?: number
   tested_at: string
+}
+
+export type ProxyRecord = {
+  id: string
+  kind: 'mtproto' | 'socks5' | 'http'
+  uri: string
+  host: string
+  port: number
+  secret: string
+  country_code: string | null
+  country: string | null
+  delay_ms: number
+  check: 'real' | 'tcp'
+  successes: number
+  tested_at: string
+  source: string
 }
 
 export type SubscriptionInfo = {
@@ -31,6 +50,7 @@ export type SubscriptionInfo = {
   file: string
   b64: string
   count: number
+  kind?: string
 }
 
 export type SourceReport = {
@@ -50,16 +70,23 @@ export type HubData = {
   probe: string
   fast_threshold_ms: number
   sources: SourceReport[]
+  best?: ConfigRecord | null
   stats: {
     fetched: number
     unique: number
     tested: number
     alive: number
     published: number
+    proxies?: number
+    proxies_real?: number
+    proxies_tcp?: number
     countries: number
+    median_delay_ms?: number | null
+    median_proxy_delay_ms?: number | null
     median_latency_ms: number | null
     transports: Record<string, number>
   }
   subscriptions: SubscriptionInfo[]
   configs: ConfigRecord[]
+  proxies?: ProxyRecord[]
 }

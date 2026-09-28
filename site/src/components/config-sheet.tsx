@@ -9,8 +9,10 @@ import {
   configTitle,
   flagEmoji,
   formatStamp,
+  delayText,
   latencyClass,
   protocolLine,
+  recordDelay,
   securityLabel,
   transportLabel,
 } from '@/lib/format'
@@ -72,14 +74,14 @@ export function ConfigSheet({
       title={flag ? `${flag} ${title}` : title}
       description={
         config
-          ? `${protocolLine(config.transport)} · ${config.latency_ms} мс`
+          ? `${protocolLine(config.transport)} · ${delayText(config)}`
           : 'Подробности конфигурации'
       }
     >
       {config && (
         <>
-          <p className={cn('text-sm font-medium tabular-nums', latencyClass(config.latency_ms))}>
-            {config.latency_ms} мс — TCP сборщика
+          <p className={cn('text-sm font-medium tabular-nums', latencyClass(recordDelay(config)))}>
+            {delayText(config)} — HTTP 204 через Xray
           </p>
           <div className="flex flex-col gap-2">
             <Button onClick={() => void copyText(config.uri, 'Ссылка конфига скопирована')}>
@@ -102,8 +104,8 @@ export function ConfigSheet({
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Задержка — время TCP-соединения с машины сборщика, не пинг вашего устройства. Сайт не
-            поднимает VPN.
+            Задержка — время HTTP-запроса generate_204 через этот конфиг с машины сборщика, не пинг
+            телефона. Сайт не поднимает VPN.
           </p>
           <Separator />
           <FieldGroup>

@@ -70,17 +70,17 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
     { icon: Square, text: `Версия: ${SITE_VERSION}` },
     { icon: Activity, text: `Сборщик: ${data?.collector_version ?? '—'}` },
     { icon: Clock, text: `Последний запуск: ${data ? formatStamp(data.generated_at) : '—'}` },
-    { icon: Gauge, text: 'Проверка: TCP-соединение' },
+    { icon: Gauge, text: 'Проверка: real-delay, HTTP 204 через Xray' },
     {
       icon: Server,
       text: data
-        ? `В списке: ${data.stats.published} из ${data.stats.tested} проверенных`
+        ? `В списке: ${data.stats.published} конфигов из ${data.stats.tested} проверенных, прокси ${data.stats.proxies ?? 0} (real ${data.stats.proxies_real ?? 0})`
         : 'В списке: —',
     },
     {
       icon: Globe,
       text: data
-        ? `Стран: ${data.stats.countries} · медиана ${data.stats.median_latency_ms ?? '—'} мс`
+        ? `Стран: ${data.stats.countries} · медиана ${data.stats.median_delay_ms ?? data.stats.median_latency_ms ?? '—'} мс`
         : 'Стран: —',
     },
     { icon: Link2, text: sourceLine },
@@ -248,9 +248,10 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
       </Card>
 
       <p className="text-sm text-muted-foreground">
-        Сборщик забирает публичные VLESS-ссылки, проверяет TCP до адреса и порта и публикует
-        ответившие. Задержка измерена с раннера сборщика, а не с вашего телефона. Кнопка на экране
-        подключения копирует ссылку подписки — сайт не устанавливает VPN-туннель.
+        Сборщик проверяет VLESS запросом HTTP 204 через Xray и отдельно собирает прокси. Задержка
+        измерена с раннера сборщика, а не с вашего телефона. Круглая кнопка открывает лучший конфиг
+        в выбранном клиенте. Сайт не устанавливает VPN-туннель. Последний запуск — в блоке
+        «Информация».
       </p>
     </div>
   )

@@ -1,3 +1,4 @@
+import { recordDelay } from '@/lib/format'
 import type { ConfigRecord, HubData } from '@/lib/types'
 
 export async function loadHub(): Promise<HubData> {
@@ -10,6 +11,8 @@ export async function loadHub(): Promise<HubData> {
   if (!data || !Array.isArray(data.configs) || !Array.isArray(data.subscriptions)) {
     throw new Error('Файл данных повреждён')
   }
+  data.proxies = Array.isArray(data.proxies) ? data.proxies : []
+  data.best = data.best ?? null
   return data
 }
 
@@ -20,7 +23,7 @@ export function subscriptionUrl(publicBase: string, file: string): string {
 
 export function membersOf(subId: string, configs: ConfigRecord[], fastMs: number): ConfigRecord[] {
   if (subId === 'all') return configs
-  if (subId === 'fast') return configs.filter((item) => item.latency_ms <= fastMs)
+  if (subId === 'fast') return configs.filter((item) => recordDelay(item) <= fastMs)
   if (subId === 'reality' || subId === 'tls') {
     return configs.filter((item) => item.security === subId)
   }

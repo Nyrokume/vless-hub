@@ -35,19 +35,26 @@ export function flagEmoji(code: string | null | undefined): string {
 
 export function latencyClass(ms: number): string {
   if (ms <= 300) return 'text-success'
-  if (ms <= 600) return 'text-warning'
+  if (ms <= 800) return 'text-warning'
   return 'text-destructive'
 }
 
-export function formatElapsed(fromIso: string, now: number): string {
-  const start = Date.parse(fromIso)
-  if (Number.isNaN(start)) return '-- : -- : --'
-  const total = Math.max(0, Math.floor((now - start) / 1000))
-  const hours = Math.floor(total / 3600)
-  const minutes = Math.floor((total % 3600) / 60)
-  const seconds = total % 60
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${pad(hours)} : ${pad(minutes)} : ${pad(seconds)}`
+export function recordDelay(item: { delay_ms?: number | null; latency_ms?: number | null }): number {
+  if (typeof item.delay_ms === 'number') return item.delay_ms
+  return item.latency_ms ?? 0
+}
+
+export function medianNumber(values: number[]): number | null {
+  if (values.length === 0) return null
+  const ordered = [...values].sort((left, right) => left - right)
+  const mid = Math.floor(ordered.length / 2)
+  if (ordered.length % 2) return ordered[mid]
+  return Math.round((ordered[mid - 1] + ordered[mid]) / 2)
+}
+
+export function delayText(item: { delay_ms?: number | null; latency_ms?: number | null; check?: string }): string {
+  const value = recordDelay(item)
+  return item.check === 'tcp' ? `${value} мс TCP` : `${value} мс`
 }
 
 export function formatStamp(iso: string): string {

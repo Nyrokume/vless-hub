@@ -27,6 +27,7 @@ export function SubscriptionSheet({
   onOpenChange,
   onSelect,
   onQr,
+  links,
 }: {
   open: boolean
   title: string
@@ -40,15 +41,18 @@ export function SubscriptionSheet({
   onOpenChange: (open: boolean) => void
   onSelect: (subscription: SubscriptionInfo | null) => void
   onQr: (title: string, value: string) => void
+  links?: { title: string; uri: string; telegram?: boolean }[]
 }) {
   const url = subscription ? subscriptionUrl(publicBase, subscription.file) : ''
   const b64Url = subscription ? subscriptionUrl(publicBase, subscription.b64) : ''
   const deepLink = subscription ? subscriptionDeepLink(client, url, subscription.name) : null
-  const body = subscription
-    ? membersOf(subscription.id, configs, fastMs)
-        .map((item) => item.uri)
-        .join('\n')
-    : ''
+  const body = links
+    ? links.map((item) => item.uri).join('\n')
+    : subscription
+      ? membersOf(subscription.id, configs, fastMs)
+          .map((item) => item.uri)
+          .join('\n')
+      : ''
 
   return (
     <ResponsivePanel
@@ -58,7 +62,7 @@ export function SubscriptionSheet({
       title={subscription ? subscription.name : title}
       description={
         subscription
-          ? `${subscription.description}. ${subscription.count} конфигов.`
+          ? `${subscription.description}. ${subscription.count} ${subscription.kind && subscription.kind !== 'vless' ? 'прокси' : 'конфигов'}.`
           : 'Файлы, которые публикует сборщик. Ссылка ведёт на GitHub Pages.'
       }
     >
@@ -77,11 +81,29 @@ export function SubscriptionSheet({
           </Button>
           <Button
             variant="secondary"
-            onClick={() => void copyText(body, `Скопировано конфигов: ${subscription.count}`)}
+            onClick={() =>
+              void copyText(
+                body,
+                `Скопировано: ${subscription.count}`,
+              )
+            }
           >
             <Copy data-icon="inline-start" />
             Скопировать все ссылки
           </Button>
+          {links?.some((item) => item.telegram) && (
+            <div className="flex flex-col gap-2">
+              {links
+                .filter((item) => item.telegram)
+                .slice(0, 6)
+                .map((item) => (
+                  <Button key={item.uri} variant="outline" onClick={() => openExternal(item.uri)}>
+                    <ExternalLink data-icon="inline-start" />
+                    {item.title}
+                  </Button>
+                ))}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" onClick={() => onQr(subscription.name, url)}>
               <QrCode data-icon="inline-start" />
