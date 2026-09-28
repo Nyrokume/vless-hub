@@ -1,15 +1,10 @@
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { protocolLabel, securityLabel, transportLabel } from '@/lib/format'
-import { THRESHOLDS, thresholdKey } from '@/lib/settings'
+import { SORTS, THRESHOLDS, VIEWS, thresholdKey, type SortKey, type ViewMode } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
 function Chip({
@@ -47,11 +42,23 @@ export function FilterSheet({
   security,
   protocol,
   threshold,
+  sort,
+  view,
+  countryOrder,
+  showUnverified,
+  showUnstable,
+  unverifiedCount,
+  unstableCount,
   onCountry,
   onTransport,
   onSecurity,
   onProtocol,
   onThreshold,
+  onSort,
+  onView,
+  onCountryOrder,
+  onShowUnverified,
+  onShowUnstable,
   onReset,
 }: {
   open: boolean
@@ -65,11 +72,23 @@ export function FilterSheet({
   security: string | null
   protocol: string | null
   threshold: number | null
+  sort: SortKey
+  view: ViewMode
+  countryOrder: 'count' | 'ping'
+  showUnverified: boolean
+  showUnstable: boolean
+  unverifiedCount: number
+  unstableCount: number
   onCountry: (code: string | null) => void
   onTransport: (id: string | null) => void
   onSecurity: (id: string | null) => void
   onProtocol: (id: string | null) => void
   onThreshold: (value: number | null) => void
+  onSort: (value: SortKey) => void
+  onView: (value: ViewMode) => void
+  onCountryOrder: (value: 'count' | 'ping') => void
+  onShowUnverified: (value: boolean) => void
+  onShowUnstable: (value: boolean) => void
   onReset: () => void
 }) {
   return (
@@ -77,9 +96,57 @@ export function FilterSheet({
       <SheetContent side="bottom" className="max-h-[88dvh] gap-3 overflow-y-auto rounded-t-3xl">
         <SheetHeader className="pr-10 text-left">
           <SheetTitle>Фильтры</SheetTitle>
-          <SheetDescription>Протокол, страна, транспорт, безопасность и порог задержки.</SheetDescription>
         </SheetHeader>
         <div className="space-y-4 px-4 pb-6">
+          <div>
+            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">Вид</div>
+            <div className="flex flex-wrap gap-2">
+              {VIEWS.map((item) => (
+                <Chip key={item.value} active={view === item.value} onClick={() => onView(item.value)}>
+                  {item.label}
+                </Chip>
+              ))}
+            </div>
+            {view === 'country' && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Chip active={countryOrder === 'count'} onClick={() => onCountryOrder('count')}>
+                  Страны по числу
+                </Chip>
+                <Chip active={countryOrder === 'ping'} onClick={() => onCountryOrder('ping')}>
+                  Страны по пингу
+                </Chip>
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
+              Сортировка
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {SORTS.map((item) => (
+                <Chip key={item.value} active={sort === item.value} onClick={() => onSort(item.value)}>
+                  {item.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+          {(unverifiedCount > 0 || unstableCount > 0) && (
+            <div className="overflow-hidden rounded-2xl bg-card">
+              {unstableCount > 0 && (
+                <label className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span>Показать нестабильные</span>
+                  <Switch checked={showUnstable} onCheckedChange={onShowUnstable} />
+                </label>
+              )}
+              {unverifiedCount > 0 && unstableCount > 0 && <Separator />}
+              {unverifiedCount > 0 && (
+                <label className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span>Показать непроверенные</span>
+                  <Switch checked={showUnverified} onCheckedChange={onShowUnverified} />
+                </label>
+              )}
+            </div>
+          )}
           <div>
             <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
               Задержка

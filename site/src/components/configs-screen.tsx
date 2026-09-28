@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { ChevronDown, ChevronRight, Globe, Info, MoreVertical, QrCode, Search, SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -36,7 +36,7 @@ import {
   speedText,
   stabilityText,
 } from '@/lib/format'
-import { SORTS, VIEWS, sortLabel, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
+import { useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
 import { useMediaQuery } from '@/lib/use-media'
 import { cn } from '@/lib/utils'
@@ -60,6 +60,14 @@ type CountryGroup = {
 type ListRow =
   | { kind: 'group'; key: string; group: CountryGroup; open: boolean }
   | { kind: 'config'; key: string; config: ConfigRecord }
+
+function ruNoun(count: number, one: string, few: string, many: string): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return `${count} ${one}`
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} ${few}`
+  return `${count} ${many}`
+}
 
 function latencyRank(ms: number | null, desc = false): number {
   if (ms == null) return desc ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY
@@ -151,6 +159,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showUnverified, setShowUnverified] = useState(false)
   const [showUnstable, setShowUnstable] = useState(false)
+  const [selecting, setSelecting] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [qr, setQr] = useState<QrRequest | null>(null)
   const [countryOrder, setCountryOrder] = useState<CountryOrder>('count')
@@ -330,6 +339,18 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
+  function enterSelect(id?: string) {
+    setSelecting(true)
+    if (id) {
+      setPicked((current) => new Set(current).add(id))
+    }
+  }
+
+  function exitSelect() {
+    setSelecting(false)
+    setPicked(new Set())
+  }
+
   function toggleGroup(code: string) {
     setCollapsed((current) => {
       const next = new Set(current)
@@ -365,13 +386,11 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  const viewLabel = VIEWS.find((item) => item.value === settings.view)?.label ?? 'По странам'
-  const layoutNote =
-    settings.view === 'country'
-      ? `${viewLabel} · ${countryOrder === 'count' ? 'по числу' : 'по лучшему пингу'} · ${sortLabel(settings.sort)}`
-      : `${viewLabel} · ${sortLabel(settings.sort)}`
+  const median = data.stats.median_latency_ms
+  const statsLine = `${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')} · медиана ${median == null ? '—' : median} мс`
+  const filtersOn = sessionFilters > 0 || settings.latencyThreshold != null
 
-  const sortMenu = (
+  const menu = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="Меню">
@@ -379,34 +398,33 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Сортировка</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={settings.sort}
-          onValueChange={(value) => update({ sort: value as SortKey })}
-        >
-          {SORTS.map((item) => (
-            <DropdownMenuRadioItem key={item.value} value={item.value}>
-              {item.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+        <DropdownMenuItem onSelect={() => (selecting ? exitSelect() : enterSelect())}>
+          {selecting ? 'Закончить выбор' : 'Выбрать'}
+        </DropdownMenuItem>
+        {data.unverified.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem checked={showUnverified} onCheckedChange={setShowUnverified}>
+              Показать непроверенные
+            </DropdownMenuCheckboxItem>
+          </>
+        )}
+        {(data.unstable?.length ?? 0) > 0 && (
+          <DropdownMenuCheckboxItem checked={showUnstable} onCheckedChange={setShowUnstable}>
+            Показать нестабильные
+          </DropdownMenuCheckboxItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
 
   return (
-    <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', chosen.length > 0 && 'pb-36')}>
-      <SiteHeader updated={formatStamp(data.generated_at)} menu={sortMenu} />
-      <p className="text-[13px] text-muted-foreground">
-        {data.stats.published} в списке · {data.stats.countries} стран · медиана HTTP{' '}
-        {data.stats.median_latency_ms == null ? '—' : data.stats.median_latency_ms} мс
-      </p>
-      <p className="mb-3 text-[12px] text-muted-foreground">
-        Проверка идёт с серверов GitHub Actions вне России: рабочий там конфиг может быть закрыт у вашего провайдера.
-      </p>
+    <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', selecting && chosen.length > 0 && 'pb-36')}>
+      <SiteHeader updated={formatStamp(data.generated_at)} menu={menu} />
+      <p className="mb-3 text-[13px] text-muted-foreground">{statsLine}</p>
 
-      <div className="mb-3 flex flex-col gap-2">
-        <div className="relative">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
@@ -416,88 +434,29 @@ export function ConfigsScreen({ data }: { data: HubData }) {
             className="h-10 rounded-xl border-0 bg-card pl-9"
           />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setFiltersOpen(true)}>
-            <SlidersHorizontal />
-            Фильтры
-            {sessionFilters > 0 && <Badge variant="secondary">{sessionFilters}</Badge>}
-          </Button>
-          {VIEWS.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              className={cn(
-                'rounded-full px-3 py-1.5 text-[13px]',
-                settings.view === item.value ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-              )}
-              onClick={() => update({ view: item.value })}
-            >
-              {item.label}
-            </button>
-          ))}
-          {settings.view === 'country' && (
-            <label className="text-[13px] text-muted-foreground">
-              <span className="sr-only">Порядок стран</span>
-              <select
-                aria-label="Порядок стран"
-                className="h-8 rounded-lg bg-secondary px-2 text-[13px]"
-                value={countryOrder}
-                onChange={(event) => setCountryOrder(event.target.value as CountryOrder)}
-              >
-                <option value="count">По числу</option>
-                <option value="ping">По лучшему пингу</option>
-              </select>
-            </label>
-          )}
-          {(data.unstable?.length ?? 0) > 0 && (
-            <button
-              type="button"
-              className={cn(
-                'rounded-full px-3 py-1.5 text-[13px]',
-                showUnstable ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-              )}
-              onClick={() => setShowUnstable((value) => !value)}
-            >
-              Нестабильные · {data.unstable?.length}
-            </button>
-          )}
-          {data.unverified.length > 0 && (
-            <button
-              type="button"
-              className={cn(
-                'rounded-full px-3 py-1.5 text-[13px]',
-                showUnverified ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-              )}
-              onClick={() => setShowUnverified((value) => !value)}
-            >
-              Непроверенные · {data.unverified.length}
-            </button>
-          )}
-        </div>
-        <p className="text-[12px] text-muted-foreground">
-          {layoutNote}
-          {settings.latencyThreshold != null ? ` · до ${settings.latencyThreshold} мс` : ''}
-          {showUnstable ? ' · с нестабильными' : ''}
-          {showUnverified ? ' · с непроверенными' : ''}
-          {' · '}
-          {filtered.length}
-        </p>
+        <Button
+          variant={filtersOn ? 'secondary' : 'ghost'}
+          size="icon"
+          aria-label="Фильтры"
+          onClick={() => setFiltersOpen(true)}
+        >
+          <SlidersHorizontal />
+        </Button>
       </div>
 
       <div className={settings.view === 'cards' ? '' : 'overflow-hidden rounded-2xl bg-card'}>
-        <div className="flex items-center gap-3 px-4 py-3">
-          <input
-            type="checkbox"
-            className="size-4"
-            aria-label="Выбрать показанные"
-            checked={allFilteredPicked}
-            onChange={toggleFiltered}
-          />
-          <span className="text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-            Конфиги
-          </span>
-          <Badge variant="secondary">{filtered.length}</Badge>
-        </div>
+        {selecting && (
+          <div className="flex items-center gap-3 px-4 py-2">
+            <input
+              type="checkbox"
+              className="size-4"
+              aria-label="Выбрать показанные"
+              checked={allFilteredPicked}
+              onChange={toggleFiltered}
+            />
+            <span className="text-[13px] text-muted-foreground">Выбрать показанные</span>
+          </div>
+        )}
         {filtered.length === 0 ? (
           <p className="px-4 pb-6 text-sm text-muted-foreground">Ничего не найдено.</p>
         ) : (
@@ -516,9 +475,11 @@ export function ConfigsScreen({ data }: { data: HubData }) {
                   key={row.key}
                   view={settings.view}
                   config={row.config}
+                  selecting={selecting}
                   checked={picked.has(row.config.id)}
                   onToggle={() => toggle(row.config.id)}
-                  onOpen={() => setSelectedId(row.config)}
+                  onOpen={() => (selecting ? toggle(row.config.id) : setSelectedId(row.config))}
+                  onLongPress={() => enterSelect(row.config.id)}
                   onQr={() =>
                     setQr({
                       title: `${flagEmoji(row.config.country_code)} ${configTitle(row.config)}`.trim(),
@@ -535,12 +496,12 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         )}
       </div>
 
-      {chosen.length > 0 && (
+      {selecting && chosen.length > 0 && (
         <div className="fixed inset-x-0 bottom-[4.6rem] z-30 border-t border-border bg-background/95 px-3 py-2 backdrop-blur-md">
           <div className="mx-auto flex max-w-3xl flex-col gap-2">
             <div className="flex items-center justify-between text-[13px]">
               <span>Выбрано {chosen.length}</span>
-              <button type="button" className="text-muted-foreground" onClick={() => setPicked(new Set())}>
+              <button type="button" className="text-muted-foreground" onClick={exitSelect}>
                 Снять
               </button>
             </div>
@@ -590,11 +551,23 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         security={security}
         protocol={protocol}
         threshold={settings.latencyThreshold}
+        sort={settings.sort}
+        view={settings.view}
+        countryOrder={countryOrder}
+        showUnverified={showUnverified}
+        showUnstable={showUnstable}
+        unverifiedCount={data.unverified.length}
+        unstableCount={data.unstable?.length ?? 0}
         onCountry={setCountry}
         onTransport={setTransport}
         onSecurity={setSecurity}
         onProtocol={setProtocol}
         onThreshold={(value) => update({ latencyThreshold: value })}
+        onSort={(value) => update({ sort: value })}
+        onView={(value) => update({ view: value })}
+        onCountryOrder={setCountryOrder}
+        onShowUnverified={setShowUnverified}
+        onShowUnstable={setShowUnstable}
         onReset={() => {
           setCountry(null)
           setTransport(null)
@@ -667,15 +640,47 @@ function rowMeta(config: ConfigRecord): string {
   return parts.join(' · ')
 }
 
+function usePress(onOpen: () => void, onLongPress: () => void) {
+  const timer = useRef(0)
+  const held = useRef(false)
+  return {
+    onPointerDown: () => {
+      held.current = false
+      window.clearTimeout(timer.current)
+      timer.current = window.setTimeout(() => {
+        held.current = true
+        onLongPress()
+      }, 480)
+    },
+    onPointerUp: () => window.clearTimeout(timer.current),
+    onPointerCancel: () => window.clearTimeout(timer.current),
+    onPointerLeave: () => window.clearTimeout(timer.current),
+    onClick: (event: MouseEvent) => {
+      if (held.current) {
+        event.preventDefault()
+        held.current = false
+        return
+      }
+      onOpen()
+    },
+    onContextMenu: (event: MouseEvent) => {
+      event.preventDefault()
+      onLongPress()
+    },
+  }
+}
+
 function ConfigItem({
   view,
   ...props
 }: {
   view: ViewMode
   config: ConfigRecord
+  selecting: boolean
   checked: boolean
   onToggle: () => void
   onOpen: () => void
+  onLongPress: () => void
   onQr: () => void
 }) {
   if (view === 'compact') return <CompactRow {...props} />
@@ -685,29 +690,36 @@ function ConfigItem({
 
 function ConfigRow({
   config,
+  selecting,
   checked,
   onToggle,
   onOpen,
+  onLongPress,
   onQr,
 }: {
   config: ConfigRecord
+  selecting: boolean
   checked: boolean
   onToggle: () => void
   onOpen: () => void
+  onLongPress: () => void
   onQr: () => void
 }) {
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
+  const press = usePress(onOpen, onLongPress)
   return (
     <div className="flex h-[72px] items-center gap-2 border-t border-border px-3 sm:gap-3 sm:px-4">
-      <input
-        type="checkbox"
-        className="size-4 shrink-0"
-        aria-label={`Выбрать ${title}`}
-        checked={checked}
-        onChange={onToggle}
-      />
-      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left sm:gap-3" onClick={onOpen}>
+      {selecting && (
+        <input
+          type="checkbox"
+          className="size-4 shrink-0"
+          aria-label={`Выбрать ${title}`}
+          checked={checked}
+          onChange={onToggle}
+        />
+      )}
+      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left sm:gap-3" {...press}>
         <span className="grid w-6 shrink-0 place-items-center text-xl leading-none" aria-hidden>
           {flag || <Globe className="size-5 text-muted-foreground" />}
         </span>
@@ -747,29 +759,36 @@ function ConfigRow({
 
 function CompactRow({
   config,
+  selecting,
   checked,
   onToggle,
   onOpen,
+  onLongPress,
   onQr,
 }: {
   config: ConfigRecord
+  selecting: boolean
   checked: boolean
   onToggle: () => void
   onOpen: () => void
+  onLongPress: () => void
   onQr: () => void
 }) {
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
+  const press = usePress(onOpen, onLongPress)
   return (
     <div className="flex h-11 items-center gap-2 border-t border-border px-3">
-      <input
-        type="checkbox"
-        className="size-4 shrink-0"
-        aria-label={`Выбрать ${title}`}
-        checked={checked}
-        onChange={onToggle}
-      />
-      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={onOpen}>
+      {selecting && (
+        <input
+          type="checkbox"
+          className="size-4 shrink-0"
+          aria-label={`Выбрать ${title}`}
+          checked={checked}
+          onChange={onToggle}
+        />
+      )}
+      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" {...press}>
         <span className="w-5 shrink-0 text-center text-[16px] leading-none" aria-hidden>
           {flag || <Globe className="size-4 text-muted-foreground" />}
         </span>
@@ -792,30 +811,37 @@ function CompactRow({
 
 function CardRow({
   config,
+  selecting,
   checked,
   onToggle,
   onOpen,
+  onLongPress,
   onQr,
 }: {
   config: ConfigRecord
+  selecting: boolean
   checked: boolean
   onToggle: () => void
   onOpen: () => void
+  onLongPress: () => void
   onQr: () => void
 }) {
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
+  const press = usePress(onOpen, onLongPress)
   return (
     <div className="h-28 px-1 py-1.5">
       <div className="flex h-full items-center gap-2 rounded-2xl bg-card px-3">
-        <input
-          type="checkbox"
-          className="size-4 shrink-0"
-          aria-label={`Выбрать ${title}`}
-          checked={checked}
-          onChange={onToggle}
-        />
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={onOpen}>
+        {selecting && (
+          <input
+            type="checkbox"
+            className="size-4 shrink-0"
+            aria-label={`Выбрать ${title}`}
+            checked={checked}
+            onChange={onToggle}
+          />
+        )}
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" {...press}>
           <span className="grid w-6 shrink-0 place-items-center text-xl leading-none" aria-hidden>
             {flag || <Globe className="size-5 text-muted-foreground" />}
           </span>
