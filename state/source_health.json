@@ -1,0 +1,116 @@
+{
+  "sources": {
+    "barry-far-ss": {
+      "tested": 17,
+      "verified": 4,
+      "yield": 0.2353,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "barry-far-trojan": {
+      "tested": 13,
+      "verified": 1,
+      "yield": 0.0769,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "barry-far-vless": {
+      "tested": 144,
+      "verified": 8,
+      "yield": 0.0556,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "ebrasha-ss": {
+      "tested": 204,
+      "verified": 5,
+      "yield": 0.0245,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "ebrasha-trojan": {
+      "tested": 100,
+      "verified": 1,
+      "yield": 0.01,
+      "zero_streak": 1,
+      "deprioritized": false
+    },
+    "ebrasha-vless": {
+      "tested": 515,
+      "verified": 25,
+      "yield": 0.0485,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "epodonios-ss": {
+      "tested": 17,
+      "verified": 4,
+      "yield": 0.2353,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "epodonios-trojan": {
+      "tested": 13,
+      "verified": 1,
+      "yield": 0.0769,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "epodonios-vless": {
+      "tested": 144,
+      "verified": 8,
+      "yield": 0.0556,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "mahdibland-base64": {
+      "tested": 98,
+      "verified": 3,
+      "yield": 0.0306,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "matinghanbari-mix": {
+      "tested": 69,
+      "verified": 2,
+      "yield": 0.029,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "peasoft-list": {
+      "tested": 1,
+      "verified": 0,
+      "yield": 0.0,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "radikal-vless": {
+      "tested": 204,
+      "verified": 26,
+      "yield": 0.1275,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "tg-v2rayng3": {
+      "tested": 17,
+      "verified": 0,
+      "yield": 0.0,
+      "zero_streak": 1,
+      "deprioritized": false
+    },
+    "tg-vlessconfig": {
+      "tested": 1,
+      "verified": 0,
+      "yield": 0.0,
+      "zero_streak": 0,
+      "deprioritized": false
+    },
+    "tg-vlessvpnfree": {
+      "tested": 1,
+      "verified": 0,
+      "yield": 0.0,
+      "zero_streak": 0,
+      "deprioritized": false
+    }
+  }
+}
