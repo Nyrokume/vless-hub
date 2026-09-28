@@ -36,6 +36,16 @@ class Stability:
             return ""
         return str(row.get("bits") or "")
 
+    def seed(self, fingerprint: str, bits: str, *, telegram: bool = False) -> None:
+        """Fill a missing row from the older git history so the first window is not empty."""
+        if self.bits(fingerprint, telegram=telegram):
+            return
+        previous = "".join(char for char in bits if char in "01")[-STABILITY_WINDOW:]
+        if not previous:
+            return
+        bucket = self.telegram if telegram else self.configs
+        bucket[fingerprint] = {"bits": previous}
+
     def note(self, fingerprint: str, ok: bool, *, telegram: bool = False) -> str:
         bucket = self.telegram if telegram else self.configs
         row = bucket.get(fingerprint)

@@ -6,6 +6,14 @@ from vlesshub.stability import Stability
 from vlesshub.stages import status_of
 
 
+def test_missing_stability_row_starts_from_older_bits():
+    history = Stability()
+    history.seed("abc", "1110000001")
+    history.seed("abc", "1111111111")
+    assert history.bits("abc") == "1110000001"
+    assert status_of(True, history.note("abc", True)) == "unstable"
+
+
 def test_stability_window_marks_a_rare_pass_unstable(tmp_path):
     path = tmp_path / "stability.json"
     history = Stability()

@@ -153,6 +153,10 @@ def run_pipeline(
             return
         rejections[reason] = rejections.get(reason, 0) + 1
 
+    def _seed(cfg: VlessConfig) -> None:
+        entry = history.get(cfg.fingerprint)
+        stability.seed(cfg.fingerprint, str((entry or {}).get("bits") or ""))
+
     def _mark(cfg: VlessConfig, ok: bool) -> None:
         bits = stability.note(cfg.fingerprint, ok)
         cfg.bits = bits
@@ -167,6 +171,7 @@ def run_pipeline(
         cfg.speed_kbps = result.speed_kbps
         cfg.exit_ip = result.exit_ip
         cfg.verified = "proxy"
+        _seed(cfg)
         history.record(cfg.fingerprint, ok=True, latency_ms=result.latency_ms)
         _mark(cfg, True)
         if cfg.status == "unstable":
@@ -182,6 +187,7 @@ def run_pipeline(
         cfg.latency_ms = None
         cfg.verified = ""
         cfg.status = "dead"
+        _seed(cfg)
         history.record(cfg.fingerprint, ok=False, latency_ms=None)
         _mark(cfg, False)
         _reject(result)
@@ -206,6 +212,7 @@ def run_pipeline(
             history.seen(cfg.fingerprint)
         else:
             cfg.status = "dead"
+            _seed(cfg)
             history.record(cfg.fingerprint, ok=False, latency_ms=None)
             _mark(cfg, False)
             _reject(tcp_result)
@@ -330,6 +337,7 @@ def _probe_telegram(
         if result and result.ok:
             proxy.latency_ms = result.latency_ms
             proxy.verified = proxy.kind
+            stability.seed(proxy.fingerprint, str((history.get(proxy.fingerprint) or {}).get("bits") or ""), telegram=True)
             history.record(proxy.fingerprint, ok=True, latency_ms=result.latency_ms)
             _remember(proxy, True)
             if proxy.status == "unstable":
@@ -339,6 +347,7 @@ def _probe_telegram(
         else:
             proxy.latency_ms = None
             proxy.status = "dead"
+            stability.seed(proxy.fingerprint, str((history.get(proxy.fingerprint) or {}).get("bits") or ""), telegram=True)
             history.record(proxy.fingerprint, ok=False, latency_ms=None)
             _remember(proxy, False)
             reason = (result.reason if result else "") or "handshake_fail"
