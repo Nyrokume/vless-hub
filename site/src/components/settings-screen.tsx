@@ -132,7 +132,7 @@ function RunLogs({ data }: { data: HubData | null }) {
   const reasons = rejected
     ? Object.entries(rejected)
         .map(([key, count]) => ({ key, label: reasonLabel(key), count }))
-        .filter((row) => row.count > 0)
+        .filter((row) => row.count > 0 && row.key !== 'dead')
         .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'ru'))
     : []
   const sources = data?.sources ?? []
