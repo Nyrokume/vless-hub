@@ -10,8 +10,8 @@ settings:
   max_links_per_source: 15000
   # TCP is only a prefilter. Published latency comes from HTTP through Xray
   # or sing-box. The budget walks the unique pool across runs.
-  max_tcp_tests: 8000
-  max_proxy_tests: 2000
+  max_tcp_tests: 20000
+  max_proxy_tests: 12000
   tcp_timeout_sec: 2.5
   proxy_timeout_sec: 6.0
   speed_timeout_sec: 0

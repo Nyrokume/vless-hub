@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 class Settings:
     drop_after_failures: int = 4
     max_links_per_source: int = 15000
-    max_tcp_tests: int = 8000
-    max_proxy_tests: int = 2000
+    max_tcp_tests: int = 20000
+    max_proxy_tests: int = 12000
     tcp_timeout_sec: float = 2.5
     proxy_timeout_sec: float = 6.0
     speed_timeout_sec: float = 0.0
