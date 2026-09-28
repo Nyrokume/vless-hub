@@ -3,6 +3,7 @@ import { useTheme } from 'next-themes'
 import {
   Activity,
   ArrowUpDown,
+  BookOpen,
   Check,
   ChevronRight,
   Clock,
@@ -113,7 +114,15 @@ function ChoiceSheet<T extends string>({
   )
 }
 
-export function SettingsScreen({ data, embedded = false }: { data: HubData | null; embedded?: boolean }) {
+export function SettingsScreen({
+  data,
+  embedded = false,
+  onOpenHelp,
+}: {
+  data: HubData | null
+  embedded?: boolean
+  onOpenHelp?: () => void
+}) {
   const { settings, update } = useSettings()
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
@@ -239,13 +248,19 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
               : 'Стран: —'
           }
         />
-        {rejectedLine && (
-          <>
-            <Separator />
-            <InfoRow icon={<Gauge className="size-4" />} text={rejectedLine} />
-          </>
-        )}
       </Group>
+
+      {onOpenHelp && (
+        <Group>
+          <button type="button" className="flex w-full items-center gap-3 px-4 py-3 text-left" onClick={onOpenHelp}>
+            <IconTile>
+              <BookOpen className="size-4" />
+            </IconTile>
+            <span className="flex-1 text-[17px]">Справка</span>
+            <ChevronRight className="size-4 text-muted-foreground/80" />
+          </button>
+        </Group>
+      )}
 
       <Collapsible className="mb-6">
         <div className="overflow-hidden rounded-2xl bg-card">
@@ -253,10 +268,16 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
             <IconTile>
               <Server className="size-4" />
             </IconTile>
-            <span className="flex-1 text-[17px]">Источники</span>
+            <span className="flex-1 text-[17px]">Подробнее</span>
             <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
           </CollapsibleTrigger>
           <CollapsibleContent>
+            {rejectedLine && (
+              <>
+                <Separator />
+                <div className="px-4 py-3 text-[15px] leading-snug">{rejectedLine}</div>
+              </>
+            )}
             {(data?.sources ?? []).map((source) => (
               <div key={source.id}>
                 <Separator />
@@ -270,7 +291,7 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
                 </div>
               </div>
             ))}
-            {(!data || data.sources.length === 0) && (
+            {!rejectedLine && (!data || data.sources.length === 0) && (
               <>
                 <Separator />
                 <p className="px-4 py-3 text-[14px] text-muted-foreground">Нет данных</p>
@@ -318,7 +339,7 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
       <ChoiceSheet
         open={picker === 'threshold'}
         title="Порог задержки"
-        description="Конфиги медленнее порога скрываются из списка."
+        description="Медленнее порога скрываются из списка."
         value={thresholdKey(settings.latencyThreshold)}
         choices={THRESHOLDS}
         onOpenChange={(open) => setPicker(open ? 'threshold' : null)}

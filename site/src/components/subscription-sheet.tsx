@@ -222,8 +222,7 @@ export function SubscriptionBuilder({
 
   return (
     <div className={cn('rounded-2xl bg-card p-4', className)}>
-      <p className="text-[15px] font-medium">Собрать подписку</p>
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <Select label="Страна" value={country} onChange={setCountry} options={countries} />
         <Select
           label="Защита"

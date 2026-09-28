@@ -1,52 +1,58 @@
-import { InspectScreen } from '@/components/inspect-screen'
+import { useState } from 'react'
+import { ChevronLeft } from 'lucide-react'
 import { SettingsScreen } from '@/components/settings-screen'
 import { SiteHeader } from '@/components/site-header'
+import { Button } from '@/components/ui/button'
 import { formatStamp } from '@/lib/format'
 import type { HubData } from '@/lib/types'
 
+const HELP = [
+  {
+    title: 'V2Hub',
+    body: 'Публичные конфиги VLESS и прокси Telegram. Сайт не поднимает VPN и не подключается к серверу за вас.',
+  },
+  {
+    title: 'Как читать результат',
+    body: 'В список попадает ответ HTTP 200 или 204. Задержка — время этого запроса с машины сборщика, не пинг вашего телефона.',
+  },
+  {
+    title: 'Как забрать конфиги',
+    body: '«Экспорт» — срезы, страны, защита, транспорт, Clash и sing-box. На «Конфигурации Vless» отметьте строки и выгрузите их.',
+  },
+  {
+    title: 'Telegram',
+    body: 'Кнопка открывает tg://. Если клиент не открылся, рядом есть HTTPS и QR.',
+  },
+]
+
 export function GuideScreen({ data }: { data: HubData | null }) {
+  const [help, setHelp] = useState(false)
+  if (help) return <HelpScreen onBack={() => setHelp(false)} />
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
       <SiteHeader updated={data ? formatStamp(data.generated_at) : undefined} />
-      <div className="mb-6 flex flex-col gap-3 text-[15px] leading-relaxed">
-        <p>
-          V2Hub собирает публичные конфиги VLESS и прокси Telegram, проверяет их и отдаёт списками.
-          Сайт не поднимает туннель и не подключается к серверу за вас.
-        </p>
-        <div className="rounded-2xl bg-card px-4 py-3">
-          <p className="font-medium">Как читать результат</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            В список попадает ответ HTTP 200 или 204 через Xray. Задержка — время этого запроса с
-            машины сборщика. Аптайм — доля успешных проверок. «Порт открыт» значит, что TCP ответил,
-            а HTTP через Xray в этом прогоне не проверялся: такие строки скрыты, пока не включить
-            «Непроверенные».
-          </p>
-        </div>
-        <div className="rounded-2xl bg-card px-4 py-3">
-          <p className="font-medium">Как забрать конфиги</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            «Экспорт» — файлы по срезу, стране, защите и транспорту, Clash, sing-box и конструктор
-            подписки. На «Конфигах» отметьте строки и выгрузите текст, base64, файл, QR, Clash или
-            sing-box. QR и кнопки клиента используют только проверенные схемы: Happ, v2rayNG,
-            Hiddify, v2RayTun для VLESS; Clash Meta, Mihomo, NekoBox и sing-box — для своих файлов.
-          </p>
-        </div>
-        <div className="rounded-2xl bg-card px-4 py-3">
-          <p className="font-medium">Telegram</p>
-          <p className="mt-1 text-[14px] text-muted-foreground">
-            Кнопка «В Telegram» открывает tg:// и подставляет прокси. Если клиент не открылся, рядом
-            есть HTTPS-ссылка и QR.
-          </p>
-        </div>
+      <h1 className="px-1 pb-5 text-[28px] leading-none font-semibold tracking-tight">Настройки</h1>
+      <SettingsScreen data={data} embedded onOpenHelp={() => setHelp(true)} />
+    </div>
+  )
+}
+
+function HelpScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+      <Button variant="ghost" size="sm" className="mb-3 -ml-2" onClick={onBack}>
+        <ChevronLeft data-icon="inline-start" />
+        Настройки
+      </Button>
+      <h1 className="px-1 pb-6 text-[28px] leading-none font-semibold tracking-tight">Справка</h1>
+      <div className="flex flex-col gap-6">
+        {HELP.map((item) => (
+          <section key={item.title}>
+            <h2 className="text-[15px] font-medium">{item.title}</h2>
+            <p className="mt-1 text-[14px] leading-relaxed text-muted-foreground">{item.body}</p>
+          </section>
+        ))}
       </div>
-      <h2 className="px-1 pb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-        Разбор ссылки
-      </h2>
-      <InspectScreen embedded />
-      <h2 className="mt-6 px-1 pb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-        Отображение
-      </h2>
-      <SettingsScreen data={data} embedded />
     </div>
   )
 }

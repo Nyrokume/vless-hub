@@ -17,7 +17,7 @@ import { flagEmoji, formatStamp, protocolLabel, securityLabel, transportLabel } 
 import { useSettings } from '@/lib/settings'
 import type { CatalogEntry, HubData } from '@/lib/types'
 
-const SLICE_ORDER = ['all', 'top', 'clash', 'singbox', 'unverified']
+const SLICE_ORDER = ['all', 'top', 'unverified']
 
 export function ExportScreen({ data }: { data: HubData }) {
   const { settings } = useSettings()
@@ -31,21 +31,26 @@ export function ExportScreen({ data }: { data: HubData }) {
   }, [data.configs])
 
   const plain = data.catalog.filter((item) => item.format === 'plain' || item.format === 'clash' || item.format === 'singbox')
+  const byKind = (kind: string) => plain.filter((item) => item.kind === kind)
   const slices = plain
     .filter(
       (item) =>
         SLICE_ORDER.includes(item.kind) && item.path !== 'sub/verified.txt' && item.path !== 'sub/top.txt',
     )
-    .sort((left, right) => SLICE_ORDER.indexOf(left.kind) - SLICE_ORDER.indexOf(right.kind) || (left.top ?? 0) - (right.top ?? 0))
-  const countries = plain
-    .filter((item) => item.kind === 'country')
-    .sort((left, right) => right.count - left.count || (left.country ?? '').localeCompare(right.country ?? ''))
-  const protocols = plain
-    .filter((item) => item.kind === 'protocol')
-    .sort((left, right) => right.count - left.count || (left.protocol ?? '').localeCompare(right.protocol ?? ''))
-  const details = plain
-    .filter((item) => item.kind === 'security' || item.kind === 'transport')
-    .sort((left, right) => left.kind.localeCompare(right.kind) || right.count - left.count)
+    .sort(
+      (left, right) =>
+        SLICE_ORDER.indexOf(left.kind) - SLICE_ORDER.indexOf(right.kind) || (left.top ?? 0) - (right.top ?? 0),
+    )
+  const countries = byKind('country').sort(
+    (left, right) => right.count - left.count || (left.country ?? '').localeCompare(right.country ?? ''),
+  )
+  const protocols = byKind('protocol').sort(
+    (left, right) => right.count - left.count || (left.protocol ?? '').localeCompare(right.protocol ?? ''),
+  )
+  const security = byKind('security').sort((left, right) => right.count - left.count)
+  const transports = byKind('transport').sort((left, right) => right.count - left.count)
+  const clash = byKind('clash')
+  const singbox = byKind('singbox')
 
   function titleOf(entry: CatalogEntry): string {
     if (entry.kind === 'all') return 'Все проверенные'
@@ -74,95 +79,46 @@ export function ExportScreen({ data }: { data: HubData }) {
     })
   }
 
+  function openInClient(entry: CatalogEntry) {
+    const url = publicFileUrl(settings.publicBase, entry.path)
+    const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
+    if (link) openExternal(link)
+    else void copyText(url, 'Для этого клиента есть только ссылка')
+  }
+
+  const groups: { title: string; entries: CatalogEntry[]; client: boolean }[] = [
+    { title: 'Срезы', entries: slices, client: true },
+    { title: 'Страны', entries: countries, client: true },
+    { title: 'Защита', entries: security, client: true },
+    { title: 'Транспорт', entries: transports, client: true },
+    { title: 'Протоколы', entries: protocols, client: true },
+    { title: 'Clash', entries: clash, client: true },
+    { title: 'sing-box', entries: singbox, client: true },
+  ]
+
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 pt-4 pb-8">
       <SiteHeader updated={formatStamp(data.generated_at)} />
 
-      <Section title="Срезы">
-        {slices.map((entry, index) => (
-          <FileRow
-            key={entry.path}
-            divided={index > 0}
-            title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
-            onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
-            onQr={() => openQr(entry)}
-            onClient={
-              entry.kind === 'unverified'
-                ? undefined
-                : () => {
-                    const url = publicFileUrl(settings.publicBase, entry.path)
-                    const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
-                    if (link) openExternal(link)
-                    else void copyText(url, 'Для этого клиента есть только ссылка')
-                  }
-            }
-            clientLabel={clientName(settings.client)}
-          />
-        ))}
-      </Section>
-
-      {protocols.length > 0 && (
-        <Section title="Протоколы">
-          {protocols.map((entry, index) => (
-            <FileRow
-              key={entry.path}
-              divided={index > 0}
-              title={titleOf(entry)}
-              detail={`${entry.count} · ${entry.path}`}
-              onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
-              onQr={() => openQr(entry)}
-              onClient={() => {
-                const url = publicFileUrl(settings.publicBase, entry.path)
-                const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
-                if (link) openExternal(link)
-                else void copyText(url, 'Для этого клиента есть только ссылка')
-              }}
-              clientLabel={clientName(settings.client)}
-            />
-          ))}
-        </Section>
+      {groups.map(
+        (group) =>
+          group.entries.length > 0 && (
+            <Section key={group.title} title={group.title}>
+              {group.entries.map((entry, index) => (
+                <FileRow
+                  key={entry.path}
+                  divided={index > 0}
+                  title={titleOf(entry)}
+                  detail={String(entry.count)}
+                  onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+                  onQr={() => openQr(entry)}
+                  onClient={group.client && entry.kind !== 'unverified' ? () => openInClient(entry) : undefined}
+                  clientLabel={clientName(settings.client)}
+                />
+              ))}
+            </Section>
+          ),
       )}
-
-      <Section title="Страны">
-        {countries.map((entry, index) => (
-          <FileRow
-            key={entry.path}
-            divided={index > 0}
-            title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
-            onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
-            onQr={() => openQr(entry)}
-            onClient={() => {
-              const url = publicFileUrl(settings.publicBase, entry.path)
-              const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
-              if (link) openExternal(link)
-              else void copyText(url, 'Для этого клиента есть только ссылка')
-            }}
-            clientLabel={clientName(settings.client)}
-          />
-        ))}
-      </Section>
-
-      <Section title="Защита и транспорт">
-        {details.map((entry, index) => (
-          <FileRow
-            key={entry.path}
-            divided={index > 0}
-            title={titleOf(entry)}
-            detail={`${entry.count} · ${entry.path}`}
-            onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
-            onQr={() => openQr(entry)}
-            onClient={() => {
-              const url = publicFileUrl(settings.publicBase, entry.path)
-              const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
-              if (link) openExternal(link)
-              else void copyText(url, 'Для этого клиента есть только ссылка')
-            }}
-            clientLabel={clientName(settings.client)}
-          />
-        ))}
-      </Section>
 
       {data.stats.telegram && (
         <Section title="Telegram">
@@ -176,7 +132,7 @@ export function ExportScreen({ data }: { data: HubData }) {
               key={String(path)}
               divided={index > 0}
               title={String(title)}
-              detail={`${count} · ${path}`}
+              detail={String(count)}
               onCopy={() => void copyText(publicFileUrl(settings.publicBase, String(path)), 'Ссылка скопирована')}
               onQr={() =>
                 setQr({
@@ -190,14 +146,15 @@ export function ExportScreen({ data }: { data: HubData }) {
         </Section>
       )}
 
-      <div className="mb-6">
+      <section className="flex flex-col gap-2">
+        <h2 className="px-1 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">Подписка</h2>
         <SubscriptionBuilder
           configs={data.configs}
           catalog={data.catalog}
           publicBase={settings.publicBase}
           onQr={setQr}
         />
-      </div>
+      </section>
       <QrDialog request={qr} onOpenChange={(open) => !open && setQr(null)} />
     </div>
   )
@@ -205,10 +162,8 @@ export function ExportScreen({ data }: { data: HubData }) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="mb-5">
-      <h2 className="px-1 pb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-        {title}
-      </h2>
+    <section className="flex flex-col gap-2">
+      <h2 className="px-1 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">{title}</h2>
       <div className="overflow-hidden rounded-2xl bg-card">{children}</div>
     </section>
   )

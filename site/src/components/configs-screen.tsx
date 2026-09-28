@@ -405,7 +405,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Страна, адрес, транспорт"
-            aria-label="Поиск конфигов"
+            aria-label="Поиск конфигураций Vless"
             className="h-10 rounded-xl border-0 bg-card pl-9"
           />
         </div>
@@ -473,9 +473,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
             checked={allFilteredPicked}
             onChange={toggleFiltered}
           />
-          <span className="text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
-            Конфиги
-          </span>
+          <span className="text-[15px] font-medium">Конфигурации Vless</span>
           <Badge variant="secondary">{filtered.length}</Badge>
         </div>
         {filtered.length === 0 ? (
