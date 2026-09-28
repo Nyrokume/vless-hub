@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 @dataclass(slots=True)
 class Settings:
     drop_after_failures: int = 4
+    carry_max_age_sec: int = 6 * 3600
     max_links_per_source: int = 15000
     max_tcp_tests: int = 20000
     max_proxy_tests: int = 12000
@@ -104,6 +105,7 @@ class VlessConfig:
     checks_ok: int = 0
     checks_fail: int = 0
     bits: str = ""
+    tested_at: str = ""
 
     def __post_init__(self) -> None:
         if not self.fingerprint:

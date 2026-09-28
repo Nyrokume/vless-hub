@@ -67,6 +67,7 @@ def test_carry_keeps_a_previous_proxy_success_until_it_fails():
     assert carried == [kept]
     assert kept.verified == "proxy"
     assert kept.latency_ms == 180
+    assert kept.tested_at == history.get(kept.fingerprint)["last_ok"]
 
 
 def test_hysteria2_gets_proxy_slots_ahead_of_a_full_tcp_pool():
@@ -103,6 +104,23 @@ def test_long_dead_streak_leaves_the_pool():
         history.record(dead.fingerprint, ok=False, latency_ms=None)
     chosen = select_candidates([dead, fresh], history, limit=5, drop_after=4)
     assert chosen == [fresh]
+
+
+def test_known_good_is_retested_before_a_new_candidate():
+    history = History()
+    old = _cfg("old.example")
+    fresh = _cfg("fresh.example")
+    history.record(old.fingerprint, ok=True, latency_ms=180)
+    chosen = select_candidates([fresh, old], history, limit=1, drop_after=4)
+    assert chosen == [old]
+
+
+def test_carry_drops_a_pass_older_than_six_hours():
+    history = History()
+    aged = _cfg("aged.example")
+    history.record(aged.fingerprint, ok=True, latency_ms=180)
+    history.entries[aged.fingerprint]["last_ok"] = "2020-01-01T00:00:00Z"
+    assert carry_verified([aged], history, set()) == []
 
 
 def test_select_ignores_sub_15ms_ema():

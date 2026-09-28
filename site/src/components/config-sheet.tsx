@@ -15,6 +15,7 @@ import {
   configTitle,
   flagEmoji,
   formatStamp,
+  checkedAge,
   latencyClass,
   latencyText,
   protocolLine,
@@ -83,7 +84,10 @@ export function ConfigSheet({
         ['Рукопожатие', config.handshake_ms != null ? latencyText(config.handshake_ms) : ''],
         ['Статус', config.status === 'working' ? 'Рабочий' : config.status === 'unstable' ? 'Нестабильный' : config.verified === 'tcp' ? 'Только открытый порт' : ''],
         ['Список', sourceName ?? ''],
-        ['Проверено', config.tested_at ? formatStamp(config.tested_at) : ''],
+        [
+          'Проверено',
+          config.tested_at ? `${formatStamp(config.tested_at)} · ${checkedAge(config.tested_at)}` : '',
+        ],
       ].filter(([, value]) => value)
     : []
 

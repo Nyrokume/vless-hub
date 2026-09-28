@@ -4,6 +4,7 @@ import base64
 import json
 import shutil
 import statistics
+from dataclasses import replace
 from pathlib import Path
 
 import yaml
@@ -76,7 +77,11 @@ def publish(
         shutil.rmtree(out_dir)
     _prepare_output(out_dir, site_dir)
 
-    unverified = list(unverified or [])
+    published_ids = {cfg.fingerprint for cfg in list(configs) + list(unstable or [])}
+    # Copies so normalizing the TCP-only file cannot clear a shared working row.
+    unverified = [
+        replace(cfg) for cfg in (unverified or []) if cfg.fingerprint not in published_ids
+    ]
     unstable = list(unstable or [])
     for cfg in unverified:
         cfg.latency_ms = None
@@ -299,7 +304,7 @@ def _hub_config(cfg: VlessConfig, generated_at: str) -> dict:
         "status": cfg.status or ("working" if cfg.verified == "proxy" else ""),
         "stability": None if cfg.stability is None else round(float(cfg.stability), 4),
         "exit_ip": cfg.exit_ip,
-        "tested_at": generated_at,
+        "tested_at": cfg.tested_at or generated_at,
         "uptime": round(cfg.uptime, 4),
         "checks_ok": cfg.checks_ok,
         "checks_fail": cfg.checks_fail,

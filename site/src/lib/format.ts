@@ -86,6 +86,18 @@ export function uptimeText(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`
 }
 
+export function checkedAge(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return ''
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return ''
+  const minutes = Math.max(0, Math.round((now - then) / 60000))
+  if (minutes < 1) return 'только что'
+  if (minutes < 60) return `${minutes} мин назад`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours} ч назад`
+  return `${Math.floor(hours / 24)} дн назад`
+}
+
 export function formatStamp(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso

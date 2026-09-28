@@ -101,3 +101,40 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     assert "de.example" in (out / "sub" / "with-unstable.txt").read_text(encoding="utf-8")
     assert hub["unstable"] == []
     assert "tcp_refused" in hub["stats"]["rejected"]
+
+
+def test_a_verified_config_is_not_also_written_as_unverified(tmp_path):
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "index.html").write_text("shell", encoding="utf-8")
+    cfg = parse_vless(
+        "vless://11111111-1111-4111-8111-111111111111@de.example:443"
+        "?type=tcp&security=tls&sni=de.example#orig"
+    )
+    assert cfg is not None
+    cfg.latency_ms = 180
+    cfg.verified = "proxy"
+    cfg.tested_at = "2026-09-28T08:00:00Z"
+    cfg.country = "DE"
+    out = tmp_path / "dist"
+    publish(
+        out_dir=out,
+        site_dir=site,
+        configs=[cfg],
+        unverified=[cfg],
+        reports=[],
+        collected=1,
+        tcp_tested=1,
+        tcp_ok=1,
+        proxy_tested=1,
+        proxy_ok=1,
+        generated_at="2026-09-28T10:00:00Z",
+        settings=Settings(top_sizes=[20], clash_limit=0),
+    )
+    hub = json.loads((out / "data" / "configs.json").read_text(encoding="utf-8"))
+    assert hub["unverified"] == []
+    assert hub["configs"][0]["verified"] == "proxy"
+    assert hub["configs"][0]["latency_ms"] == 180
+    assert hub["configs"][0]["tested_at"] == "2026-09-28T08:00:00Z"
+    assert cfg.verified == "proxy"
+    assert cfg.latency_ms == 180

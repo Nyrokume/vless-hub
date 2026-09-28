@@ -5,12 +5,12 @@ from pathlib import Path
 
 from vlesshub.collect import collect_all, load_config
 from vlesshub.export import publish
-from vlesshub.geo import GeoCache, apply_exit_countries, enrich
+from vlesshub.geo import GeoCache, apply_exit_countries, country_name, enrich
 from vlesshub.health import apply_source_health, deprioritized_names, load_health, save_health
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
 from vlesshub.probe import ProbeResult, failure_reason, proxy_probe, tcp_probe
-from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
+from vlesshub.rank import carry_verified, mix_proxy_targets, rank_published, select_candidates
 from vlesshub.stability import Stability
 from vlesshub.stages import dropped_after, status_of
 from vlesshub.tgcollect import collect_proxies, select_proxies
@@ -172,7 +172,8 @@ def run_pipeline(
         cfg.exit_ip = result.exit_ip
         cfg.verified = "proxy"
         _seed(cfg)
-        history.record(cfg.fingerprint, ok=True, latency_ms=result.latency_ms)
+        recorded = history.record(cfg.fingerprint, ok=True, latency_ms=result.latency_ms)
+        cfg.tested_at = str(recorded.get("last_ok") or "")
         _mark(cfg, True)
         if cfg.status == "unstable":
             unstable.append(cfg)
@@ -227,6 +228,31 @@ def run_pipeline(
         else:
             _fail_proxy(cfg, proxy_result)
 
+    carried_ids: set[str] = set()
+    for cfg in carry_verified(
+        alive,
+        history,
+        {item.fingerprint for item in working + unstable},
+        max_age_sec=settings.carry_max_age_sec,
+    ):
+        entry = history.get(cfg.fingerprint) or {}
+        stability.seed(cfg.fingerprint, str(entry.get("bits") or ""))
+        cfg.bits = stability.bits(cfg.fingerprint) or str(entry.get("bits") or "")
+        rate = stability.rate(cfg.fingerprint)
+        cfg.stability = rate
+        if rate is not None:
+            cfg.uptime = rate
+        cfg.status = status_of(True, cfg.bits)
+        carried_ids.add(cfg.fingerprint)
+        if cfg.status == "unstable":
+            unstable.append(cfg)
+        else:
+            working.append(cfg)
+    if carried_ids:
+        # A TCP-open row is not a failure. Once it is carried it stays verified.
+        unverified[:] = [cfg for cfg in unverified if cfg.fingerprint not in carried_ids]
+        log(f"kept {len(carried_ids)} previous passes within {settings.carry_max_age_sec // 3600}h")
+
     apply_source_health(reports, evaluated, health)
     save_health(state_dir / "source_health.json", health)
 
@@ -235,7 +261,16 @@ def run_pipeline(
     passed = working + unstable
     passed_ids = {cfg.fingerprint for cfg in passed}
     enrich(passed + unverified, cache, mmdb, settings.user_agent)
-    apply_exit_countries(passed, mmdb)
+    apply_exit_countries([cfg for cfg in passed if cfg.fingerprint not in carried_ids], mmdb)
+    for cfg in passed:
+        if cfg.fingerprint not in carried_ids:
+            continue
+        saved = history.get(cfg.fingerprint) or {}
+        code = str(saved.get("country") or "").upper()
+        if len(code) == 2 and code.isalpha():
+            cfg.country = code
+            cfg.country_source = "geoip"
+            cfg.country_name = country_name(code) or cfg.country_name
     for cfg in passed + unverified:
         entry = history.get(cfg.fingerprint)
         if entry is not None and cfg.country:

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
+
+CARRY_MAX_AGE_SEC = 6 * 3600
 
 
 def select_candidates(
@@ -11,10 +15,12 @@ def select_candidates(
     drop_after: int,
     deprioritized: set[str] | None = None,
 ) -> list[VlessConfig]:
-    """Rotate through the pool so untouched configs are tested before recent failures.
+    """Retest the known-good pool first, then spend the rest on new candidates.
 
-    A slice of the budget rechecks known-good configs, oldest first. Configs
-    whose every source is deprioritized sort after healthy ones.
+    Known-good rows are the ones whose last result was a pass. The oldest pass
+    is first, so a short run refreshes configs before they age out. Configs
+    whose every source is deprioritized sort after healthy ones. A long fail
+    streak is left out of the pool entirely.
     """
     if limit <= 0:
         return []
@@ -28,6 +34,10 @@ def select_candidates(
     def seen_at(cfg: VlessConfig) -> str:
         entry = history.get(cfg.fingerprint) or {}
         return str(entry.get("last_seen") or "")
+
+    def last_ok(cfg: VlessConfig) -> str:
+        entry = history.get(cfg.fingerprint) or {}
+        return str(entry.get("last_ok") or "") or "9999"
 
     fresh: list[VlessConfig] = []
     proven: list[VlessConfig] = []
@@ -50,26 +60,22 @@ def select_candidates(
         key=lambda cfg: (
             late(cfg),
             0 if _trusted_latency(history.get(cfg.fingerprint) or {}) is not None else 1,
-            seen_at(cfg),
+            last_ok(cfg),
             cfg.fingerprint,
         )
     )
     retry.sort(key=lambda cfg: (late(cfg), seen_at(cfg), cfg.fingerprint))
 
-    fresh_slots = min(len(fresh), max(1, (limit * 3) // 5)) if fresh else 0
-    proven_slots = min(len(proven), max(1, limit // 5)) if proven else 0
-    if fresh_slots + proven_slots > limit:
-        fresh_slots = min(fresh_slots, limit)
-        proven_slots = min(proven_slots, max(0, limit - fresh_slots))
-    chosen = fresh[:fresh_slots] + proven[:proven_slots]
-    used = {cfg.fingerprint for cfg in chosen}
-    for pool in (fresh[fresh_slots:], retry, proven[proven_slots:]):
+    chosen: list[VlessConfig] = []
+    used: set[str] = set()
+    for pool in (proven, fresh, retry):
         for cfg in pool:
             if len(chosen) >= limit:
                 return chosen
-            if cfg.fingerprint not in used:
-                chosen.append(cfg)
-                used.add(cfg.fingerprint)
+            if cfg.fingerprint in used:
+                continue
+            chosen.append(cfg)
+            used.add(cfg.fingerprint)
     return chosen
 
 
@@ -85,12 +91,22 @@ def _trusted_latency(entry: dict) -> float | None:
     return None
 
 
+def _parse_stamp(value: str) -> datetime | None:
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
 def carry_verified(
     configs: list[VlessConfig],
     history: History,
     already: set[str],
+    max_age_sec: int = CARRY_MAX_AGE_SEC,
+    now: datetime | None = None,
 ) -> list[VlessConfig]:
-    """Keep earlier proxy successes that were not retested or failed this run."""
+    """Keep a previous pass until a retest fails or the pass is older than max_age_sec."""
+    moment = now or datetime.now(timezone.utc)
     carried: list[VlessConfig] = []
     for cfg in configs:
         if cfg.fingerprint in already:
@@ -100,12 +116,16 @@ def carry_verified(
             continue
         if int(entry.get("streak_fail", 0)) > 0 or int(entry.get("ok", 0)) <= 0:
             continue
+        passed_at = _parse_stamp(str(entry.get("last_ok") or ""))
+        if passed_at is None or (moment - passed_at).total_seconds() > max_age_sec:
+            continue
         latency = _trusted_latency(entry)
         if latency is None:
             continue
         cfg.latency_ms = latency
         cfg.speed_kbps = None
         cfg.verified = "proxy"
+        cfg.tested_at = passed_at.strftime("%Y-%m-%dT%H:%M:%SZ")
         carried.append(cfg)
     return carried
 
