@@ -31,7 +31,7 @@ export const THRESHOLDS: { value: string; label: string; hint?: string }[] = [
 export const DEFAULT_SETTINGS: Settings = {
   sort: 'latency-asc',
   latencyThreshold: null,
-  client: 'happ',
+  client: 'v2raytun',
   publicBase: DEFAULT_PUBLIC_BASE,
 }
 
@@ -40,7 +40,7 @@ function isSort(value: unknown): value is SortKey {
 }
 
 function isClient(value: unknown): value is ClientId {
-  return value === 'happ' || value === 'v2rayng' || value === 'hiddify' || value === 'link'
+  return value === 'v2raytun' || value === 'happ' || value === 'v2rayng' || value === 'hiddify' || value === 'link'
 }
 
 function isThreshold(value: unknown): value is number | null {

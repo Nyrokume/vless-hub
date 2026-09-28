@@ -44,6 +44,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { CLIENTS, type ClientId } from '@/lib/clients'
 import { formatStamp } from '@/lib/format'
+import { DELAY_NOTE, SITE_NOTE } from '@/lib/notes'
 import {
   DEFAULT_PUBLIC_BASE,
   SORTS,
@@ -247,12 +248,10 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         </CardContent>
       </Card>
 
-      <p className="text-sm text-muted-foreground">
-        Сборщик проверяет VLESS запросом HTTP 204 через Xray и отдельно собирает прокси. Задержка
-        измерена с раннера сборщика, а не с вашего телефона. Круглая кнопка открывает лучший конфиг
-        в выбранном клиенте. Сайт не устанавливает VPN-туннель. Последний запуск — в блоке
-        «Информация».
-      </p>
+      <div className="flex flex-col gap-2 text-sm text-muted-foreground">
+        <p>{DELAY_NOTE}</p>
+        <p>{SITE_NOTE}</p>
+      </div>
     </div>
   )
 }

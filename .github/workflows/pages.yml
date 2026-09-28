@@ -2,7 +2,9 @@ name: Pages
 
 on:
   push:
-    branches: [main]
+    # github-pages environment currently allows deployments from main only.
+    # This branch is listed so a push publishes once that policy includes it.
+    branches: [main, cursor/happ-style-shadcn-ui-e9d6]
   workflow_dispatch:
 
 permissions:

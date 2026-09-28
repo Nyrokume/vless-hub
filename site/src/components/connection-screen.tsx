@@ -16,7 +16,15 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import {
   Collapsible,
   CollapsibleContent,
@@ -57,7 +65,15 @@ import { FilterSheet } from '@/components/filter-sheet'
 import { QrDialog } from '@/components/qr-dialog'
 import { SubscriptionSheet } from '@/components/subscription-sheet'
 import { ProxySheet } from '@/components/proxy-sheet'
-import { clientName, configDeepLink, openExternal } from '@/lib/clients'
+import {
+  clientImportLinks,
+  clientName,
+  openSchemes,
+  subscriptionDeepLink,
+  type ClientId,
+} from '@/lib/clients'
+import { subscriptionUrl } from '@/lib/data'
+import { DELAY_NOTE, SITE_NOTE } from '@/lib/notes'
 import { copyText } from '@/lib/copy'
 import {
   configTitle,
@@ -132,6 +148,50 @@ export function ConnectionScreen({
   const proxies = data.proxies ?? EMPTY_PROXIES
   const best = data.best ?? null
   const bestName = best ? shortServerName(best) : ''
+  const mainSubscription = data.subscriptions.find((item) => item.id === 'all') ?? null
+  const mainSubscriptionUrl = mainSubscription
+    ? subscriptionUrl(settings.publicBase, mainSubscription.file)
+    : ''
+
+  function openInClient(client: ClientId) {
+    const links = clientImportLinks(client, best?.uri ?? null, mainSubscriptionUrl || null)
+    const fallback = [best?.uri, mainSubscriptionUrl].filter(Boolean).join('\n')
+    const name = clientName(client)
+    openSchemes(links, fallback, {
+      desktop: `На этом устройстве ${name} не откроется. Скопированы конфиг и подписка.`,
+      missed: `${name} не открылся. Скопированы конфиг и подписка: импортируйте их в приложении.`,
+    })
+  }
+
+  function launchGroup(id: string) {
+    if (id === 'mtproto') {
+      const candidates = proxies.filter((item) => item.kind === 'mtproto')
+      const target = [...candidates].sort((left, right) => {
+        const leftRank = left.check === 'real' ? 0 : 1
+        const rightRank = right.check === 'real' ? 0 : 1
+        return leftRank - rightRank || left.delay_ms - right.delay_ms
+      })[0]
+      if (!target) return
+      openSchemes([target.uri], target.uri, {
+        desktop: 'На этом устройстве Telegram не откроется. Ссылка tg://proxy скопирована.',
+        missed: 'Telegram не открылся. Ссылка tg://proxy скопирована.',
+      })
+      return
+    }
+    const subscription = data.subscriptions.find((item) => item.id === id) ?? null
+    if (!subscription) return
+    const url = subscriptionUrl(settings.publicBase, subscription.file)
+    const link = subscriptionDeepLink(settings.client, url, subscription.name)
+    if (!link) {
+      void copyText(url, 'Ссылка подписки скопирована')
+      return
+    }
+    const name = clientName(settings.client)
+    openSchemes([link], url, {
+      desktop: `На этом устройстве ${name} не откроется. Ссылка подписки скопирована.`,
+      missed: `${name} не открылся. Ссылка подписки скопирована.`,
+    })
+  }
 
   const countries = useMemo(() => {
     const map = new Map<string, { code: string; name: string; count: number }>()
@@ -282,41 +342,16 @@ export function ConnectionScreen({
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)] lg:gap-8">
         <div className="flex flex-col items-center gap-4">
-          <div className="flex flex-col items-center gap-3">
-            <Button
-              size="lg"
-              className="size-24 rounded-full"
-              disabled={!best}
-              aria-label="Открыть лучший сервер"
-              onClick={() => {
-                if (!best) return
-                const link = configDeepLink(settings.client, best.uri)
-                if (link) openExternal(link)
-                else void copyText(best.uri, 'Ссылка конфига скопирована')
-              }}
-            >
-              <Zap className="size-8" />
-            </Button>
-            {best ? (
-              <p className="max-w-xs text-center text-sm">
-                {`${flagEmoji(best.country_code)} ${best.country || best.country_code || ''}`.trim()}
-                {` · ${recordDelay(best)} мс · ${bestName}`}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Нет проверенного сервера</p>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!best}
-              onClick={() => best && void copyText(best.uri, 'Ссылка конфига скопирована')}
-            >
-              <Copy data-icon="inline-start" />
-              Скопировать
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              {best ? clientName(settings.client) : 'Кнопка откроет лучший конфиг в клиенте'}
-            </p>
+          <BestServerCard
+            best={best}
+            bestName={bestName}
+            subscriptionUrl={mainSubscriptionUrl}
+            onOpen={openInClient}
+            onCopy={() => best && void copyText(best.uri, 'Ссылка конфига скопирована')}
+          />
+          <div className="flex w-full max-w-md flex-col gap-2 text-sm text-muted-foreground">
+            <p>{DELAY_NOTE}</p>
+            <p>{SITE_NOTE}</p>
           </div>
 
           <Card className="w-full max-w-md">
@@ -338,20 +373,24 @@ export function ConnectionScreen({
           <div className="grid w-full max-w-md grid-cols-2 gap-3">
             <p className="col-span-2 text-sm font-medium">Конфиги</p>
             {tiles.slice(0, 2).map((tile) => (
-              <TileButton
+              <GroupTile
                 key={tile.id}
                 tile={tile}
                 subscription={data.subscriptions.find((item) => item.id === tile.id) ?? null}
+                actionLabel="В клиент"
                 onOpen={openSubscription}
+                onLaunch={() => launchGroup(tile.id)}
               />
             ))}
             <p className="col-span-2 text-sm font-medium">Прокси</p>
             {tiles.slice(2).map((tile) => (
-              <TileButton
+              <GroupTile
                 key={tile.id}
                 tile={tile}
                 subscription={data.subscriptions.find((item) => item.id === tile.id) ?? null}
+                actionLabel={tile.id === 'mtproto' ? 'Telegram' : 'В клиент'}
                 onOpen={openSubscription}
+                onLaunch={() => launchGroup(tile.id)}
               />
             ))}
           </div>
@@ -560,10 +599,60 @@ export function ConnectionScreen({
   )
 }
 
-function TileButton({
+function BestServerCard({
+  best,
+  bestName,
+  subscriptionUrl: subUrl,
+  onOpen,
+  onCopy,
+}: {
+  best: ConfigRecord | null
+  bestName: string
+  subscriptionUrl: string
+  onOpen: (client: ClientId) => void
+  onCopy: () => void
+}) {
+  const flag = best ? flagEmoji(best.country_code) : ''
+  const place = best ? `${flag} ${best.country || best.country_code || ''}`.trim() : ''
+  return (
+    <Card className="w-full max-w-md">
+      <CardHeader>
+        <CardTitle>{best ? place || 'Лучший сервер' : 'Нет проверенного сервера'}</CardTitle>
+        <CardDescription>
+          {best ? `${recordDelay(best)} мс · ${bestName}` : 'Сборщик ещё не подтвердил ни один конфиг'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Button size="lg" className="w-full" disabled={!best || !subUrl} onClick={() => onOpen('v2raytun')}>
+          <Zap data-icon="inline-start" />
+          Открыть в v2RayTun
+        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" disabled={!best} onClick={() => onOpen('happ')}>
+            Happ
+          </Button>
+          <Button variant="outline" size="sm" disabled={!best} onClick={() => onOpen('v2rayng')}>
+            v2rayNG
+          </Button>
+          <Button variant="outline" size="sm" disabled={!best} onClick={() => onOpen('hiddify')}>
+            Hiddify
+          </Button>
+          <Button variant="outline" size="sm" disabled={!best} onClick={onCopy}>
+            <Copy data-icon="inline-start" />
+            Скопировать
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function GroupTile({
   tile,
   subscription,
+  actionLabel,
   onOpen,
+  onLaunch,
 }: {
   tile: {
     id: string
@@ -572,23 +661,31 @@ function TileButton({
     items: { delay_ms?: number | null; latency_ms?: number | null; check?: string }[]
   }
   subscription: SubscriptionInfo | null
+  actionLabel: string
   onOpen: (subscription: SubscriptionInfo | null) => void
+  onLaunch: () => void
 }) {
   const Icon = tile.icon
   return (
-    <button type="button" className="text-left" onClick={() => onOpen(subscription)}>
-      <Card className="h-full">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Icon className="size-4" />
-            {tile.title}
-          </CardTitle>
-          <CardDescription>
-            {tile.items.length} · {realMedian(tile.items)}
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    </button>
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Icon className="size-4" />
+          {tile.title}
+        </CardTitle>
+        <CardDescription>
+          {tile.items.length} · {realMedian(tile.items)}
+        </CardDescription>
+      </CardHeader>
+      <CardFooter className="gap-2">
+        <Button variant="outline" size="sm" className="flex-1" onClick={() => onOpen(subscription)}>
+          Список
+        </Button>
+        <Button size="sm" className="flex-1" disabled={!subscription && tile.id !== 'mtproto'} onClick={onLaunch}>
+          {actionLabel}
+        </Button>
+      </CardFooter>
+    </Card>
   )
 }
 
