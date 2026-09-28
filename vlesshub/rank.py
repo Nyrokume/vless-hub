@@ -11,10 +11,10 @@ def select_candidates(
     drop_after: int,
     deprioritized: set[str] | None = None,
 ) -> list[VlessConfig]:
-    """Prefer stable configs, keep room for new ones, and revive a few dead ones.
+    """Rotate through the pool so untouched configs are tested before recent failures.
 
-    Configs whose every source is deprioritized sort after healthy ones, so a
-    near-zero subscription does not fill the probe budget.
+    A slice of the budget rechecks known-good configs, oldest first. Configs
+    whose every source is deprioritized sort after healthy ones.
     """
     if limit <= 0:
         return []
@@ -25,59 +25,91 @@ def select_candidates(
             return 0
         return 1 if all(name in blocked for name in cfg.sources) else 0
 
-    good: list[VlessConfig] = []
+    def seen_at(cfg: VlessConfig) -> str:
+        entry = history.get(cfg.fingerprint) or {}
+        return str(entry.get("last_seen") or "")
+
     fresh: list[VlessConfig] = []
+    proven: list[VlessConfig] = []
+    retry: list[VlessConfig] = []
     stale: list[VlessConfig] = []
     for cfg in configs:
         entry = history.get(cfg.fingerprint)
         if entry is None:
             fresh.append(cfg)
-        elif int(entry.get("streak_fail", 0)) >= drop_after:
+            continue
+        fails = int(entry.get("streak_fail", 0))
+        if fails >= drop_after:
             stale.append(cfg)
+        elif int(entry.get("ok", 0)) > 0 and fails == 0:
+            proven.append(cfg)
         else:
-            good.append(cfg)
+            retry.append(cfg)
 
-    def good_key(cfg: VlessConfig) -> tuple[int, float, float]:
-        entry = history.get(cfg.fingerprint) or {}
-        uptime = history.uptime(cfg.fingerprint)
-        ema = entry.get("ema_ms")
-        # Sub-15 ms figures are leftover TCP connect times, not HTTP RTT.
-        trusted = float(ema) if ema is not None and float(ema) >= 15 else 9_999.0
-        return (late(cfg), -uptime, trusted)
-
-    good.sort(key=good_key)
     fresh.sort(key=lambda cfg: (late(cfg), cfg.fingerprint))
-    stale.sort(
+    proven.sort(
         key=lambda cfg: (
             late(cfg),
-            int((history.get(cfg.fingerprint) or {}).get("streak_fail", 0)),
+            0 if _trusted_latency(history.get(cfg.fingerprint) or {}) is not None else 1,
+            seen_at(cfg),
             cfg.fingerprint,
         )
     )
+    retry.sort(key=lambda cfg: (late(cfg), seen_at(cfg), cfg.fingerprint))
+    stale.sort(key=lambda cfg: (late(cfg), seen_at(cfg), cfg.fingerprint))
 
-    revival = min(len(stale), max(3, limit // 12))
-    fresh_slots = min(len(fresh), max(5, limit // 3))
-    good_slots = max(0, limit - revival - fresh_slots)
-    if len(good) < good_slots:
-        fresh_slots = min(len(fresh), fresh_slots + (good_slots - len(good)))
-        good_slots = len(good)
-    chosen = good[:good_slots] + fresh[:fresh_slots]
+    fresh_slots = min(len(fresh), max(1, (limit * 3) // 5)) if fresh else 0
+    proven_slots = min(len(proven), max(1, limit // 5)) if proven else 0
+    if fresh_slots + proven_slots > limit:
+        fresh_slots = min(fresh_slots, limit)
+        proven_slots = min(proven_slots, max(0, limit - fresh_slots))
+    chosen = fresh[:fresh_slots] + proven[:proven_slots]
     used = {cfg.fingerprint for cfg in chosen}
-    for cfg in stale:
-        if len(chosen) >= good_slots + fresh_slots + revival:
-            break
-        if cfg.fingerprint not in used:
-            chosen.append(cfg)
-            used.add(cfg.fingerprint)
-    if len(chosen) < limit:
-        for pool in (good[good_slots:], fresh[fresh_slots:], stale):
-            for cfg in pool:
-                if len(chosen) >= limit:
-                    break
-                if cfg.fingerprint not in used:
-                    chosen.append(cfg)
-                    used.add(cfg.fingerprint)
-    return chosen[:limit]
+    for pool in (fresh[fresh_slots:], retry, proven[proven_slots:], stale):
+        for cfg in pool:
+            if len(chosen) >= limit:
+                return chosen
+            if cfg.fingerprint not in used:
+                chosen.append(cfg)
+                used.add(cfg.fingerprint)
+    return chosen
+
+
+def _trusted_latency(entry: dict) -> float | None:
+    """HTTP RTT stored on a history row. Sub-15 ms values are old TCP connects."""
+    for key in ("ema_ms", "latency_ms"):
+        value = entry.get(key)
+        if value is None:
+            continue
+        number = float(value)
+        if number >= 15:
+            return number
+    return None
+
+
+def carry_verified(
+    configs: list[VlessConfig],
+    history: History,
+    already: set[str],
+) -> list[VlessConfig]:
+    """Keep earlier proxy successes that were not retested or failed this run."""
+    carried: list[VlessConfig] = []
+    for cfg in configs:
+        if cfg.fingerprint in already:
+            continue
+        entry = history.get(cfg.fingerprint)
+        if not entry:
+            continue
+        if int(entry.get("streak_fail", 0)) > 0 or int(entry.get("ok", 0)) <= 0:
+            continue
+        latency = _trusted_latency(entry)
+        if latency is None:
+            continue
+        cfg.latency_ms = latency
+        cfg.speed_kbps = None
+        cfg.verified = "proxy"
+        carried.append(cfg)
+    return carried
 
 
 def mix_proxy_targets(
@@ -104,9 +136,11 @@ def mix_proxy_targets(
 
 
 def rank_published(configs: list[VlessConfig]) -> list[VlessConfig]:
+    """Proxy-verified first, then measured ping. The full list is returned."""
+
     def key(cfg: VlessConfig) -> tuple:
         latency = cfg.latency_ms if cfg.latency_ms is not None else 9_999_999
         verified_bonus = 0 if cfg.verified == "proxy" else 1
-        return (verified_bonus, -cfg.uptime, latency, cfg.fingerprint)
+        return (verified_bonus, latency, -cfg.uptime, cfg.fingerprint)
 
     return sorted(configs, key=key)

@@ -57,7 +57,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
     outputs:
       publish: ${{ steps.pipe.outputs.publish }}
     steps:

@@ -147,7 +147,7 @@ def publish(
             security=key.split("-", 1)[1],
         )
 
-    clash_configs = configs[: settings.clash_limit]
+    clash_configs = configs if settings.clash_limit <= 0 else configs[: settings.clash_limit]
     _write_clash(out_dir / "sub/clash.yaml", clash_configs)
     _write_singbox(out_dir / "sub/singbox.json", clash_configs)
     catalog.append({"path": "sub/clash.yaml", "kind": "clash", "format": "clash", "count": len(clash_configs)})

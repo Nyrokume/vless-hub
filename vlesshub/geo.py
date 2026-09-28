@@ -5,6 +5,7 @@ import json
 import socket
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from vlesshub.models import VlessConfig
@@ -32,9 +33,9 @@ class GeoCache:
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        if len(self.hosts) > 8000:
+        if len(self.hosts) > 25000:
             ranked = sorted(self.hosts.items(), key=lambda item: int(item[1].get("ts") or 0))
-            self.hosts = dict(ranked[-8000:])
+            self.hosts = dict(ranked[-25000:])
         payload = {"version": 1, "hosts": {key: self.hosts[key] for key in sorted(self.hosts)}}
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -51,6 +52,7 @@ def enrich(configs: list[VlessConfig], cache: GeoCache, mmdb_path: Path | None, 
     reader = _open_mmdb(mmdb_path)
     pending_ips: list[str] = []
     now = int(time.time())
+    misses: list[VlessConfig] = []
     for cfg in configs:
         host = cfg.host.lower()
         cached = cache.fresh(host)
@@ -59,7 +61,11 @@ def enrich(configs: list[VlessConfig], cache: GeoCache, mmdb_path: Path | None, 
             cfg.country = str(cached.get("cc") or "")
             cfg.country_name = str(cached.get("name") or "")
             continue
-        ip = _resolve(host)
+        misses.append(cfg)
+    resolved = _resolve_many([cfg.host.lower() for cfg in misses])
+    for cfg in misses:
+        host = cfg.host.lower()
+        ip = resolved.get(host)
         cc, name = "", ""
         if ip and _is_public(ip) and reader is not None:
             cc, name = _lookup_mmdb(reader, ip)
@@ -126,6 +132,23 @@ def normalize_country_code(code: str) -> str:
     if len(cleaned) == 2 and cleaned.isalpha():
         return cleaned
     return ""
+
+
+def _resolve_many(hosts: list[str]) -> dict[str, str | None]:
+    unique = list(dict.fromkeys(hosts))
+    if not unique:
+        return {}
+    resolved: dict[str, str | None] = {}
+    workers = min(64, len(unique))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_resolve, host): host for host in unique}
+        for future in as_completed(futures):
+            host = futures[future]
+            try:
+                resolved[host] = future.result()
+            except Exception:  # noqa: BLE001
+                resolved[host] = None
+    return resolved
 
 
 def _resolve(host: str) -> str | None:

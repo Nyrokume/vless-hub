@@ -7,20 +7,20 @@ from dataclasses import dataclass, field
 class Settings:
     drop_after_failures: int = 4
     max_links_per_source: int = 15000
-    max_tcp_tests: int = 1000
-    max_proxy_tests: int = 400
+    max_tcp_tests: int = 8000
+    max_proxy_tests: int = 2000
     tcp_timeout_sec: float = 2.5
     proxy_timeout_sec: float = 6.0
     speed_timeout_sec: float = 0.0
-    tcp_concurrency: int = 120
-    proxy_concurrency: int = 6
-    proxy_batch_size: int = 20
+    tcp_concurrency: int = 200
+    proxy_concurrency: int = 12
+    proxy_batch_size: int = 24
     fetch_timeout_sec: float = 30.0
     fetch_concurrency: int = 6
     max_bytes_per_source: int = 8_000_000
     telegram_pages: int = 2
     top_sizes: list[int] = field(default_factory=lambda: [20, 50, 100])
-    clash_limit: int = 120
+    clash_limit: int = 0
     max_tg_tests: int = 160
     tg_timeout_sec: float = 8.0
     tg_concurrency: int = 40

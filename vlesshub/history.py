@@ -141,7 +141,7 @@ class History:
         target.checks_fail = int(entry.get("fail", 0))
         target.bits = str(entry.get("bits") or "")
 
-    def prune(self, drop_after: int, max_entries: int = 5000) -> None:
+    def prune(self, drop_after: int, max_entries: int = 40000) -> None:
         remove = [
             fingerprint
             for fingerprint, entry in self.entries.items()

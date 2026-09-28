@@ -8,22 +8,22 @@
 settings:
   drop_after_failures: 4
   max_links_per_source: 15000
-  # TCP is only a prefilter. Published latency and the default lists come from
-  # an HTTP fetch through Xray (generate_204), hundreds of configs per run.
-  max_tcp_tests: 1000
-  max_proxy_tests: 400
+  # TCP is only a prefilter. Published latency comes from HTTP through Xray
+  # or sing-box. The budget walks the unique pool across runs.
+  max_tcp_tests: 8000
+  max_proxy_tests: 2000
   tcp_timeout_sec: 2.5
   proxy_timeout_sec: 6.0
   speed_timeout_sec: 0
-  tcp_concurrency: 120
-  proxy_concurrency: 6
-  proxy_batch_size: 20
+  tcp_concurrency: 200
+  proxy_concurrency: 12
+  proxy_batch_size: 24
   fetch_timeout_sec: 30
   fetch_concurrency: 6
   max_bytes_per_source: 8000000
   telegram_pages: 2
   top_sizes: [20, 50, 100]
-  clash_limit: 120
+  clash_limit: 0
   # Telegram MTProto / SOCKS. The check is a real handshake (resPQ), not a TCP ping.
   max_tg_tests: 160
   tg_timeout_sec: 8

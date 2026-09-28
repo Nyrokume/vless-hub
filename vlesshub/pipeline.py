@@ -10,7 +10,7 @@ from vlesshub.health import apply_source_health, deprioritized_names, load_healt
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
 from vlesshub.probe import ProbeResult, failure_reason, proxy_probe, tcp_probe
-from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
+from vlesshub.rank import carry_verified, mix_proxy_targets, rank_published, select_candidates
 from vlesshub.tgcollect import collect_proxies, select_proxies
 from vlesshub.tgparse import TgProxy
 from vlesshub.tgprobe import probe_many
@@ -186,10 +186,16 @@ def run_pipeline(
     apply_source_health(reports, evaluated, health)
     save_health(state_dir / "source_health.json", health)
 
+    carried = carry_verified(configs, history, {cfg.fingerprint for cfg in verified})
+    carried_ids = {cfg.fingerprint for cfg in carried}
+    if carried_ids:
+        unverified = [cfg for cfg in unverified if cfg.fingerprint not in carried_ids]
+        log(f"carried {len(carried)} previously verified configs")
+
     cache = GeoCache.load(state_dir / "geo_cache.json")
     mmdb = None if skip_download else ensure_geoip(root / "data" / "Country.mmdb")
-    enrich(verified + unverified, cache, mmdb, settings.user_agent)
-    for cfg in verified + unverified:
+    enrich(verified + carried + unverified, cache, mmdb, settings.user_agent)
+    for cfg in verified + carried + unverified:
         entry = history.get(cfg.fingerprint)
         if entry is not None and cfg.country:
             entry["country"] = cfg.country
@@ -204,7 +210,7 @@ def run_pipeline(
     tg_history.save(state_dir / "tg_history.json")
     cache.save(state_dir / "geo_cache.json")
 
-    published = rank_published(verified)
+    published = rank_published(verified + carried)
     unverified_sorted = sorted(unverified, key=lambda cfg: (cfg.country or "ZZ", cfg.fingerprint))
     proxy_ok = len(published)
     log(
