@@ -13,7 +13,7 @@ import {
   Moon,
   Server,
   Smartphone,
-  Square,
+  Tag,
 } from 'lucide-react'
 import { IconTile } from '@/components/icon-tile'
 import { InspectScreen } from '@/components/inspect-screen'
@@ -231,7 +231,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
       </Group>
 
       <Group title="Информация">
-        <InfoRow icon={<Square className="size-4" />} text={`Версия: ${SITE_VERSION}`} />
+        <InfoRow icon={<Tag className="size-4" />} text={`Версия: ${SITE_VERSION}`} />
         <Separator />
         <InfoRow
           icon={<Activity className="size-4" />}
