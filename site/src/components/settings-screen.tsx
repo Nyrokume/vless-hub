@@ -3,6 +3,7 @@ import { useTheme } from 'next-themes'
 import {
   Activity,
   ArrowUpDown,
+  BookOpen,
   Check,
   ChevronRight,
   Clock,
@@ -15,6 +16,8 @@ import {
   Square,
 } from 'lucide-react'
 import { IconTile } from '@/components/icon-tile'
+import { InspectScreen } from '@/components/inspect-screen'
+import { SiteHeader } from '@/components/site-header'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,7 +32,7 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { CLIENTS, clientName, type ClientId } from '@/lib/clients'
-import { formatStamp, latencyText } from '@/lib/format'
+import { FAILURE_LABELS, formatStamp, latencyText } from '@/lib/format'
 import {
   DEFAULT_PUBLIC_BASE,
   SORTS,
@@ -113,7 +116,26 @@ function ChoiceSheet<T extends string>({
   )
 }
 
-export function SettingsScreen({ data, embedded = false }: { data: HubData | null; embedded?: boolean }) {
+function FailureCounts({ data }: { data: HubData | null }) {
+  const rejected = data?.stats.rejected
+  if (!rejected) return null
+  const rows = Object.keys(FAILURE_LABELS)
+    .map((key) => ({ key, label: FAILURE_LABELS[key], count: rejected[key] ?? 0 }))
+    .filter((row) => row.count > 0)
+  if (rows.length === 0) return null
+  return (
+    <ul className="flex flex-col gap-1">
+      {rows.map((row) => (
+        <li key={row.key} className="flex justify-between gap-3">
+          <span>{row.label}</span>
+          <span className="tabular-nums">{row.count}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export function SettingsScreen({ data }: { data: HubData | null }) {
   const { settings, update } = useSettings()
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
@@ -131,8 +153,8 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
     : ''
 
   return (
-    <div className={embedded ? 'pb-4' : 'mx-auto w-full max-w-[560px] px-4 pt-4'}>
-      {!embedded && <h1 className="px-1 pb-5 text-[34px] leading-none font-bold tracking-tight">Настройки</h1>}
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+      <SiteHeader updated={data ? formatStamp(data.generated_at) : undefined} />
 
       <Group>
         <div className="flex items-center gap-3 px-4 py-3">
@@ -246,6 +268,70 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
           </>
         )}
       </Group>
+
+      <Collapsible className="mb-6">
+        <div className="overflow-hidden rounded-2xl bg-card">
+          <CollapsibleTrigger className="group flex w-full items-center gap-3 px-4 py-3 text-left">
+            <IconTile>
+              <BookOpen className="size-4" />
+            </IconTile>
+            <span className="flex-1 text-[17px]">Инструкции</span>
+            <ChevronRight className="size-4 text-muted-foreground/80 transition-transform group-data-[state=open]:rotate-90" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="flex flex-col gap-4 px-4 pb-4 text-[14px] leading-relaxed text-muted-foreground">
+              <p>
+                V2Hub собирает публичные конфиги VLESS и прокси Telegram, проверяет их и отдаёт списками.
+                Сайт не поднимает туннель и не подключается к серверу за вас.
+              </p>
+              <div>
+                <p className="font-medium text-foreground">Как читать результат</p>
+                <p className="mt-1">
+                  Точка на строке — рабочий или нестабильный конфиг. Пинг — медиана нескольких HTTP-запросов
+                  через уже запущенный Xray или sing-box, без прогрева. Рядом доля успешных прогонов и
+                  скорость. «Порт открыт» значит, что TCP ответил, а полный проход в этом запуске не
+                  выполнялся.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Как забрать конфиги</p>
+                <p className="mt-1">
+                  «Экспорт» — файлы по срезу, стране, защите и транспорту, Clash, sing-box и конструктор
+                  подписки. На «Конфигах» отметьте строки и выгрузите текст, base64, файл, QR, Clash или
+                  sing-box. QR и кнопки клиента используют только проверенные схемы: Happ, v2rayNG,
+                  Hiddify, v2RayTun для VLESS; Clash Meta, Mihomo, NekoBox и sing-box — для своих файлов.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Проверка</p>
+                <p className="mt-1">
+                  Сначала разбор ссылки, затем TCP, рукопожатие ядра, большинство из трёх HTTP-адресов,
+                  короткая загрузка и чужой адрес выхода. Рабочий — прошёл сейчас и держится хотя бы в 70%
+                  последних прогонов. Нестабильный прошёл сейчас, но реже. Мёртвый в список не попадает, а
+                  после нескольких провалов подряд выбывает из пула. Проверка идёт с серверов GitHub Actions
+                  вне России, поэтому местный провайдер может закрыть то, что здесь открылось.
+                </p>
+                <div className="mt-3">
+                  <FailureCounts data={data} />
+                </div>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Telegram</p>
+                <p className="mt-1">
+                  Кнопка «В Telegram» открывает tg:// и подставляет прокси. Если клиент не открылся, рядом
+                  есть HTTPS-ссылка и QR.
+                </p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Разбор ссылки</p>
+                <div className="mt-2">
+                  <InspectScreen embedded />
+                </div>
+              </div>
+            </div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       <Collapsible className="mb-6">
         <div className="overflow-hidden rounded-2xl bg-card">

@@ -51,14 +51,14 @@ export function InspectScreen({ embedded = false }: { embedded?: boolean }) {
         onChange={(event) => setText(event.target.value)}
         placeholder="vless://…"
         aria-label="VLESS-ссылка"
-        className="min-h-28 w-full rounded-2xl bg-card px-3 py-3 font-mono text-[13px] outline-none"
+        className={`min-h-28 w-full rounded-2xl px-3 py-3 font-mono text-[13px] outline-none ${embedded ? 'bg-background' : 'bg-card'}`}
       />
       <Button className="mt-3" onClick={() => void inspect()}>
         Разобрать
       </Button>
       {error && <p className="mt-3 text-sm text-muted-foreground">{error}</p>}
       {parsed && (
-        <div className="mt-4 overflow-hidden rounded-2xl bg-card">
+        <div className={`mt-4 overflow-hidden rounded-2xl ${embedded ? 'bg-background' : 'bg-card'}`}>
           {FIELDS.filter((field) => parsed[field.key] !== '' && parsed[field.key] != null).map((field) => (
             <div key={field.key} className="flex gap-3 border-b border-border px-4 py-2.5 last:border-0">
               <div className="w-28 shrink-0 text-[13px] text-muted-foreground">{field.label}</div>

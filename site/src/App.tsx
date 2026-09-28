@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ConfigsScreen } from '@/components/configs-screen'
 import { ExportScreen } from '@/components/export-screen'
-import { GuideScreen } from '@/components/guide-screen'
+import { SettingsScreen } from '@/components/settings-screen'
 import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
 import { Button } from '@/components/ui/button'
@@ -39,8 +39,8 @@ export default function App() {
   return (
     <div className="min-h-dvh bg-background text-foreground">
       <main className="pb-24">
-        {tab === 'guide' ? (
-          <GuideScreen data={data} />
+        {tab === 'settings' ? (
+          <SettingsScreen data={data} />
         ) : loading && !data ? (
           <LoadingState />
         ) : error && !data ? (

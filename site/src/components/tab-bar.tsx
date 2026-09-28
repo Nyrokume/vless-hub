@@ -1,13 +1,13 @@
-import { BookOpen, Download, List, Send } from 'lucide-react'
+import { Download, List, Send, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export type AppTab = 'configs' | 'telegram' | 'export' | 'guide'
+export type AppTab = 'configs' | 'telegram' | 'export' | 'settings'
 
 const TABS: { id: AppTab; label: string; icon: typeof List }[] = [
   { id: 'configs', label: 'Конфиги', icon: List },
   { id: 'telegram', label: 'Telegram Proxy', icon: Send },
   { id: 'export', label: 'Экспорт', icon: Download },
-  { id: 'guide', label: 'Инструкции', icon: BookOpen },
+  { id: 'settings', label: 'Настройки', icon: Settings },
 ]
 
 export function TabBar({
