@@ -17,6 +17,8 @@ from vlesshub.models import VlessConfig
 from vlesshub.util import log
 
 _GENERATE_204 = "https://www.gstatic.com/generate_204"
+# Time to first byte of one HTTP response. Xray is already listening, and curl does not retry.
+_CURL_WRITE = "%{http_code} %{time_starttransfer} %{time_total} %{size_download}"
 _SPEED = "https://speed.cloudflare.com/__down?bytes=65536"
 _ports_lock = threading.Lock()
 _ports: set[int] = set()
@@ -417,7 +419,7 @@ def _curl_batch(
     results: dict[str, ProbeResult] = {}
 
     def one(cfg: VlessConfig, port: int) -> ProbeResult:
-        code, latency, _size = _curl(port, _GENERATE_204, timeout)
+        code, latency, _total, _size = _curl(port, _GENERATE_204, timeout)
         if code == 0:
             return ProbeResult(False, error="timeout")
         if code not in {200, 204} or latency <= 0:
@@ -440,13 +442,13 @@ def _curl_batch(
 def _measure_speed(port: int, timeout: float) -> float | None:
     if timeout <= 0:
         return None
-    code, elapsed_ms, size = _curl(port, _SPEED, timeout)
+    code, _start_ms, elapsed_ms, size = _curl(port, _SPEED, timeout)
     if code != 200 or size <= 0 or elapsed_ms <= 0:
         return None
     return round((size / 1024) / (elapsed_ms / 1000), 1)
 
 
-def _curl(port: int, url: str, timeout: float) -> tuple[int, float, int]:
+def _curl(port: int, url: str, timeout: float) -> tuple[int, float, float, int]:
     command = [
         "curl",
         "-sS",
@@ -456,8 +458,10 @@ def _curl(port: int, url: str, timeout: float) -> tuple[int, float, int]:
         str(max(2, int(timeout // 2) or 2)),
         "--max-time",
         str(max(3, int(timeout))),
+        "--retry",
+        "0",
         "-w",
-        "%{http_code} %{time_total} %{size_download}",
+        _CURL_WRITE,
         "--socks5-hostname",
         f"127.0.0.1:{port}",
         url,
@@ -470,20 +474,29 @@ def _curl(port: int, url: str, timeout: float) -> tuple[int, float, int]:
             timeout=timeout + 4,
         )
     except subprocess.TimeoutExpired:
-        return 0, 0.0, 0
-    parts = (proc.stdout or "").split()
-    if len(parts) < 2:
-        return 0, 0.0, 0
+        return 0, 0.0, 0.0, 0
+    return parse_curl_write(proc.stdout or "")
+
+
+def parse_curl_write(stdout: str) -> tuple[int, float, float, int]:
+    """Return HTTP code, time-to-first-byte ms, total ms, and download size."""
+    parts = stdout.split()
+    if len(parts) < 3:
+        return 0, 0.0, 0.0, 0
     code = int(parts[0]) if parts[0].isdigit() else 0
     try:
-        elapsed_ms = float(parts[1]) * 1000
+        start_ms = round(float(parts[1]) * 1000, 1)
     except ValueError:
-        elapsed_ms = 0.0
+        start_ms = 0.0
     try:
-        size = int(float(parts[2])) if len(parts) > 2 else 0
+        total_ms = round(float(parts[2]) * 1000, 1)
+    except ValueError:
+        total_ms = 0.0
+    try:
+        size = int(float(parts[3])) if len(parts) > 3 else 0
     except ValueError:
         size = 0
-    return code, elapsed_ms, size
+    return code, start_ms, total_ms, size
 
 
 def _wait_ports(ports: list[int], proc: subprocess.Popen, timeout: float) -> bool:

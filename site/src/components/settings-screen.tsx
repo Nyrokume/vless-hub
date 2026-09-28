@@ -217,7 +217,10 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
           text={`Последний запуск: ${data ? formatStamp(data.generated_at) : '—'}`}
         />
         <Separator />
-        <InfoRow icon={<Gauge className="size-4" />} text="Проверка: HTTP через Xray и sing-box" />
+        <InfoRow
+          icon={<Gauge className="size-4" />}
+          text="Задержка: один HTTP-запрос через прокси, без старта Xray"
+        />
         <Separator />
         <InfoRow
           icon={<Server className="size-4" />}
@@ -232,7 +235,7 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
           icon={<Globe className="size-4" />}
           text={
             data
-              ? `Стран: ${data.stats.countries} · медиана ${data.stats.median_latency_ms ?? '—'} мс`
+              ? `Стран: ${data.stats.countries} · медиана HTTP ${data.stats.median_latency_ms ?? '—'} мс`
               : 'Стран: —'
           }
         />

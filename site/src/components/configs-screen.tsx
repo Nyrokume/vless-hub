@@ -394,7 +394,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', chosen.length > 0 && 'pb-36')}>
       <SiteHeader updated={formatStamp(data.generated_at)} menu={sortMenu} />
       <p className="mb-3 text-[13px] text-muted-foreground">
-        {data.stats.published} в списке · {data.stats.countries} стран · медиана{' '}
+        {data.stats.published} в списке · {data.stats.countries} стран · медиана HTTP{' '}
         {data.stats.median_latency_ms == null ? '—' : data.stats.median_latency_ms} мс
       </p>
 

@@ -1,5 +1,5 @@
 from vlesshub.parser import parse_vless
-from vlesshub.probe import build_xray_batch, build_xray_config
+from vlesshub.probe import _CURL_WRITE, build_xray_batch, build_xray_config, parse_curl_write
 
 
 def test_reality_tcp_outbound():
@@ -70,3 +70,12 @@ def test_batch_routes_each_inbound_to_its_outbound():
     assert config["outbounds"][2]["streamSettings"]["wsSettings"]["path"] == "/w"
     rules = {tuple(rule["inboundTag"]): rule["outboundTag"] for rule in config["routing"]["rules"]}
     assert rules == {("in-0",): "out-0", ("in-1",): "out-1"}
+
+
+def test_latency_is_time_to_first_byte_not_process_startup():
+    assert "time_starttransfer" in _CURL_WRITE
+    code, start_ms, total_ms, size = parse_curl_write("204 0.412 0.640 0")
+    assert code == 204
+    assert start_ms == 412
+    assert total_ms == 640
+    assert size == 0
