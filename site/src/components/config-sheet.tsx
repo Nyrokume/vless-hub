@@ -103,7 +103,7 @@ export function ConfigSheet({
                 {title}
               </SheetTitle>
               <SheetDescription className="flex items-center justify-between gap-3 text-[15px]">
-                <span>{protocolLine(config.transport)}</span>
+                <span>{protocolLine(config.transport, config.protocol)}</span>
                 <span className={cn('font-semibold tabular-nums', latencyClass(config.latency_ms))}>
                   {latencyText(config.latency_ms)}
                 </span>

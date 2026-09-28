@@ -29,8 +29,8 @@ export function protocolLabel(protocol: string | undefined): string {
   return 'VLESS'
 }
 
-export function protocolLine(transport: string): string {
-  return `VLESS / ${transportLabel(transport)}`
+export function protocolLine(transport: string, protocol?: string): string {
+  return `${protocolLabel(protocol)} / ${transportLabel(transport)}`
 }
 
 export function flagEmoji(code: string | null | undefined): string {
