@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 from vlesshub.models import Settings, Source, SourceReport, VlessConfig
-from vlesshub.parser import dedup, is_uuid, parse_many
+from vlesshub.parser import dedup, parse_document
 from vlesshub.util import log
 
 
@@ -41,10 +41,14 @@ def load_config(path: Path) -> tuple[Settings, list[Source]]:
     return settings, sources
 
 
-def collect_all(settings: Settings, sources: list[Source]) -> tuple[list[SourceReport], list[VlessConfig]]:
+def collect_all(
+    settings: Settings,
+    sources: list[Source],
+) -> tuple[list[SourceReport], list[VlessConfig], dict[str, int]]:
     enabled = [source for source in sources if source.enabled and source.kind != "telegram-proxy"]
     reports: list[SourceReport] = []
     configs: list[VlessConfig] = []
+    reasons = {"parse_error": 0, "invalid_field": 0}
     workers = max(1, settings.fetch_concurrency)
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_fetch_source, settings, source): source for source in enabled}
@@ -62,15 +66,23 @@ def collect_all(settings: Settings, sources: list[Source]) -> tuple[list[SourceR
                 parsed = []
             reports.append(report)
             configs.extend(parsed)
+            reasons["parse_error"] += report.parse_error
+            reasons["invalid_field"] += report.invalid_field
             state = "ok" if report.ok else "fail"
             log(
                 f"source {report.name}: {state} status={report.status} "
-                f"links={report.links} kept={report.kept} {report.error}".rstrip()
+                f"links={report.links} kept={report.kept} "
+                f"parse_error={report.parse_error} invalid={report.invalid_field} "
+                f"{report.error}".rstrip()
             )
     reports.sort(key=lambda item: item.name)
     unique = dedup(configs)
-    log(f"collected {len(configs)} links, {len(unique)} unique")
-    return reports, unique
+    seen = sum(report.links for report in reports)
+    log(
+        f"collected {seen} links, {len(configs)} valid, {len(unique)} unique, "
+        f"parse_error={reasons['parse_error']} invalid_field={reasons['invalid_field']}"
+    )
+    return reports, unique, reasons
 
 
 def _fetch_source(settings: Settings, source: Source) -> tuple[SourceReport, list[VlessConfig]]:
@@ -83,13 +95,14 @@ def _fetch_source(settings: Settings, source: Source) -> tuple[SourceReport, lis
         else:
             status, text = _fetch_url(url, settings)
         report.status = status
-        parsed = parse_many(text, source=source.name)
-        report.links = len(parsed)
-        valid = [cfg for cfg in parsed if is_uuid(cfg.uuid)]
-        report.kept = min(len(valid), settings.max_links_per_source)
+        parsed, doc_reasons = parse_document(text, source=source.name, validate=True)
+        report.parse_error = doc_reasons["parse_error"]
+        report.invalid_field = doc_reasons["invalid_field"]
+        report.links = report.parse_error + report.invalid_field + len(parsed)
+        report.kept = min(len(parsed), settings.max_links_per_source)
         report.ok = True
         report.elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
-        return report, valid[: settings.max_links_per_source]
+        return report, parsed[: settings.max_links_per_source]
     except Exception as exc:  # noqa: BLE001
         report.error = f"{type(exc).__name__}: {exc}"
         report.elapsed_ms = round((time.perf_counter() - started) * 1000, 1)

@@ -1,13 +1,15 @@
-"""Parse vless:// URIs and subscription blobs.
+"""Parse vless://, ss://, trojan://, and hysteria2:// URIs and subscription blobs.
 
-Fingerprints ignore the remark and use this field order, joined by ``|``:
+Fingerprints ignore the remark and the TLS fingerprint (``fp``). Field order,
+joined by ``|``:
 
-uuid, host, port, security, sni, pbk, sid, flow, network, path, host_header,
-service_name, mode, encryption, alpn, header_type, packet_encoding,
+protocol, uuid, host, port, security, sni, pbk, sid, flow, network, path,
+host_header, service_name, mode, encryption, alpn, header_type, packet_encoding,
 allow_insecure (1/0), spx, authority, extra, extras (k=v&k=v, sorted).
 
 uuid/host/sni/host_header/alpn/header_type/packet_encoding/security/network
-are lowercased. The inspector in ``site/src/lib/vless.ts`` must stay in lockstep.
+are lowercased. The inspector in ``site/src/lib/vless.ts`` must stay in lockstep
+for VLESS.
 """
 
 from __future__ import annotations
@@ -21,6 +23,31 @@ from urllib.parse import quote, unquote, urlencode
 from vlesshub.models import VlessConfig
 
 VLESS_RE = re.compile(r"vless://[^\s<>\"'`]+", re.IGNORECASE)
+PROXY_RE = re.compile(r"(?:vless|trojan|ss|hysteria2|hy2)://[^\s<>\"'`]+", re.IGNORECASE)
+_XHTTP_MODES = {"auto", "packet-up", "stream-one", "stream-up", "stream-down"}
+_ALPN_OK = {"h3", "h2", "http/1.1", "http/1.0"}
+_SS_METHODS = {
+    "aes-128-gcm",
+    "aes-256-gcm",
+    "aes-128-cfb",
+    "aes-256-cfb",
+    "chacha20-ietf-poly1305",
+    "chacha20-poly1305",
+    "2022-blake3-aes-128-gcm",
+    "2022-blake3-aes-256-gcm",
+    "2022-blake3-chacha20-poly1305",
+}
+_FP_RANK = {
+    "chrome": 0,
+    "firefox": 1,
+    "edge": 2,
+    "safari": 3,
+    "ios": 4,
+    "android": 5,
+    "random": 6,
+    "qq": 7,
+}
+_KEEP_EXTRAS = {"obfs", "obfs-password", "mport"}
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
@@ -93,6 +120,7 @@ def fingerprint(cfg: VlessConfig) -> str:
 def fingerprint_material(cfg: VlessConfig) -> str:
     extras = "&".join(f"{key}={cfg.extras[key]}" for key in sorted(cfg.extras))
     parts = [
+        cfg.protocol or "vless",
         cfg.uuid.lower(),
         cfg.host.lower(),
         str(cfg.port),
@@ -121,15 +149,21 @@ def fingerprint_material(cfg: VlessConfig) -> str:
 
 def extract_vless_uris(text: str) -> list[str]:
     """Pull vless:// URIs out of plain text, HTML, or a base64 subscription."""
+    return [uri for uri in extract_proxy_uris(text) if uri.lower().startswith("vless://")]
+
+
+def extract_proxy_uris(text: str) -> list[str]:
+    """Pull vless, shadowsocks, trojan, and hysteria2 URIs out of a subscription."""
     text = html.unescape(text or "")
     text = text.replace("\ufeff", "").replace("\\u0026", "&").replace("\\/", "/")
     found: list[str] = []
     seen: set[str] = set()
 
     def add_from(blob: str) -> None:
-        for match in VLESS_RE.findall(blob):
+        for match in PROXY_RE.findall(blob):
             uri = _clean_uri(match)
-            if uri.lower().startswith("vless://") and uri not in seen:
+            key = uri.lower()
+            if "://" in key and uri not in seen:
                 seen.add(uri)
                 found.append(uri)
 
@@ -181,22 +215,78 @@ def parse_vless(uri: str, source: str = "") -> VlessConfig | None:
         host=host.lower().rstrip("."),
         port=port,
         remark=remark,
-        remark_country=extract_flag_code(remark),
         raw=cleaned,
         sources=[source] if source else [],
     )
     _apply_query(cfg, _parse_query(query))
-    cfg.fingerprint = fingerprint(cfg)
+    _finish(cfg)
     return cfg
 
 
+def parse_any(uri: str, source: str = "") -> VlessConfig | None:
+    cleaned = _clean_uri(html.unescape(uri.strip()))
+    scheme = cleaned.split(":", 1)[0].lower()
+    if scheme == "vless":
+        return parse_vless(cleaned, source=source)
+    if scheme == "ss":
+        return _parse_ss(cleaned, source)
+    if scheme == "trojan":
+        return _parse_trojan(cleaned, source)
+    if scheme in {"hysteria2", "hy2"}:
+        return _parse_hysteria2(cleaned, source)
+    return None
+
+
 def parse_many(text: str, source: str = "") -> list[VlessConfig]:
-    configs: list[VlessConfig] = []
-    for uri in extract_vless_uris(text):
-        cfg = parse_vless(uri, source=source)
-        if cfg is not None:
-            configs.append(cfg)
+    configs, _reasons = parse_document(text, source=source, validate=False)
     return configs
+
+
+def parse_document(
+    text: str,
+    source: str = "",
+    *,
+    validate: bool = True,
+) -> tuple[list[VlessConfig], dict[str, int]]:
+    """Return kept configs and rejection counts for this document."""
+    reasons = {"parse_error": 0, "invalid_field": 0}
+    configs: list[VlessConfig] = []
+    for uri in extract_proxy_uris(text):
+        cfg = parse_any(uri, source=source)
+        if cfg is None:
+            reasons["parse_error"] += 1
+            continue
+        if validate and invalid_reason(cfg):
+            reasons["invalid_field"] += 1
+            continue
+        configs.append(cfg)
+    return configs, reasons
+
+
+def invalid_reason(cfg: VlessConfig) -> str | None:
+    """Return invalid_field when a parsed config must not be tested or published."""
+    if cfg.port < 1 or cfg.port > 65535 or not cfg.host:
+        return "invalid_field"
+    if cfg.protocol == "vless":
+        if not is_uuid(cfg.uuid):
+            return "invalid_field"
+        if cfg.security == "reality":
+            if len(cfg.pbk) < 16 or not _plausible_name(cfg.sni):
+                return "invalid_field"
+        return None
+    if cfg.protocol == "shadowsocks":
+        if cfg.encryption not in _SS_METHODS or not cfg.uuid:
+            return "invalid_field"
+        return None
+    if cfg.protocol == "trojan":
+        if len(cfg.uuid) < 4:
+            return "invalid_field"
+        return None
+    if cfg.protocol == "hysteria2":
+        if not cfg.uuid:
+            return "invalid_field"
+        return None
+    return "invalid_field"
 
 
 def dedup(configs: list[VlessConfig]) -> list[VlessConfig]:
@@ -209,15 +299,27 @@ def dedup(configs: list[VlessConfig]) -> list[VlessConfig]:
         for name in cfg.sources:
             if name and name not in current.sources:
                 current.sources.append(name)
-        if cfg.remark_country and not current.remark_country:
-            current.remark = cfg.remark
-            current.remark_country = cfg.remark_country
-        elif not current.remark and cfg.remark:
+        if _fp_rank(cfg.fp) < _fp_rank(current.fp):
+            current.fp = cfg.fp
+        if not current.remark and cfg.remark:
             current.remark = cfg.remark
     return list(ordered.values())
 
 
+def _fp_rank(value: str) -> int:
+    key = (value or "").strip().lower()
+    if not key:
+        return 90
+    return _FP_RANK.get(key, 50)
+
+
 def build_uri(cfg: VlessConfig, remark: str | None = None) -> str:
+    if cfg.protocol == "shadowsocks":
+        return _build_ss_uri(cfg, remark)
+    if cfg.protocol == "trojan":
+        return _build_user_uri("trojan", cfg, remark)
+    if cfg.protocol == "hysteria2":
+        return _build_user_uri("hysteria2", cfg, remark)
     params: list[tuple[str, str]] = [("encryption", cfg.encryption or "none")]
     if cfg.flow:
         params.append(("flow", cfg.flow))
@@ -347,7 +449,7 @@ def _apply_query(cfg: VlessConfig, query: dict[str, str]) -> None:
         elif key == "path":
             cfg.path = val
         elif key == "host":
-            cfg.host_header = val
+            cfg.host_header = sanitize_host_header(val)
         elif key in {"servicename", "service_name"}:
             cfg.service_name = val
         elif key == "authority":
@@ -355,23 +457,29 @@ def _apply_query(cfg: VlessConfig, query: dict[str, str]) -> None:
         elif key == "mode":
             cfg.mode = val
         elif key == "alpn":
-            cfg.alpn = val
+            cfg.alpn = sanitize_alpn(val)
         elif key in {"headertype", "header_type"}:
-            cfg.header_type = val
+            cfg.header_type = "" if val.lower() in {"", "none"} else val.lower()
         elif key in {"allowinsecure", "insecure", "allow_insecure"}:
             cfg.allow_insecure = val.lower() in {"1", "true", "yes", "on"}
         elif key == "extra":
             cfg.extra = val
         elif key in {"packetencoding", "packet_encoding"}:
             cfg.packet_encoding = val
-        elif key in _IGNORE_KEYS:
-            continue
-        elif val:
+        elif key in {"obfs-password", "obfspassword"} and val:
+            extras["obfs-password"] = val
+        elif key in _KEEP_EXTRAS and val:
             extras[key] = val
+        elif key in _IGNORE_KEYS or key == "telegram":
+            continue
     cfg.extras = extras
     cfg.network = normalize_network(cfg.network or "tcp")
     cfg.security = normalize_security(cfg.security or "none")
     cfg.encryption = cfg.encryption or "none"
+    if cfg.network == "h2" and (cfg.mode.lower() in _XHTTP_MODES or cfg.extra):
+        cfg.network = "xhttp"
+    if cfg.fp:
+        cfg.fp = cfg.fp.lower()
 
 
 def _b64_decode_text(text: str) -> str | None:
@@ -389,6 +497,204 @@ def _b64_decode_text(text: str) -> str | None:
     if not raw:
         return None
     decoded = raw.decode("utf-8", errors="ignore")
-    if "vless://" not in decoded.lower():
+    if not PROXY_RE.search(decoded):
         return None
     return decoded
+
+
+def _finish(cfg: VlessConfig) -> None:
+    if cfg.network == "tcp" and cfg.path in {"", "/"}:
+        cfg.path = ""
+    if cfg.header_type.lower() in {"", "none"}:
+        cfg.header_type = ""
+    cfg.sni = cfg.sni.strip()
+    cfg.fingerprint = fingerprint(cfg)
+
+
+def sanitize_alpn(value: str) -> str:
+    kept: list[str] = []
+    for part in (value or "").split(","):
+        token = part.strip().lower()
+        if token in _ALPN_OK and token not in kept:
+            kept.append(token)
+    return ",".join(kept)
+
+
+def sanitize_host_header(value: str) -> str:
+    kept: list[str] = []
+    for part in (value or "").split(","):
+        token = part.strip()
+        if token and _plausible_name(token) and token not in kept:
+            kept.append(token)
+    return ",".join(kept)
+
+
+def _plausible_name(value: str) -> bool:
+    token = (value or "").strip().rstrip(".")
+    if not token or "@" in token or token.startswith("-") or " " in token:
+        return False
+    if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", token):
+        return True
+    if "." not in token or len(token) > 253:
+        return False
+    labels = token.split(".")
+    return all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) for label in labels)
+
+
+def _parse_ss(uri: str, source: str) -> VlessConfig | None:
+    body, remark = _split_remark(uri[len("ss://") :])
+    method = ""
+    password = ""
+    host = ""
+    port: int | None = None
+    if "@" in body:
+        userinfo, hostport = body.rsplit("@", 1)
+        decoded = _b64_userinfo(unquote(userinfo))
+        if not decoded or ":" not in decoded:
+            return None
+        method, password = decoded.split(":", 1)
+        host, port = _split_host_port(hostport)
+    else:
+        decoded = _b64_userinfo(unquote(body))
+        if not decoded or "@" not in decoded or ":" not in decoded.split("@", 1)[0]:
+            return None
+        user, hostport = decoded.rsplit("@", 1)
+        method, password = user.split(":", 1)
+        host, port = _split_host_port(hostport)
+    if not method or not password or not host or port is None:
+        return None
+    if host.lower() in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+        return None
+    cfg = VlessConfig(
+        protocol="shadowsocks",
+        uuid=password,
+        host=host.lower().rstrip("."),
+        port=port,
+        encryption=method.lower(),
+        network="tcp",
+        security="none",
+        remark=remark,
+        raw=uri,
+        sources=[source] if source else [],
+    )
+    _finish(cfg)
+    return cfg
+
+
+def _parse_trojan(uri: str, source: str) -> VlessConfig | None:
+    body, remark = _split_remark(uri[len("trojan://") :])
+    query = ""
+    if "?" in body:
+        body, query = body.split("?", 1)
+    if "@" not in body:
+        return None
+    password, hostport = body.rsplit("@", 1)
+    password = unquote(password).strip()
+    host, port = _split_host_port(hostport)
+    if not password or not host or port is None:
+        return None
+    cfg = VlessConfig(
+        protocol="trojan",
+        uuid=password,
+        host=host.lower().rstrip("."),
+        port=port,
+        network="tcp",
+        security="tls",
+        remark=remark,
+        raw=uri,
+        sources=[source] if source else [],
+    )
+    _apply_query(cfg, _parse_query(query))
+    if not cfg.security or cfg.security == "none":
+        cfg.security = "tls"
+    _finish(cfg)
+    return cfg
+
+
+def _parse_hysteria2(uri: str, source: str) -> VlessConfig | None:
+    rest = uri.split("://", 1)[1]
+    body, remark = _split_remark(rest)
+    query = ""
+    if "?" in body:
+        body, query = body.split("?", 1)
+    if "@" not in body:
+        return None
+    password, hostport = body.rsplit("@", 1)
+    password = unquote(password).strip()
+    host, port = _split_host_port(hostport)
+    if not password or not host or port is None:
+        return None
+    cfg = VlessConfig(
+        protocol="hysteria2",
+        uuid=password,
+        host=host.lower().rstrip("."),
+        port=port,
+        network="hysteria2",
+        security="tls",
+        remark=remark,
+        raw=uri,
+        sources=[source] if source else [],
+    )
+    _apply_query(cfg, _parse_query(query))
+    cfg.network = "hysteria2"
+    cfg.security = "tls"
+    _finish(cfg)
+    return cfg
+
+
+def _split_remark(body: str) -> tuple[str, str]:
+    if "#" not in body:
+        return body, ""
+    body, fragment = body.split("#", 1)
+    return body, _unquote_repeat(fragment).strip()
+
+
+def _b64_userinfo(value: str) -> str | None:
+    compact = value.strip().replace("-", "+").replace("_", "/")
+    if not compact or not re.fullmatch(r"[A-Za-z0-9+/=]+", compact):
+        return None
+    pad = "=" * ((4 - len(compact) % 4) % 4)
+    try:
+        raw = base64.b64decode(compact + pad, validate=False)
+    except Exception:
+        return None
+    text = raw.decode("utf-8", errors="ignore")
+    return text or None
+
+
+def _build_ss_uri(cfg: VlessConfig, remark: str | None) -> str:
+    raw = f"{cfg.encryption}:{cfg.uuid}".encode()
+    user = base64.b64encode(raw).decode("ascii")
+    title = cfg.remark if remark is None else remark
+    return f"ss://{user}@{_host_token(cfg)}:{cfg.port}#{quote(title, safe='')}"
+
+
+def _build_user_uri(scheme: str, cfg: VlessConfig, remark: str | None) -> str:
+    params: list[tuple[str, str]] = []
+    if cfg.protocol == "trojan":
+        params.append(("security", cfg.security or "tls"))
+        if cfg.sni:
+            params.append(("sni", cfg.sni))
+        if cfg.network and cfg.network != "tcp":
+            params.append(("type", cfg.network))
+        if cfg.fp:
+            params.append(("fp", cfg.fp))
+        if cfg.allow_insecure:
+            params.append(("allowInsecure", "1"))
+    else:
+        if cfg.sni:
+            params.append(("sni", cfg.sni))
+        if cfg.allow_insecure:
+            params.append(("insecure", "1"))
+        if cfg.extras.get("obfs"):
+            params.append(("obfs", cfg.extras["obfs"]))
+        if cfg.extras.get("obfs-password"):
+            params.append(("obfs-password", cfg.extras["obfs-password"]))
+    query = urlencode(params, quote_via=quote, safe="")
+    title = cfg.remark if remark is None else remark
+    suffix = f"?{query}" if query else ""
+    return f"{scheme}://{quote(cfg.uuid, safe='')}@{_host_token(cfg)}:{cfg.port}{suffix}#{quote(title, safe='')}"
+
+
+def _host_token(cfg: VlessConfig) -> str:
+    return f"[{cfg.host}]" if ":" in cfg.host else cfg.host

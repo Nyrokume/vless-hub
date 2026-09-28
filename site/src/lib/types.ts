@@ -1,6 +1,8 @@
 export type ConfigRecord = {
   id: string
   uri: string
+  protocol?: string
+  encryption?: string
   remark: string
   uuid: string
   host: string
@@ -47,6 +49,7 @@ export type CatalogEntry = {
   country?: string
   security?: string
   network?: string
+  protocol?: string
   top?: number | null
 }
 
@@ -56,6 +59,11 @@ export type SourceReport = {
   url: string
   ok: boolean
   fetched: number
+  kept?: number
+  tested?: number
+  verified?: number
+  yield?: number | null
+  deprioritized?: boolean
   error: string | null
 }
 
@@ -110,6 +118,13 @@ export type HubData = {
     unverified?: number
     proxy_tested?: number
     proxy_ok?: number
+    rejected?: {
+      parse_error: number
+      invalid_field: number
+      dead: number
+      timeout: number
+    }
+    by_protocol?: Record<string, number>
     telegram?: TelegramStats
   }
   subscriptions: SubscriptionInfo[]

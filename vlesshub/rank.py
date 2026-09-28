@@ -9,10 +9,22 @@ def select_candidates(
     history: History,
     limit: int,
     drop_after: int,
+    deprioritized: set[str] | None = None,
 ) -> list[VlessConfig]:
-    """Prefer stable configs, keep room for new ones, and revive a few dead ones."""
+    """Prefer stable configs, keep room for new ones, and revive a few dead ones.
+
+    Configs whose every source is deprioritized sort after healthy ones, so a
+    near-zero subscription does not fill the probe budget.
+    """
     if limit <= 0:
         return []
+    blocked = deprioritized or set()
+
+    def late(cfg: VlessConfig) -> int:
+        if not cfg.sources:
+            return 0
+        return 1 if all(name in blocked for name in cfg.sources) else 0
+
     good: list[VlessConfig] = []
     fresh: list[VlessConfig] = []
     stale: list[VlessConfig] = []
@@ -25,17 +37,23 @@ def select_candidates(
         else:
             good.append(cfg)
 
-    def good_key(cfg: VlessConfig) -> tuple[float, float]:
+    def good_key(cfg: VlessConfig) -> tuple[int, float, float]:
         entry = history.get(cfg.fingerprint) or {}
         uptime = history.uptime(cfg.fingerprint)
         ema = entry.get("ema_ms")
         # Sub-15 ms figures are leftover TCP connect times, not HTTP RTT.
         trusted = float(ema) if ema is not None and float(ema) >= 15 else 9_999.0
-        return (-uptime, trusted)
+        return (late(cfg), -uptime, trusted)
 
     good.sort(key=good_key)
-    fresh.sort(key=lambda cfg: cfg.fingerprint)
-    stale.sort(key=lambda cfg: (int((history.get(cfg.fingerprint) or {}).get("streak_fail", 0)), cfg.fingerprint))
+    fresh.sort(key=lambda cfg: (late(cfg), cfg.fingerprint))
+    stale.sort(
+        key=lambda cfg: (
+            late(cfg),
+            int((history.get(cfg.fingerprint) or {}).get("streak_fail", 0)),
+            cfg.fingerprint,
+        )
+    )
 
     revival = min(len(stale), max(3, limit // 12))
     fresh_slots = min(len(fresh), max(5, limit // 3))

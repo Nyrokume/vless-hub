@@ -95,10 +95,60 @@ function dumpYaml(value: unknown, indent = 0): string {
   return `${pad}${yamlScalar(value as string)}`
 }
 
+function protocolOf(config: ConfigRecord): string {
+  if (config.protocol) return config.protocol
+  const scheme = config.uri.slice(0, config.uri.indexOf(':')).toLowerCase()
+  if (scheme === 'ss') return 'shadowsocks'
+  if (scheme === 'trojan') return 'trojan'
+  if (scheme === 'hysteria2' || scheme === 'hy2') return 'hysteria2'
+  return 'vless'
+}
+
 function clashProxy(config: ConfigRecord, index: number): Record<string, unknown> {
   const query = vlessQuery(config.uri)
   const network = config.transport || 'tcp'
-  const name = `${config.country_code || 'XX'}-${network}-${config.port}-${index}`
+  const protocol = protocolOf(config)
+  const name = `${config.country_code || 'XX'}-${protocol}-${network}-${config.port}-${index}`
+  if (protocol === 'shadowsocks') {
+    return {
+      name,
+      type: 'ss',
+      server: config.host,
+      port: config.port,
+      cipher: config.encryption && config.encryption !== 'none' ? config.encryption : query.method || 'aes-256-gcm',
+      password: config.uuid,
+      udp: true,
+    }
+  }
+  if (protocol === 'trojan') {
+    const item: Record<string, unknown> = {
+      name,
+      type: 'trojan',
+      server: config.host,
+      port: config.port,
+      password: config.uuid,
+      udp: true,
+      sni: config.sni || config.host,
+    }
+    if (truthy(query.allowinsecure) || truthy(query.insecure)) item['skip-cert-verify'] = true
+    return item
+  }
+  if (protocol === 'hysteria2') {
+    const item: Record<string, unknown> = {
+      name,
+      type: 'hysteria2',
+      server: config.host,
+      port: config.port,
+      password: config.uuid,
+      sni: query.sni || config.sni || config.host,
+    }
+    if (truthy(query.insecure) || truthy(query.allowinsecure)) item['skip-cert-verify'] = true
+    if (query.obfs) {
+      item.obfs = query.obfs
+      item['obfs-password'] = query['obfs-password'] || ''
+    }
+    return item
+  }
   const item: Record<string, unknown> = {
     name,
     type: 'vless',
@@ -160,6 +210,49 @@ export function configsToClash(configs: ConfigRecord[]): string {
 function singboxOutbound(config: ConfigRecord, index: number): Record<string, unknown> {
   const query = vlessQuery(config.uri)
   const network = config.transport || 'tcp'
+  const protocol = protocolOf(config)
+  const tag = `${config.country_code || 'XX'}-${protocol}-${network}-${index}`
+  if (protocol === 'shadowsocks') {
+    return {
+      type: 'shadowsocks',
+      tag,
+      server: config.host,
+      server_port: config.port,
+      method: config.encryption && config.encryption !== 'none' ? config.encryption : query.method || 'aes-256-gcm',
+      password: config.uuid,
+    }
+  }
+  if (protocol === 'trojan') {
+    return {
+      type: 'trojan',
+      tag,
+      server: config.host,
+      server_port: config.port,
+      password: config.uuid,
+      tls: {
+        enabled: true,
+        server_name: config.sni || config.host,
+        insecure: truthy(query.allowinsecure) || truthy(query.insecure),
+      },
+    }
+  }
+  if (protocol === 'hysteria2') {
+    const item: Record<string, unknown> = {
+      type: 'hysteria2',
+      tag,
+      server: config.host,
+      server_port: config.port,
+      password: config.uuid,
+      tls: {
+        enabled: true,
+        server_name: query.sni || config.sni || config.host,
+        insecure: truthy(query.insecure) || truthy(query.allowinsecure),
+        alpn: ['h3'],
+      },
+    }
+    if (query.obfs) item.obfs = { type: query.obfs, password: query['obfs-password'] || '' }
+    return item
+  }
   const item: Record<string, unknown> = {
     type: 'vless',
     tag: `${config.country_code || 'XX'}-${network}-${index}`,

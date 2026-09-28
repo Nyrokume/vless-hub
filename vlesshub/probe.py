@@ -45,12 +45,13 @@ def tcp_probe(configs: list[VlessConfig], timeout: float, concurrency: int) -> d
                 for future in as_completed(futures, timeout=timeout * (len(configs) / workers) + 45):
                     cfg = futures[future]
                     try:
-                        ok, latency = future.result()
+                        ok, latency, error = future.result()
                     except Exception as exc:  # noqa: BLE001
-                        ok, latency = False, None
                         results[cfg.fingerprint] = ProbeResult(False, error=str(exc))
                         continue
-                    results[cfg.fingerprint] = ProbeResult(ok, latency_ms=latency)
+                    results[cfg.fingerprint] = ProbeResult(
+                        ok, latency_ms=latency, error="" if ok else error
+                    )
                     done += 1
                     if done % 50 == 0:
                         log(f"tcp progress {done}/{len(configs)}")
@@ -65,7 +66,49 @@ def tcp_probe(configs: list[VlessConfig], timeout: float, concurrency: int) -> d
     return results
 
 
+def failure_reason(result: ProbeResult | None) -> str:
+    """Classify a failed probe as timeout or dead. Untested configs are not failures."""
+    if result is None or result.ok:
+        return ""
+    err = (result.error or "").lower()
+    if "timeout" in err or err in {"http 0", "0"}:
+        return "timeout"
+    return "dead"
+
+
 def proxy_probe(
+    configs: list[VlessConfig],
+    xray_bin: Path | None,
+    timeout: float,
+    speed_timeout: float,
+    concurrency: int,
+    batch_size: int = 20,
+    singbox_bin: Path | None = None,
+) -> dict[str, ProbeResult]:
+    """Test VLESS, Shadowsocks, and Trojan with Xray, and Hysteria2 with sing-box."""
+    hy2 = [cfg for cfg in configs if cfg.protocol == "hysteria2"]
+    rest = [cfg for cfg in configs if cfg.protocol != "hysteria2"]
+    results: dict[str, ProbeResult] = {}
+    if rest:
+        if xray_bin is None:
+            results.update({cfg.fingerprint: ProbeResult(False, error="xray unavailable") for cfg in rest})
+        else:
+            results.update(
+                _proxy_probe_xray(rest, xray_bin, timeout, speed_timeout, concurrency, batch_size)
+            )
+    if hy2:
+        if singbox_bin is None:
+            results.update(
+                {cfg.fingerprint: ProbeResult(False, error="sing-box unavailable") for cfg in hy2}
+            )
+        else:
+            results.update(
+                _proxy_probe_singbox(hy2, singbox_bin, timeout, speed_timeout, concurrency, batch_size)
+            )
+    return results
+
+
+def _proxy_probe_xray(
     configs: list[VlessConfig],
     xray_bin: Path,
     timeout: float,
@@ -159,6 +202,29 @@ def build_xray_config(cfg: VlessConfig, port: int) -> dict:
 
 
 def build_outbound(cfg: VlessConfig) -> dict:
+    if cfg.protocol == "shadowsocks":
+        return {
+            "protocol": "shadowsocks",
+            "tag": "proxy",
+            "settings": {
+                "servers": [
+                    {
+                        "address": cfg.host,
+                        "port": cfg.port,
+                        "method": cfg.encryption,
+                        "password": cfg.uuid,
+                    }
+                ]
+            },
+            "streamSettings": {"network": "tcp", "security": "none"},
+        }
+    if cfg.protocol == "trojan":
+        return {
+            "protocol": "trojan",
+            "tag": "proxy",
+            "settings": {"servers": [{"address": cfg.host, "port": cfg.port, "password": cfg.uuid}]},
+            "streamSettings": _stream_settings(cfg),
+        }
     user: dict[str, str] = {"id": cfg.uuid, "encryption": cfg.encryption or "none"}
     if cfg.flow and cfg.network == "tcp":
         user["flow"] = cfg.flow
@@ -247,7 +313,9 @@ def _stream_settings(cfg: VlessConfig) -> dict:
         if cfg.path:
             header["request"]["path"] = [cfg.path]
         if cfg.host_header:
-            header["request"]["headers"] = {"Host": [cfg.host_header]}
+            hosts = [part.strip() for part in cfg.host_header.split(",") if part.strip()]
+            if hosts:
+                header["request"]["headers"] = {"Host": hosts}
         stream["tcpSettings"] = {"header": header}
     elif network == "kcp":
         stream["kcpSettings"] = {"header": {"type": cfg.header_type or "none"}}
@@ -264,13 +332,15 @@ def _json_object(value: str) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _tcp_one(host: str, port: int, timeout: float) -> tuple[bool, float | None]:
+def _tcp_one(host: str, port: int, timeout: float) -> tuple[bool, float | None, str]:
     started = time.perf_counter()
     try:
         with socket.create_connection((host, port), timeout=timeout):
-            return True, round((time.perf_counter() - started) * 1000, 1)
+            return True, round((time.perf_counter() - started) * 1000, 1), ""
+    except TimeoutError:
+        return False, None, "timeout"
     except OSError:
-        return False, None
+        return False, None, "dead"
 
 
 def _proxy_batch_safe(
@@ -348,6 +418,8 @@ def _curl_batch(
 
     def one(cfg: VlessConfig, port: int) -> ProbeResult:
         code, latency, _size = _curl(port, _GENERATE_204, timeout)
+        if code == 0:
+            return ProbeResult(False, error="timeout")
         if code not in {200, 204} or latency <= 0:
             return ProbeResult(False, error=f"http {code}")
         speed = _measure_speed(port, speed_timeout)
@@ -465,6 +537,132 @@ def _curl_available() -> bool:
     from shutil import which
 
     return which("curl") is not None
+
+
+def _proxy_probe_singbox(
+    configs: list[VlessConfig],
+    singbox_bin: Path,
+    timeout: float,
+    speed_timeout: float,
+    concurrency: int,
+    batch_size: int,
+) -> dict[str, ProbeResult]:
+    results: dict[str, ProbeResult] = {}
+    if not _curl_available():
+        return {cfg.fingerprint: ProbeResult(False, error="curl missing") for cfg in configs}
+    size = max(1, min(batch_size, 8))
+    batches = [configs[offset : offset + size] for offset in range(0, len(configs), size)]
+    workers = max(1, min(concurrency, len(batches)))
+    log(f"hysteria2 batches {len(batches)} size<={size} parallel={workers}")
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(_run_singbox_batch, batch, singbox_bin, timeout, speed_timeout, allow_split=True): batch
+            for batch in batches
+        }
+        try:
+            budget = math.ceil(len(batches) / workers) * (timeout + speed_timeout + 14) + 90
+            for future in as_completed(futures, timeout=budget):
+                batch = futures[future]
+                try:
+                    results.update(future.result())
+                except Exception as exc:  # noqa: BLE001
+                    results.update({cfg.fingerprint: ProbeResult(False, error=str(exc)) for cfg in batch})
+        except TimeoutError:
+            log("hysteria2 phase hit its time budget")
+    for cfg in configs:
+        results.setdefault(cfg.fingerprint, ProbeResult(False, error="timeout"))
+    ok_count = sum(1 for cfg in configs if results[cfg.fingerprint].ok)
+    log(f"hysteria2 verified {ok_count}/{len(configs)}")
+    return results
+
+
+def build_hy2_outbound(cfg: VlessConfig) -> dict:
+    item: dict = {
+        "type": "hysteria2",
+        "tag": "proxy",
+        "server": cfg.host,
+        "server_port": cfg.port,
+        "password": cfg.uuid,
+        "tls": {
+            "enabled": True,
+            "server_name": cfg.sni or cfg.host,
+            "insecure": bool(cfg.allow_insecure),
+            "alpn": ["h3"],
+        },
+    }
+    obfs = cfg.extras.get("obfs", "")
+    if obfs:
+        item["obfs"] = {"type": obfs, "password": cfg.extras.get("obfs-password", "")}
+    return item
+
+
+def build_singbox_batch(pairs: list[tuple[VlessConfig, int]]) -> dict:
+    inbounds: list[dict] = []
+    outbounds: list[dict] = []
+    rules: list[dict] = []
+    for index, (cfg, port) in enumerate(pairs):
+        in_tag = f"in-{index}"
+        out_tag = f"out-{index}"
+        inbounds.append({"type": "socks", "tag": in_tag, "listen": "127.0.0.1", "listen_port": port})
+        outbound = build_hy2_outbound(cfg)
+        outbound["tag"] = out_tag
+        outbounds.append(outbound)
+        rules.append({"inbound": in_tag, "outbound": out_tag})
+    return {"log": {"level": "error"}, "inbounds": inbounds, "outbounds": outbounds, "route": {"rules": rules}}
+
+
+def _run_singbox_batch(
+    configs: list[VlessConfig],
+    singbox_bin: Path,
+    timeout: float,
+    speed_timeout: float,
+    *,
+    allow_split: bool,
+) -> dict[str, ProbeResult]:
+    if not configs:
+        return {}
+    ports: list[int] = []
+    try:
+        ports = [_alloc_port() for _ in configs]
+        with tempfile.TemporaryDirectory(prefix="vlesshub-hy2-") as tmp:
+            config_path = Path(tmp) / "config.json"
+            log_path = Path(tmp) / "singbox.log"
+            pairs = list(zip(configs, ports, strict=True))
+            config_path.write_text(json.dumps(build_singbox_batch(pairs)), encoding="utf-8")
+            log_handle = log_path.open("w", encoding="utf-8")
+            proc = subprocess.Popen(
+                [str(singbox_bin), "run", "-c", str(config_path)],
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            try:
+                ready = _wait_ports(ports, proc, 5.0)
+                if not ready:
+                    exited = proc.poll() is not None
+                    if allow_split and exited and len(configs) > 1:
+                        _kill(proc)
+                        log_handle.close()
+                        for port in ports:
+                            _release_port(port)
+                        ports = []
+                        mid = len(configs) // 2
+                        left = _run_singbox_batch(
+                            configs[:mid], singbox_bin, timeout, speed_timeout, allow_split=False
+                        )
+                        right = _run_singbox_batch(
+                            configs[mid:], singbox_bin, timeout, speed_timeout, allow_split=False
+                        )
+                        return {**left, **right}
+                    error = _tail(log_path) or ("sing-box exited" if exited else "sing-box not listening")
+                    return {cfg.fingerprint: ProbeResult(False, error=error) for cfg in configs}
+                return _curl_batch(pairs, timeout, speed_timeout)
+            finally:
+                log_handle.close()
+                _kill(proc)
+    finally:
+        for port in ports:
+            _release_port(port)
 
 
 def _tail(path: Path, limit: int = 300) -> str:

@@ -96,7 +96,7 @@ jobs:
         run: |
           git config user.name "nyrokume.dev"
           git config user.email "143820910+Nyrokume@users.noreply.github.com"
-          git add state/history.json state/tg_history.json state/geo_cache.json
+          git add state/history.json state/tg_history.json state/geo_cache.json state/source_health.json
           if git diff --cached --quiet; then
             echo "state unchanged"
           else

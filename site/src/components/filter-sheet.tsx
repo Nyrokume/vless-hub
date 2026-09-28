@@ -8,7 +8,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { securityLabel, transportLabel } from '@/lib/format'
+import { protocolLabel, securityLabel, transportLabel } from '@/lib/format'
 import { THRESHOLDS, thresholdKey } from '@/lib/settings'
 import { cn } from '@/lib/utils'
 
@@ -41,13 +41,16 @@ export function FilterSheet({
   countries,
   transports,
   securities,
+  protocols,
   country,
   transport,
   security,
+  protocol,
   threshold,
   onCountry,
   onTransport,
   onSecurity,
+  onProtocol,
   onThreshold,
   onReset,
 }: {
@@ -56,13 +59,16 @@ export function FilterSheet({
   countries: { code: string; name: string; count: number }[]
   transports: { id: string; count: number }[]
   securities: { id: string; count: number }[]
+  protocols: { id: string; count: number }[]
   country: string | null
   transport: string | null
   security: string | null
+  protocol: string | null
   threshold: number | null
   onCountry: (code: string | null) => void
   onTransport: (id: string | null) => void
   onSecurity: (id: string | null) => void
+  onProtocol: (id: string | null) => void
   onThreshold: (value: number | null) => void
   onReset: () => void
 }) {
@@ -71,7 +77,7 @@ export function FilterSheet({
       <SheetContent side="bottom" className="max-h-[88dvh] gap-3 overflow-y-auto rounded-t-3xl">
         <SheetHeader className="pr-10 text-left">
           <SheetTitle>Фильтры</SheetTitle>
-          <SheetDescription>Страна, транспорт, безопасность и порог задержки.</SheetDescription>
+          <SheetDescription>Протокол, страна, транспорт, безопасность и порог задержки.</SheetDescription>
         </SheetHeader>
         <div className="space-y-4 px-4 pb-6">
           <div>
@@ -86,6 +92,25 @@ export function FilterSheet({
                   onClick={() => onThreshold(item.value === 'all' ? null : Number(item.value))}
                 >
                   {item.label}
+                </Chip>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-[13px] font-medium tracking-wide text-muted-foreground uppercase">
+              Протокол
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Chip active={protocol === null} onClick={() => onProtocol(null)}>
+                Все
+              </Chip>
+              {protocols.map((item) => (
+                <Chip
+                  key={item.id}
+                  active={protocol === item.id}
+                  onClick={() => onProtocol(item.id)}
+                >
+                  {`${protocolLabel(item.id)} · ${item.count}`}
                 </Chip>
               ))}
             </div>

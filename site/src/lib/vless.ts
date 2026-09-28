@@ -28,7 +28,36 @@ const SECURITY: Record<string, string> = {
   xtls: 'tls',
 }
 
-const IGNORE = new Set(['remarks', 'remark', 'ps', 'name', 'tag'])
+const IGNORE = new Set(['remarks', 'remark', 'ps', 'name', 'tag', 'telegram'])
+const XHTTP_MODES = new Set(['auto', 'packet-up', 'stream-one', 'stream-up', 'stream-down'])
+const ALPN_OK = new Set(['h3', 'h2', 'http/1.1', 'http/1.0'])
+const KEEP_EXTRAS = new Set(['obfs', 'obfs-password', 'mport'])
+
+function sanitizeAlpn(value: string): string {
+  const kept: string[] = []
+  for (const part of value.split(',')) {
+    const token = part.trim().toLowerCase()
+    if (ALPN_OK.has(token) && !kept.includes(token)) kept.push(token)
+  }
+  return kept.join(',')
+}
+
+function plausibleName(value: string): boolean {
+  const token = value.trim().replace(/\.$/, '')
+  if (!token || token.includes('@') || token.startsWith('-') || token.includes(' ')) return false
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(token)) return true
+  if (!token.includes('.') || token.length > 253) return false
+  return token.split('.').every((label) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))
+}
+
+function sanitizeHost(value: string): string {
+  const kept: string[] = []
+  for (const part of value.split(',')) {
+    const token = part.trim()
+    if (token && plausibleName(token) && !kept.includes(token)) kept.push(token)
+  }
+  return kept.join(',')
+}
 
 export type ParsedVless = {
   uuid: string
@@ -170,27 +199,37 @@ export async function parseVless(uri: string): Promise<ParsedVless | null> {
     else if (key === 'sid' || key === 'shortid') parsed.sid = val
     else if (key === 'spx' || key === 'spiderx') parsed.spx = val
     else if (key === 'path') parsed.path = val
-    else if (key === 'host') parsed.hostHeader = val
+    else if (key === 'host') parsed.hostHeader = sanitizeHost(val)
     else if (key === 'servicename' || key === 'service_name') parsed.serviceName = val
     else if (key === 'authority') parsed.authority = val
     else if (key === 'mode') parsed.mode = val
-    else if (key === 'alpn') parsed.alpn = val
-    else if (key === 'headertype' || key === 'header_type') parsed.headerType = val
-    else if (key === 'allowinsecure' || key === 'insecure' || key === 'allow_insecure') {
+    else if (key === 'alpn') parsed.alpn = sanitizeAlpn(val)
+    else if (key === 'headertype' || key === 'header_type') {
+      parsed.headerType = val.toLowerCase() === 'none' || val === '' ? '' : val.toLowerCase()
+    } else if (key === 'allowinsecure' || key === 'insecure' || key === 'allow_insecure') {
       parsed.allowInsecure = ['1', 'true', 'yes', 'on'].includes(val.toLowerCase())
     } else if (key === 'extra') parsed.extra = val
     else if (key === 'packetencoding' || key === 'packet_encoding') parsed.packetEncoding = val
-    else if (!IGNORE.has(key) && val) extras[key] = val
+    else if ((key === 'obfs-password' || key === 'obfspassword') && val) extras['obfs-password'] = val
+    else if (KEEP_EXTRAS.has(key) && val) extras[key] = val
+    else if (!IGNORE.has(key) && val) continue
   }
   parsed.network = normalizeNetwork(parsed.network || 'tcp')
   parsed.security = normalizeSecurity(parsed.security || 'none')
   parsed.encryption = parsed.encryption || 'none'
+  if (parsed.network === 'h2' && (XHTTP_MODES.has(parsed.mode.toLowerCase()) || parsed.extra)) {
+    parsed.network = 'xhttp'
+  }
+  if (parsed.network === 'tcp' && (parsed.path === '' || parsed.path === '/')) parsed.path = ''
+  if (parsed.headerType.toLowerCase() === 'none' || parsed.headerType === '') parsed.headerType = ''
+  if (parsed.fp) parsed.fp = parsed.fp.toLowerCase()
   parsed.extras = extras
   const extraQuery = Object.keys(extras)
     .sort()
     .map((key) => `${key}=${extras[key]}`)
     .join('&')
   const material = [
+    'vless',
     parsed.uuid.toLowerCase(),
     parsed.host.toLowerCase(),
     String(parsed.port),

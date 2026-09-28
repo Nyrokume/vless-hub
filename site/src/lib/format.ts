@@ -21,6 +21,14 @@ export function securityLabel(value: string): string {
   return value
 }
 
+export function protocolLabel(protocol: string | undefined): string {
+  const key = protocol || 'vless'
+  if (key === 'shadowsocks') return 'SS'
+  if (key === 'trojan') return 'Trojan'
+  if (key === 'hysteria2') return 'HY2'
+  return 'VLESS'
+}
+
 export function protocolLine(transport: string): string {
   return `VLESS / ${transportLabel(transport)}`
 }

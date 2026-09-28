@@ -25,6 +25,7 @@ import {
   formatStamp,
   latencyClass,
   latencyText,
+  protocolLabel,
   protocolLine,
   uptimeText,
 } from '@/lib/format'
@@ -61,6 +62,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const [country, setCountry] = useState<string | null>(null)
   const [transport, setTransport] = useState<string | null>(null)
   const [security, setSecurity] = useState<string | null>(null)
+  const [protocol, setProtocol] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showUnverified, setShowUnverified] = useState(false)
@@ -99,6 +101,17 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       .sort((left, right) => right.count - left.count)
   }, [visible])
 
+  const protocols = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const config of visible) {
+      const id = config.protocol || 'vless'
+      map.set(id, (map.get(id) ?? 0) + 1)
+    }
+    return [...map.entries()]
+      .map(([id, count]) => ({ id, count }))
+      .sort((left, right) => right.count - left.count)
+  }, [visible])
+
   const securities = useMemo(() => {
     const map = new Map<string, number>()
     for (const config of visible) map.set(config.security, (map.get(config.security) ?? 0) + 1)
@@ -120,22 +133,23 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         if (country && config.country_code !== country) return false
         if (transport && config.transport !== transport) return false
         if (security && config.security !== security) return false
+        if (protocol && (config.protocol || 'vless') !== protocol) return false
         if (!needle) return true
-        return [config.country, config.country_code, config.host, config.remark, config.transport, config.security, config.sni, String(config.port)]
+        return [config.country, config.country_code, config.host, config.remark, config.protocol, config.transport, config.security, config.sni, String(config.port)]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
           .includes(needle)
       })
       .sort((left, right) => compareConfigs(settings.sort, left, right))
-  }, [country, query, security, settings.latencyThreshold, settings.sort, transport, visible])
+  }, [country, protocol, query, security, settings.latencyThreshold, settings.sort, transport, visible])
 
   const chosen = useMemo(
     () => visible.filter((config) => picked.has(config.id)),
     [picked, visible],
   )
   const allFilteredPicked = filtered.length > 0 && filtered.every((config) => picked.has(config.id))
-  const sessionFilters = [country, transport, security].filter(Boolean).length
+  const sessionFilters = [country, transport, security, protocol].filter(Boolean).length
 
   function toggle(id: string) {
     setPicked((current) => {
@@ -185,8 +199,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         <Stat value={String(data.stats.proxy_ok ?? data.stats.published)} label="через Xray" />
       </div>
       <p className="mb-4 text-[13px] leading-relaxed text-muted-foreground">
-        В списке только ответы HTTP через Xray. Задержка и аптайм измерены сборщиком. Отметьте строки,
-        чтобы выгрузить текст, base64, файл, QR, Clash или sing-box.
+        В списке только ответы HTTP через Xray или sing-box. Задержка и аптайм измерены сборщиком.
+        Отметьте строки, чтобы выгрузить текст, base64, файл, QR, Clash или sing-box.
       </p>
 
       <div className="mb-3 flex flex-col gap-2">
@@ -330,18 +344,22 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         countries={countries}
         transports={transports}
         securities={securities}
+        protocols={protocols}
         country={country}
         transport={transport}
         security={security}
+        protocol={protocol}
         threshold={settings.latencyThreshold}
         onCountry={setCountry}
         onTransport={setTransport}
         onSecurity={setSecurity}
+        onProtocol={setProtocol}
         onThreshold={(value) => update({ latencyThreshold: value })}
         onReset={() => {
           setCountry(null)
           setTransport(null)
           setSecurity(null)
+          setProtocol(null)
         }}
       />
       <QrDialog
@@ -403,7 +421,7 @@ function ConfigRow({
               {config.country_code ? ` ${config.country_code}` : ''}
             </span>
             <span className="block truncate text-[12px] text-muted-foreground sm:text-[13px]">
-              {protocolLine(config.transport)}
+              {protocolLabel(config.protocol)} · {protocolLine(config.transport)}
               {uptimeText(config.uptime) ? ` · ${uptimeText(config.uptime)}` : ''}
               {verified ? ` · ${verified}` : ''}
             </span>

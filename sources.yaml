@@ -1,8 +1,9 @@
-# Публичные источники VLESS.
+# Публичные источники VLESS, Shadowsocks, Trojan и Hysteria2.
 # Добавить источник: скопируйте блок, задайте уникальный name и url/channel.
 # type: subscription — сырой файл или base64-подписка (определяется автоматически)
 # type: telegram — веб-превью https://t.me/s/<channel>, без API и токена
 # enabled: false — выключить, не удаляя запись
+# Источник с нулевым выходом два прогона подряд отодвигается в конец очереди тестов.
 
 settings:
   drop_after_failures: 4
@@ -71,6 +72,56 @@ sources:
     type: telegram
     enabled: true
     channel: VlessVpnFree
+
+  - name: tg-vlesstrojan
+    type: telegram
+    enabled: true
+    channel: vlesstrojan
+
+  - name: epodonios-ss
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt
+
+  - name: epodonios-trojan
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/trojan.txt
+
+  - name: barry-far-ss
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/ss.txt
+
+  - name: barry-far-trojan
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/trojan.txt
+
+  - name: ebrasha-ss
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/ss_configs.txt
+
+  - name: ebrasha-trojan
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/trojan_configs.txt
+
+  - name: ebrasha-hysteria2
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/hysteria2_configs.txt
+
+  - name: matinghanbari-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/v2ray/all_sub.txt
+
+  - name: mahdibland-base64
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge_base64.txt
 
 # kind: telegram-proxy — публичные MTProto (tg://proxy, t.me/proxy, секреты ee/dd)
 # и SOCKS5 (tg://socks, t.me/socks, socks5://). type как у VLESS: subscription или telegram.

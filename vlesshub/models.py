@@ -50,6 +50,12 @@ class SourceReport:
     kept: int = 0
     elapsed_ms: float = 0
     error: str = ""
+    parse_error: int = 0
+    invalid_field: int = 0
+    verified: int = 0
+    tested: int = 0
+    yield_ratio: float | None = None
+    deprioritized: bool = False
 
 
 @dataclass(slots=True)
@@ -57,6 +63,7 @@ class VlessConfig:
     uuid: str
     host: str
     port: int
+    protocol: str = "vless"
     encryption: str = "none"
     flow: str = ""
     network: str = "tcp"

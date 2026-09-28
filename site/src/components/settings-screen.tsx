@@ -126,8 +126,17 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
 
   const sourceLine =
     data?.sources
-      .map((source) => `${source.name}${source.ok ? '' : ' (ошибка)'}: ${source.fetched}`)
+      .map((source) => {
+        const fail = source.ok ? '' : ' (ошибка)'
+        const share = source.yield == null ? '' : ` · ${Math.round(source.yield * 100)}%`
+        const low = source.deprioritized ? ' · низкий выход' : ''
+        return `${source.name}${fail}: ${source.fetched}${share}${low}`
+      })
       .join(' · ') ?? 'нет данных'
+  const rejected = data?.stats.rejected
+  const rejectedLine = rejected
+    ? `Отброшено: разбор ${rejected.parse_error}, поля ${rejected.invalid_field}, мёртвые ${rejected.dead}, таймаут ${rejected.timeout}`
+    : ''
 
   return (
     <div className={embedded ? 'pb-4' : 'mx-auto w-full max-w-[560px] px-4 pt-4'}>
@@ -216,7 +225,7 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
           text={`Последний запуск: ${data ? formatStamp(data.generated_at) : '—'}`}
         />
         <Separator />
-        <InfoRow icon={<Gauge className="size-4" />} text="Проверка: HTTP через Xray" />
+        <InfoRow icon={<Gauge className="size-4" />} text="Проверка: HTTP через Xray и sing-box" />
         <Separator />
         <InfoRow
           icon={<Server className="size-4" />}
@@ -235,14 +244,21 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
               : 'Стран: —'
           }
         />
+        {rejectedLine && (
+          <>
+            <Separator />
+            <InfoRow icon={<Gauge className="size-4" />} text={rejectedLine} />
+          </>
+        )}
         <Separator />
         <InfoRow icon={<Link2 className="size-4" />} text={sourceLine} />
       </Group>
 
       <p className="px-4 pb-4 text-[13px] leading-relaxed text-muted-foreground">
-        Сборщик забирает публичные VLESS-ссылки и прокси Telegram. В список попадают только те,
-        что ответили HTTP через Xray или прошли рукопожатие MTProto/SOCKS. Задержка измерена с
-        раннера сборщика, а не с вашего телефона. Сайт не устанавливает туннель.
+        Сборщик забирает публичные VLESS, Shadowsocks, Trojan, Hysteria2 и прокси Telegram. В список
+        попадают только те, что ответили HTTP через Xray или sing-box, либо прошли рукопожатие
+        MTProto/SOCKS. Задержка измерена с раннера сборщика, а не с вашего телефона. Сайт не
+        устанавливает туннель.
       </p>
 
       <ChoiceSheet

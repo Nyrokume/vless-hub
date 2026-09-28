@@ -13,7 +13,7 @@ import {
 } from '@/lib/clients'
 import { copyText } from '@/lib/copy'
 import { publicFileUrl } from '@/lib/data'
-import { flagEmoji, formatStamp, securityLabel, transportLabel } from '@/lib/format'
+import { flagEmoji, formatStamp, protocolLabel, securityLabel, transportLabel } from '@/lib/format'
 import { useSettings } from '@/lib/settings'
 import type { CatalogEntry, HubData } from '@/lib/types'
 
@@ -40,6 +40,9 @@ export function ExportScreen({ data }: { data: HubData }) {
   const countries = plain
     .filter((item) => item.kind === 'country')
     .sort((left, right) => right.count - left.count || (left.country ?? '').localeCompare(right.country ?? ''))
+  const protocols = plain
+    .filter((item) => item.kind === 'protocol')
+    .sort((left, right) => right.count - left.count || (left.protocol ?? '').localeCompare(right.protocol ?? ''))
   const details = plain
     .filter((item) => item.kind === 'security' || item.kind === 'transport')
     .sort((left, right) => left.kind.localeCompare(right.kind) || right.count - left.count)
@@ -54,6 +57,7 @@ export function ExportScreen({ data }: { data: HubData }) {
       const code = entry.country ?? ''
       return `${flagEmoji(code)} ${names.get(code) || code}`.trim()
     }
+    if (entry.kind === 'protocol') return protocolLabel(entry.protocol)
     if (entry.kind === 'security') return securityLabel(entry.security ?? '')
     if (entry.kind === 'transport') return transportLabel(entry.network ?? '')
     return entry.path
@@ -101,6 +105,28 @@ export function ExportScreen({ data }: { data: HubData }) {
           />
         ))}
       </Section>
+
+      {protocols.length > 0 && (
+        <Section title="Протоколы">
+          {protocols.map((entry, index) => (
+            <FileRow
+              key={entry.path}
+              divided={index > 0}
+              title={titleOf(entry)}
+              detail={`${entry.count} · ${entry.path}`}
+              onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+              onQr={() => openQr(entry)}
+              onClient={() => {
+                const url = publicFileUrl(settings.publicBase, entry.path)
+                const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
+                if (link) openExternal(link)
+                else void copyText(url, 'Для этого клиента есть только ссылка')
+              }}
+              clientLabel={clientName(settings.client)}
+            />
+          ))}
+        </Section>
+      )}
 
       <Section title="Страны">
         {countries.map((entry, index) => (

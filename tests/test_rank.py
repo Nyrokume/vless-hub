@@ -43,6 +43,22 @@ def test_rank_puts_proxy_and_uptime_first():
     assert ordered[-1] is tcp
 
 
+def test_deprioritized_source_sorts_after_a_healthy_one():
+    history = History()
+    healthy = _cfg("healthy.example")
+    healthy.sources = ["good"]
+    tired = _cfg("tired.example")
+    tired.sources = ["dead-feed"]
+    chosen = select_candidates(
+        [tired, healthy],
+        history,
+        limit=1,
+        drop_after=4,
+        deprioritized={"dead-feed"},
+    )
+    assert chosen == [healthy]
+
+
 def test_select_ignores_sub_15ms_ema():
     history = History()
     fake = _cfg("fake.example")

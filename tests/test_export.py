@@ -47,7 +47,8 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     plain = (out / "sub" / "all.txt").read_text(encoding="utf-8")
     assert plain.startswith("#profile-title: V2Hub")
     assert "vless://" in plain
-    assert "hello" in plain
+    assert "VLESS" in plain
+    assert "hello" not in plain
     assert "🚀" not in plain
     assert "104.21.0.1" not in plain
     assert "0.3ms" not in plain

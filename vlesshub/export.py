@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import re
 import shutil
 import statistics
 from pathlib import Path
@@ -61,6 +60,8 @@ def publish(
     tg_reports: list[SourceReport] | None = None,
     tg_collected: int = 0,
     tg_tested: int = 0,
+    unique: int | None = None,
+    rejections: dict[str, int] | None = None,
 ) -> None:
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -125,6 +126,15 @@ def publish(
             kind="transport",
             network=network,
         )
+    for protocol, group in _grouped(configs, lambda cfg: cfg.protocol or "vless").items():
+        _write_pair(
+            out_dir,
+            f"sub/protocol/{protocol}.txt",
+            group,
+            catalog,
+            kind="protocol",
+            protocol=protocol,
+        )
     combos = _grouped(configs, lambda cfg: f"{_country(cfg)}-{cfg.security or 'none'}")
     for key, group in combos.items():
         _write_pair(
@@ -163,6 +173,8 @@ def publish(
         unverified_count=len(unverified),
         reports=reports,
         collected=collected,
+        unique=collected if unique is None else unique,
+        rejections=rejections,
         tcp_tested=tcp_tested,
         tcp_ok=tcp_ok,
         proxy_tested=proxy_tested,
@@ -212,9 +224,10 @@ def _legacy_members(configs: list[VlessConfig], sub_id: str) -> list[VlessConfig
         return configs
     if sub_id == "fast":
         return [cfg for cfg in configs if cfg.latency_ms is not None and cfg.latency_ms <= _FAST_MS]
+    vless = [cfg for cfg in configs if (cfg.protocol or "vless") == "vless"]
     if sub_id in {"reality", "tls"}:
-        return [cfg for cfg in configs if cfg.security == sub_id]
-    return [cfg for cfg in configs if (cfg.network or "tcp") == sub_id]
+        return [cfg for cfg in vless if cfg.security == sub_id]
+    return [cfg for cfg in vless if (cfg.network or "tcp") == sub_id]
 
 
 def _write_legacy_sub(directory: Path, sub_id: str, title: str, configs: list[VlessConfig]) -> None:
@@ -238,6 +251,8 @@ def _hub_config(cfg: VlessConfig, generated_at: str) -> dict:
     return {
         "id": cfg.fingerprint,
         "uri": build_uri(cfg, remark=display_name(cfg)),
+        "protocol": cfg.protocol or "vless",
+        "encryption": cfg.encryption or "none",
         "remark": cfg.remark,
         "uuid": cfg.uuid,
         "host": cfg.host,
@@ -269,9 +284,6 @@ def _hub_config(cfg: VlessConfig, generated_at: str) -> dict:
 
 
 def _place(cfg: VlessConfig) -> tuple[str | None, str | None, str | None]:
-    flag = (cfg.remark_country or "").upper()
-    if len(flag) == 2 and flag.isalpha():
-        return flag, country_name(flag) or flag, "remark"
     code = (cfg.country or "").upper()
     if len(code) == 2 and code.isalpha():
         return code, country_name(code) or cfg.country_name or code, "geoip"
@@ -285,6 +297,13 @@ def _hub_source(report: SourceReport) -> dict:
         "url": report.url,
         "ok": report.ok,
         "fetched": report.links,
+        "kept": report.kept,
+        "tested": report.tested,
+        "verified": report.verified,
+        "yield": report.yield_ratio,
+        "deprioritized": report.deprioritized,
+        "parse_error": report.parse_error,
+        "invalid_field": report.invalid_field,
         "error": report.error or None,
     }
 
@@ -347,6 +366,7 @@ def _write_site_payload(
     )
     counts = stats["counts"]
     telegram = stats["telegram"]
+    rejected = stats.get("rejected") or {}
     hub = {
         "version": 2,
         "collector_version": _COLLECTOR_VERSION,
@@ -357,7 +377,9 @@ def _write_site_payload(
         "sources": [_hub_source(report) for report in reports + tg_reports],
         "stats": {
             "fetched": counts["collected"],
-            "unique": counts["collected"],
+            "unique": counts.get("unique", counts["collected"]),
+            "rejected": rejected,
+            "by_protocol": stats.get("by_protocol") or {},
             "tested": counts["tested_tcp"],
             "alive": counts["tcp_ok"],
             "published": counts["published"],
@@ -398,6 +420,7 @@ def _write_pair(
     country: str = "",
     security: str = "",
     network: str = "",
+    protocol: str = "",
     top: int | None = None,
     header: str | None = None,
 ) -> None:
@@ -415,6 +438,7 @@ def _write_pair(
         "country": country,
         "security": security,
         "network": network,
+        "protocol": protocol,
         "top": top,
         "count": len(configs),
     }
@@ -432,33 +456,43 @@ def _plain_body(configs: list[VlessConfig], header: bool) -> str:
     return body
 
 
-_GARBAGE = re.compile(r"[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D\u200B\u200C\u2060]+")
-
-
-def _clean_label(value: str, limit: int = 40) -> str:
-    text = _GARBAGE.sub(" ", value or "")
-    text = "".join(ch for ch in text if ch.isprintable())
-    return " ".join(text.split())[:limit]
-
-
 def _latency_label(value: float) -> str:
     if value < 10:
         return f"{value:.1f}ms"
     return f"{int(round(value))}ms"
 
 
+_PROTOCOL_LABEL = {
+    "vless": "VLESS",
+    "shadowsocks": "SS",
+    "trojan": "Trojan",
+    "hysteria2": "HY2",
+}
+
+
+def _flag_emoji(code: str) -> str:
+    if len(code) != 2 or not code.isalpha():
+        return ""
+    return "".join(chr(0x1F1E6 + ord(char) - ord("A")) for char in code.upper())
+
+
 def display_name(cfg: VlessConfig) -> str:
+    """Flag, GeoIP country, protocol, transport, and measured latency.
+
+    The original remark is ignored: public lists often invent latency and country.
+    """
+    code = (cfg.country or "").upper()
     parts: list[str] = []
-    if cfg.country:
-        parts.append(cfg.country)
+    flag = _flag_emoji(code)
+    if flag:
+        parts.append(flag)
+    named = country_name(code) if len(code) == 2 and code.isalpha() else ""
+    if named:
+        parts.append(named)
+    parts.append(_PROTOCOL_LABEL.get(cfg.protocol or "vless", (cfg.protocol or "vless").upper()))
+    parts.append(cfg.network or "tcp")
     if cfg.latency_ms is not None:
         parts.append(_latency_label(cfg.latency_ms))
-    parts.append(cfg.security or "none")
-    parts.append(cfg.network or "tcp")
-    if cfg.remark:
-        short = _clean_label(cfg.remark)
-        if short:
-            parts.append(short)
     return " · ".join(parts)
 
 
@@ -466,6 +500,7 @@ def _public_config(cfg: VlessConfig) -> dict:
     return {
         "id": cfg.fingerprint,
         "uri": build_uri(cfg, remark=display_name(cfg)),
+        "protocol": cfg.protocol or "vless",
         "name": display_name(cfg),
         "remark": cfg.remark,
         "uuid": cfg.uuid,
@@ -518,6 +553,8 @@ def _stats(
     tg_reports: list[SourceReport] | None = None,
     tg_collected: int = 0,
     tg_tested: int = 0,
+    unique: int | None = None,
+    rejections: dict[str, int] | None = None,
 ) -> dict:
     latencies = [cfg.latency_ms for cfg in configs if cfg.latency_ms is not None]
     proxies = list(proxies or [])
@@ -541,6 +578,7 @@ def _stats(
         "generated_at": generated_at,
         "counts": {
             "collected": collected,
+            "unique": collected if unique is None else unique,
             "tested_tcp": tcp_tested,
             "tcp_ok": tcp_ok,
             "tested_proxy": proxy_tested,
@@ -556,9 +594,16 @@ def _stats(
             "tg_tested": tg_tested,
         },
         "median_latency_ms": round(statistics.median(latencies), 1) if latencies else None,
+        "rejected": {
+            "parse_error": int((rejections or {}).get("parse_error", 0)),
+            "invalid_field": int((rejections or {}).get("invalid_field", 0)),
+            "dead": int((rejections or {}).get("dead", 0)),
+            "timeout": int((rejections or {}).get("timeout", 0)),
+        },
         "by_country": _count(configs, lambda cfg: cfg.country or "ZZ"),
         "by_security": _count(configs, lambda cfg: cfg.security or "none"),
         "by_network": _count(configs, lambda cfg: cfg.network or "tcp"),
+        "by_protocol": _count(configs, lambda cfg: cfg.protocol or "vless"),
         "by_verified": _count(configs, lambda cfg: cfg.verified or "unknown"),
         "sources": [_source_row(report) for report in reports],
         "subscriptions": catalog,
@@ -588,8 +633,52 @@ def _write_clash(path: Path, configs: list[VlessConfig]) -> None:
 
 
 def _clash_proxy(cfg: VlessConfig, index: int) -> dict:
-    name = f"{_country(cfg)}-{cfg.network}-{cfg.port}-{index}"
-    item: dict = {
+    name = f"{_country(cfg)}-{cfg.protocol or 'vless'}-{cfg.network}-{cfg.port}-{index}"
+    if cfg.protocol == "shadowsocks":
+        return {
+            "name": name,
+            "type": "ss",
+            "server": cfg.host,
+            "port": cfg.port,
+            "cipher": cfg.encryption,
+            "password": cfg.uuid,
+            "udp": True,
+        }
+    if cfg.protocol == "trojan":
+        item: dict = {
+            "name": name,
+            "type": "trojan",
+            "server": cfg.host,
+            "port": cfg.port,
+            "password": cfg.uuid,
+            "udp": True,
+            "sni": cfg.sni or cfg.host,
+        }
+        if cfg.allow_insecure:
+            item["skip-cert-verify"] = True
+        if cfg.network == "ws":
+            ws: dict = {"path": cfg.path or "/"}
+            if cfg.host_header:
+                ws["headers"] = {"Host": cfg.host_header}
+            item["network"] = "ws"
+            item["ws-opts"] = ws
+        return item
+    if cfg.protocol == "hysteria2":
+        item = {
+            "name": name,
+            "type": "hysteria2",
+            "server": cfg.host,
+            "port": cfg.port,
+            "password": cfg.uuid,
+            "sni": cfg.sni or cfg.host,
+        }
+        if cfg.allow_insecure:
+            item["skip-cert-verify"] = True
+        if cfg.extras.get("obfs"):
+            item["obfs"] = cfg.extras["obfs"]
+            item["obfs-password"] = cfg.extras.get("obfs-password", "")
+        return item
+    item = {
         "name": name,
         "type": "vless",
         "server": cfg.host,
@@ -655,9 +744,53 @@ def _write_singbox(path: Path, configs: list[VlessConfig]) -> None:
 
 
 def _singbox_outbound(cfg: VlessConfig, index: int) -> dict:
-    item: dict = {
+    tag = f"{_country(cfg)}-{cfg.protocol or 'vless'}-{cfg.network}-{index}"
+    if cfg.protocol == "shadowsocks":
+        return {
+            "type": "shadowsocks",
+            "tag": tag,
+            "server": cfg.host,
+            "server_port": cfg.port,
+            "method": cfg.encryption,
+            "password": cfg.uuid,
+        }
+    if cfg.protocol == "trojan":
+        item: dict = {
+            "type": "trojan",
+            "tag": tag,
+            "server": cfg.host,
+            "server_port": cfg.port,
+            "password": cfg.uuid,
+            "tls": {
+                "enabled": True,
+                "server_name": cfg.sni or cfg.host,
+                "insecure": bool(cfg.allow_insecure),
+            },
+        }
+        transport = _singbox_transport(cfg)
+        if transport:
+            item["transport"] = transport
+        return item
+    if cfg.protocol == "hysteria2":
+        item = {
+            "type": "hysteria2",
+            "tag": tag,
+            "server": cfg.host,
+            "server_port": cfg.port,
+            "password": cfg.uuid,
+            "tls": {
+                "enabled": True,
+                "server_name": cfg.sni or cfg.host,
+                "insecure": bool(cfg.allow_insecure),
+                "alpn": ["h3"],
+            },
+        }
+        if cfg.extras.get("obfs"):
+            item["obfs"] = {"type": cfg.extras["obfs"], "password": cfg.extras.get("obfs-password", "")}
+        return item
+    item = {
         "type": "vless",
-        "tag": f"{_country(cfg)}-{cfg.network}-{index}",
+        "tag": tag,
         "server": cfg.host,
         "server_port": cfg.port,
         "uuid": cfg.uuid,
@@ -776,6 +909,12 @@ def _source_row(report: SourceReport) -> dict:
         "status": report.status,
         "links": report.links,
         "kept": report.kept,
+        "tested": report.tested,
+        "verified": report.verified,
+        "yield": report.yield_ratio,
+        "deprioritized": report.deprioritized,
+        "parse_error": report.parse_error,
+        "invalid_field": report.invalid_field,
         "elapsed_ms": report.elapsed_ms,
         "error": report.error,
     }

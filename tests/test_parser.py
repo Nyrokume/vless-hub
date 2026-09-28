@@ -43,14 +43,14 @@ def test_reality_plus_in_public_key_and_roundtrip():
 def test_flag_in_remark_and_local_hosts():
     flagged = parse_vless(REALITY.replace("#Germany", "#🇳🇱 NL node"), source="alpha")
     assert flagged is not None
-    assert flagged.remark_country == "NL"
+    assert flagged.remark_country == ""
+    assert "🇳🇱" in flagged.remark
     plain = parse_vless(REALITY.replace("#Germany", "#plain"), source="beta")
     assert plain is not None
     preferred = dedup([plain, flagged])
-    assert preferred[0].remark_country == "NL"
-    assert "🇳🇱" in preferred[0].remark
-    kept = dedup([flagged, plain])
-    assert kept[0].remark_country == "NL"
+    assert preferred[0].remark == "plain"
+    assert preferred[0].remark_country == ""
+    assert preferred[0].sources == ["beta", "alpha"]
     assert parse_vless(REALITY.replace("Ex.COM", "localhost")) is None
     assert parse_vless(REALITY.replace(":443", ":99999")) is None
 
