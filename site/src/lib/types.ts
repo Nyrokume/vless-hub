@@ -136,4 +136,5 @@ export type HubData = {
   unstable?: ConfigRecord[]
   unverified: ConfigRecord[]
   proxies: ProxyRecord[]
+  unstable_proxies?: ProxyRecord[]
 }

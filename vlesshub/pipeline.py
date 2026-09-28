@@ -245,7 +245,9 @@ def run_pipeline(
     history.save(state_dir / "history.json")
 
     tg_history = History.load(state_dir / "tg_history.json")
-    tg_published, tg_tested = _probe_telegram(settings, tg_found, tg_history, cache, mmdb)
+    tg_published, tg_unstable, tg_tested = _probe_telegram(
+        settings, tg_found, tg_history, cache, mmdb, stability, rejections
+    )
     tg_history.prune(settings.drop_after_failures)
     tg_history.save(state_dir / "tg_history.json")
     cache.save(state_dir / "geo_cache.json")
@@ -280,6 +282,7 @@ def run_pipeline(
         duration_sec=round(time.perf_counter() - started, 1),
         settings=settings,
         proxies=tg_published,
+        tg_unstable=tg_unstable,
         tg_reports=tg_reports,
         tg_collected=len(tg_found),
         tg_tested=tg_tested,
@@ -295,42 +298,80 @@ def _probe_telegram(
     history: History,
     cache: GeoCache,
     mmdb,
-) -> tuple[list[TgProxy], int]:
+    stability: Stability,
+    rejections: dict[str, int],
+) -> tuple[list[TgProxy], list[TgProxy], int]:
     if not found:
-        return [], 0
+        return [], [], 0
     history.mark_misses({proxy.fingerprint for proxy in found})
-    targets = select_proxies(found, history, settings.max_tg_tests, settings.drop_after_failures)
+    pool = [
+        proxy
+        for proxy in found
+        if not dropped_after(stability.bits(proxy.fingerprint, telegram=True), settings.drop_after_failures)
+        and not history.excluded(proxy.fingerprint, settings.drop_after_failures)
+    ]
+    targets = select_proxies(pool, history, settings.max_tg_tests, settings.drop_after_failures)
     log(f"tg candidates {len(targets)} of {len(found)}")
     results = probe_many(targets, settings.tg_timeout_sec, settings.tg_concurrency) if targets else {}
     tested = {proxy.fingerprint for proxy in targets}
     working: list[TgProxy] = []
+    unstable: list[TgProxy] = []
+
+    def _remember(proxy: TgProxy, ok: bool) -> None:
+        bits = stability.note(proxy.fingerprint, ok, telegram=True)
+        proxy.bits = bits
+        proxy.stability = stability.rate(proxy.fingerprint, telegram=True)
+        proxy.status = status_of(ok, bits)
+        if proxy.stability is not None:
+            proxy.uptime = proxy.stability
+
     for proxy in targets:
         result = results.get(proxy.fingerprint)
         if result and result.ok:
             proxy.latency_ms = result.latency_ms
             proxy.verified = proxy.kind
             history.record(proxy.fingerprint, ok=True, latency_ms=result.latency_ms)
-            working.append(proxy)
+            _remember(proxy, True)
+            if proxy.status == "unstable":
+                unstable.append(proxy)
+            else:
+                working.append(proxy)
         else:
             proxy.latency_ms = None
+            proxy.status = "dead"
             history.record(proxy.fingerprint, ok=False, latency_ms=None)
-    enrich(working, cache, mmdb, settings.user_agent)
-    for proxy in working:
+            _remember(proxy, False)
+            reason = (result.reason if result else "") or "handshake_fail"
+            rejections[reason] = rejections.get(reason, 0) + 1
+    passed = working + unstable
+    enrich(passed, cache, mmdb, settings.user_agent)
+    passed_ids = {proxy.fingerprint for proxy in passed}
+    for proxy in passed:
         entry = history.get(proxy.fingerprint)
         if entry is not None and proxy.country:
             entry["country"] = proxy.country
         history.apply_to(proxy.fingerprint, proxy)
-    # Untested proxies are not failures: they simply did not fit this run.
+        if proxy.fingerprint in passed_ids:
+            proxy.bits = stability.bits(proxy.fingerprint, telegram=True)
+            proxy.stability = stability.rate(proxy.fingerprint, telegram=True)
+            if proxy.stability is not None:
+                proxy.uptime = proxy.stability
+            proxy.status = status_of(True, proxy.bits)
     for proxy in found:
         if proxy.fingerprint not in tested:
             history.seen(proxy.fingerprint)
-    ranked = sorted(
-        working,
-        key=lambda proxy: (
-            proxy.latency_ms if proxy.latency_ms is not None else 9_999_999,
-            -proxy.uptime,
-            proxy.fingerprint,
-        ),
-    )
-    log(f"tg verified {len(ranked)} of {len(targets)} tested")
-    return ranked, len(targets)
+
+    def _rank(items: list[TgProxy]) -> list[TgProxy]:
+        return sorted(
+            items,
+            key=lambda proxy: (
+                proxy.latency_ms if proxy.latency_ms is not None else 9_999_999,
+                -(proxy.stability or 0),
+                proxy.fingerprint,
+            ),
+        )
+
+    ranked = _rank(working)
+    rare = _rank(unstable)
+    log(f"tg working {len(ranked)} unstable {len(rare)} of {len(targets)} tested")
+    return ranked, rare, len(targets)

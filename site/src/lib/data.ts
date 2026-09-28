@@ -14,6 +14,7 @@ export async function loadHub(): Promise<HubData> {
   data.unstable ??= []
   data.unverified ??= []
   data.proxies ??= []
+  data.unstable_proxies ??= []
   data.stats ??= {
     fetched: 0,
     unique: 0,

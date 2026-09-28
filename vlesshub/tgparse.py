@@ -46,6 +46,8 @@ class TgProxy:
     country_name: str = ""
     ip: str = ""
     latency_ms: float | None = None
+    status: str = ""
+    stability: float | None = None
     uptime: float = 0.0
     checks_ok: int = 0
     checks_fail: int = 0

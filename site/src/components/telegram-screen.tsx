@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
-import { flagEmoji, formatStamp, latencyClass, latencyText, uptimeText } from '@/lib/format'
+import { flagEmoji, formatStamp, latencyClass, latencyText, stabilityText } from '@/lib/format'
 import { openExternal } from '@/lib/clients'
 import type { HubData, ProxyRecord } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -15,20 +15,22 @@ export function TelegramScreen({ data }: { data: HubData }) {
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<'all' | 'mtproto' | 'socks'>('all')
   const [country, setCountry] = useState('')
+  const [showUnstable, setShowUnstable] = useState(false)
   const [qr, setQr] = useState<QrRequest | null>(null)
   const stats = data.stats.telegram
+  const pool = showUnstable ? [...data.proxies, ...(data.unstable_proxies ?? [])] : data.proxies
 
   const countries = useMemo(() => {
     const codes = new Set<string>()
-    for (const proxy of data.proxies) {
+    for (const proxy of pool) {
       if (proxy.country) codes.add(proxy.country)
     }
     return [...codes].sort()
-  }, [data.proxies])
+  }, [pool])
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return data.proxies
+    return pool
       .filter((proxy) => {
         if (kind !== 'all' && proxy.kind !== kind) return false
         if (country && proxy.country !== country) return false
@@ -39,7 +41,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
           .includes(needle)
       })
       .sort((left, right) => (left.latency_ms ?? 9_999_999) - (right.latency_ms ?? 9_999_999))
-  }, [country, data.proxies, kind, query])
+  }, [country, kind, pool, query])
 
   const best = filtered[0]
 
@@ -57,6 +59,18 @@ export function TelegramScreen({ data }: { data: HubData }) {
         </Button>
       )}
       <div className="mb-3 flex flex-wrap gap-2">
+        {(data.unstable_proxies?.length ?? 0) > 0 && (
+          <button
+            type="button"
+            className={cn(
+              'rounded-full px-3 py-1.5 text-[13px]',
+              showUnstable ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
+            )}
+            onClick={() => setShowUnstable((value) => !value)}
+          >
+            Нестабильные · {data.unstable_proxies?.length}
+          </button>
+        )}
         {(['all', 'mtproto', 'socks'] as const).map((item) => (
           <button
             key={item}
@@ -134,12 +148,23 @@ function ProxyRow({
       {divided && <Separator />}
       <div className="flex items-center gap-2 px-4 py-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[16px] font-medium">
-            {flagEmoji(proxy.country)} {title}
+          <p className="flex min-w-0 items-center gap-2 truncate text-[16px] font-medium">
+            {proxy.status === 'working' || proxy.status === 'unstable' ? (
+              <span
+                className={cn(
+                  'inline-block size-2 shrink-0 rounded-full',
+                  proxy.status === 'unstable' ? 'border border-foreground' : 'bg-foreground',
+                )}
+                aria-label={proxy.status === 'unstable' ? 'Нестабильный' : 'Рабочий'}
+              />
+            ) : null}
+            <span className="truncate">
+              {flagEmoji(proxy.country)} {title}
+            </span>
           </p>
           <p className="truncate text-[13px] text-muted-foreground">
             {proxy.kind} · {proxy.host}:{proxy.port}
-            {uptimeText(proxy.uptime) ? ` · ${uptimeText(proxy.uptime)}` : ''}
+            {stabilityText(proxy.stability) ? ` · ${stabilityText(proxy.stability)}` : ''}
           </p>
         </div>
         <span className={cn('text-[14px] font-semibold tabular-nums', latencyClass(proxy.latency_ms))}>

@@ -65,6 +65,7 @@ def publish(
     unverified: list[VlessConfig] | None = None,
     unstable: list[VlessConfig] | None = None,
     proxies: list[TgProxy] | None = None,
+    tg_unstable: list[TgProxy] | None = None,
     tg_reports: list[SourceReport] | None = None,
     tg_collected: int = 0,
     tg_tested: int = 0,
@@ -171,8 +172,9 @@ def publish(
     catalog.append({"path": "sub/singbox.json", "kind": "singbox", "format": "singbox", "count": len(clash_configs)})
 
     proxies = list(proxies or [])
+    tg_unstable = list(tg_unstable or [])
     tg_reports = list(tg_reports or [])
-    _write_telegram(out_dir, proxies, settings, generated_at)
+    _write_telegram(out_dir, proxies, settings, generated_at, tg_unstable)
     public = [_public_config(cfg) for cfg in configs]
     public_unverified = [_public_config(cfg) for cfg in unverified]
     (out_dir / "api").mkdir(parents=True, exist_ok=True)
@@ -214,6 +216,7 @@ def publish(
         unverified=unverified,
         unstable=unstable,
         proxies=proxies,
+        tg_unstable=tg_unstable,
         reports=reports,
         tg_reports=tg_reports,
         stats=stats,
@@ -339,6 +342,7 @@ def _write_site_payload(
     unverified: list[VlessConfig],
     unstable: list[VlessConfig],
     proxies: list[TgProxy],
+    tg_unstable: list[TgProxy],
     reports: list[SourceReport],
     tg_reports: list[SourceReport],
     stats: dict,
@@ -431,6 +435,7 @@ def _write_site_payload(
         "unstable": [_hub_config(cfg, generated_at) for cfg in unstable],
         "unverified": [_hub_config(cfg, generated_at) for cfg in unverified],
         "proxies": [_public_proxy(proxy) for proxy in proxies],
+        "unstable_proxies": [_public_proxy(proxy) for proxy in tg_unstable],
     }
     (out_dir / "data" / "configs.json").write_text(
         json.dumps(hub, ensure_ascii=False, indent=2) + "\n",
@@ -884,7 +889,13 @@ def _singbox_transport(cfg: VlessConfig) -> dict | None:
     return None
 
 
-def _write_telegram(out_dir: Path, proxies: list[TgProxy], settings: Settings, generated_at: str) -> None:
+def _write_telegram(
+    out_dir: Path,
+    proxies: list[TgProxy],
+    settings: Settings,
+    generated_at: str,
+    unstable: list[TgProxy] | None = None,
+) -> None:
     mtproto = [proxy for proxy in proxies if proxy.kind == "mtproto"]
     socks = [proxy for proxy in proxies if proxy.kind == "socks"]
     _tg_lines(out_dir / "tg/mtproto.txt", [tg_link(proxy) for proxy in mtproto])
@@ -892,6 +903,11 @@ def _write_telegram(out_dir: Path, proxies: list[TgProxy], settings: Settings, g
     _tg_lines(out_dir / "tg/socks.txt", [tg_link(proxy) for proxy in socks])
     _tg_lines(out_dir / "tg/socks-https.txt", [https_link(proxy) for proxy in socks])
     _tg_lines(out_dir / "tg/all.txt", [tg_link(proxy) for proxy in proxies])
+    mixed = sorted(
+        list(proxies) + list(unstable or []),
+        key=lambda proxy: (proxy.latency_ms if proxy.latency_ms is not None else 9_999_999, proxy.fingerprint),
+    )
+    _tg_lines(out_dir / "tg/with-unstable.txt", [tg_link(proxy) for proxy in mixed])
     _tg_lines(out_dir / "tg/https.txt", [https_link(proxy) for proxy in proxies])
     for size in settings.tg_top_sizes:
         _tg_lines(out_dir / f"tg/top-{size}.txt", [tg_link(proxy) for proxy in proxies[:size]])
@@ -931,6 +947,8 @@ def _public_proxy(proxy: TgProxy) -> dict:
         "country_name": country_name(proxy.country) or proxy.country_name,
         "ip": proxy.ip,
         "latency_ms": proxy.latency_ms,
+        "status": proxy.status,
+        "stability": None if proxy.stability is None else round(float(proxy.stability), 4),
         "uptime": round(proxy.uptime, 4),
         "checks_ok": proxy.checks_ok,
         "checks_fail": proxy.checks_fail,

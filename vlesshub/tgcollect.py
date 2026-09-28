@@ -60,7 +60,7 @@ def _pick(proxies: list[TgProxy], history: History, limit: int, drop_after: int)
         if entry is None:
             fresh.append(proxy)
         elif int(entry.get("streak_fail", 0)) >= drop_after:
-            stale.append(proxy)
+            continue
         else:
             good.append(proxy)
 

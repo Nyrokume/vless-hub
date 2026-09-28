@@ -39,6 +39,17 @@ class TgProbeResult:
     ok: bool
     latency_ms: float | None = None
     error: str = ""
+    reason: str = ""
+
+
+def classify_tg_error(error: str) -> str:
+    """MTProto and SOCKS failures use the same reason codes as the proxy probe."""
+    err = (error or "").lower()
+    if "timeout" in err or "timed out" in err:
+        return "timeout"
+    if "refused" in err or "network is unreachable" in err or "no route" in err:
+        return "tcp_refused"
+    return "handshake_fail"
 
 
 class AesCtr:
@@ -80,7 +91,8 @@ def probe_many(
             try:
                 results[proxy.fingerprint] = future.result()
             except Exception as exc:  # noqa: BLE001
-                results[proxy.fingerprint] = TgProbeResult(False, error=type(exc).__name__)
+                error = f"{type(exc).__name__}: {exc}"
+                results[proxy.fingerprint] = TgProbeResult(False, error=error[:180], reason=classify_tg_error(error))
             if done % 25 == 0 or done == len(proxies):
                 ok = sum(1 for item in results.values() if item.ok)
                 log(f"tg probe {done}/{len(proxies)} ok={ok}")
@@ -97,7 +109,8 @@ def probe_one(proxy: TgProxy, timeout: float) -> TgProbeResult:
         else:
             _obfuscated_with_fallback(proxy, timeout)
     except Exception as exc:  # noqa: BLE001
-        return TgProbeResult(False, error=f"{type(exc).__name__}: {exc}"[:180])
+        error = f"{type(exc).__name__}: {exc}"[:180]
+        return TgProbeResult(False, error=error, reason=classify_tg_error(error))
     elapsed = (time.perf_counter() - started) * 1000
     return TgProbeResult(True, latency_ms=round(elapsed, 1))
 
