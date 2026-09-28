@@ -40,7 +40,7 @@ const statuses = {
 } as const
 
 const probes = {
-  'xray-http': 'Проверка через прокси',
+  'xray-http': 'Через прокси',
 } as const
 
 export const ru = {
@@ -118,6 +118,8 @@ export const ru = {
   allCountries: 'Все страны',
   all: 'Все',
   kinds: { all: 'Все', mtproto: 'MTProto', socks: 'SOCKS' },
+  tgAllLinks: 'Все ссылки Telegram',
+  tgBrowserLinks: 'Ссылки для браузера',
   view: 'Вид',
   sort: 'Сортировка',
   ping: 'Пинг',

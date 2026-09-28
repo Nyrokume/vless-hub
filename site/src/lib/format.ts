@@ -10,6 +10,7 @@ const TRANSPORTS: Record<string, string> = {
   httpupgrade: 'HTTPUpgrade',
   xhttp: 'XHTTP',
   kcp: 'mKCP',
+  hysteria2: 'HY2',
 }
 
 export function transportLabel(value: string): string {

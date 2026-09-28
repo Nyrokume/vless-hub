@@ -58,7 +58,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
       {best && (
         <Button className="mb-4 w-full" onClick={() => openExternal(best.tg)}>
           <Send />
-          {ru.bestInTelegram(best.country || best.host, latencyText(best.latency_ms))}
+          {ru.bestInTelegram(best.country_name || best.country || best.host, latencyText(best.latency_ms))}
         </Button>
       )}
       <div className="mb-3 flex flex-wrap gap-2">
@@ -173,8 +173,9 @@ function ProxyRow({
         <span className={cn('text-[14px] font-semibold tabular-nums', latencyClass(proxy.latency_ms))}>
           {latencyText(proxy.latency_ms)}
         </span>
-        <Button size="sm" aria-label={ru.openInTelegram(title)} onClick={() => openExternal(proxy.tg)}>
-          {ru.inTelegram}
+        <Button size="sm" className="shrink-0 px-2 sm:px-3" aria-label={ru.openInTelegram(title)} onClick={() => openExternal(proxy.tg)}>
+          <Send className="sm:hidden" />
+          <span className="hidden sm:inline">{ru.inTelegram}</span>
         </Button>
         <Button
           variant="ghost"

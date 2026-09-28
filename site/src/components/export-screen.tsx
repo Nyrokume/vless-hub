@@ -14,6 +14,7 @@ import {
 import { copyText } from '@/lib/copy'
 import { publicFileUrl } from '@/lib/data'
 import { flagEmoji, formatStamp, protocolLabel, securityLabel, transportLabel } from '@/lib/format'
+import { ru } from '@/lib/ru'
 import { useSettings } from '@/lib/settings'
 import type { CatalogEntry, HubData } from '@/lib/types'
 
@@ -168,10 +169,10 @@ export function ExportScreen({ data }: { data: HubData }) {
       {data.stats.telegram && (
         <Section title="Telegram">
           {[
-            ['MTProto', 'tg/mtproto.txt', data.stats.telegram.mtproto],
-            ['SOCKS', 'tg/socks.txt', data.stats.telegram.socks],
-            ['Все tg://', 'tg/all.txt', data.stats.telegram.published],
-            ['HTTPS', 'tg/https.txt', data.stats.telegram.published],
+            [ru.kinds.mtproto, 'tg/mtproto.txt', data.stats.telegram.mtproto],
+            [ru.kinds.socks, 'tg/socks.txt', data.stats.telegram.socks],
+            [ru.tgAllLinks, 'tg/all.txt', data.stats.telegram.published],
+            [ru.tgBrowserLinks, 'tg/https.txt', data.stats.telegram.published],
           ].map(([title, path, count], index) => (
             <FileRow
               key={String(path)}

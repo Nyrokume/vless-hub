@@ -235,7 +235,11 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         <Separator />
         <InfoRow
           icon={<Activity className="size-4" />}
-          text={ru.settings.check(data ? probeLabel(data.probe) : ru.settings.dash)}
+          text={
+            data
+              ? ru.settings.check(`${probeLabel(data.probe)} · ${data.collector_version}`)
+              : ru.settings.check(ru.settings.dash)
+          }
         />
         <Separator />
         <InfoRow
