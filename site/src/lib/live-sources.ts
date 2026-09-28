@@ -1,3 +1,4 @@
+import { formatStamp } from '@/lib/format'
 import { ru } from '@/lib/ru'
 
 export type LiveSource = {
@@ -40,17 +41,38 @@ export type RunSnapshot = {
   conclusion: string | null
   url: string
   title: string
+  updatedAt: string | null
 }
 
-export function runLabel(run: RunSnapshot | null, limited: boolean): string {
+export type RunPhase = 'idle' | 'running' | 'done' | 'failed' | 'cancelled'
+
+export function runPhase(run: RunSnapshot | null): RunPhase | null {
+  if (!run) return null
+  if (run.status === 'queued' || run.status === 'waiting' || run.status === 'pending' || run.status === 'in_progress') {
+    return 'running'
+  }
+  if (run.conclusion === 'success') return 'done'
+  if (run.conclusion === 'failure') return 'failed'
+  if (run.conclusion === 'cancelled') return 'cancelled'
+  return 'idle'
+}
+
+export function runLine(run: RunSnapshot | null, limited: boolean): string {
   if (limited) return ru.live.rateLimit
-  if (!run) return ru.live.unknown
-  if (run.status === 'queued' || run.status === 'waiting' || run.status === 'pending') return ru.live.queued
-  if (run.status === 'in_progress') return ru.live.running
-  if (run.conclusion === 'success') return ru.live.done
-  if (run.conclusion === 'failure') return ru.live.failed
-  if (run.conclusion === 'cancelled') return ru.live.cancelled
-  return ru.live.onGithub
+  const phase = runPhase(run)
+  if (!run || !phase) return ''
+  const label =
+    phase === 'running'
+      ? ru.live.running
+      : phase === 'done'
+        ? ru.live.done
+        : phase === 'failed'
+          ? ru.live.failed
+          : phase === 'cancelled'
+            ? ru.live.cancelled
+            : ru.live.idle
+  const time = run.updatedAt ? formatStamp(run.updatedAt) : ''
+  return time ? `${label} · ${time}` : label
 }
 
 export async function fetchLatestRun(signal?: AbortSignal): Promise<{ run: RunSnapshot | null; limited: boolean }> {
@@ -58,7 +80,14 @@ export async function fetchLatestRun(signal?: AbortSignal): Promise<{ run: RunSn
   if (response.status === 403 || response.status === 429) return { run: null, limited: true }
   if (!response.ok) return { run: null, limited: false }
   const payload = (await response.json()) as {
-    workflow_runs?: { status?: string; conclusion?: string | null; html_url?: string; display_title?: string }[]
+    workflow_runs?: {
+      status?: string
+      conclusion?: string | null
+      html_url?: string
+      display_title?: string
+      updated_at?: string
+      run_started_at?: string
+    }[]
   }
   const row = payload.workflow_runs?.[0]
   if (!row) return { run: null, limited: false }
@@ -69,6 +98,7 @@ export async function fetchLatestRun(signal?: AbortSignal): Promise<{ run: RunSn
       conclusion: row.conclusion ?? null,
       url: row.html_url || CHECK_WORKFLOW_URL,
       title: row.display_title || '',
+      updatedAt: row.updated_at || row.run_started_at || null,
     },
   }
 }

@@ -209,3 +209,36 @@ def test_vmess_is_unsupported_and_broken_link_stays_parse_error():
     assert len(kept) == 1
     assert reasons["unsupported_protocol"] == 4
     assert reasons["parse_error"] == 1
+
+
+def test_note_parameter_does_not_corrupt_the_fingerprint():
+    from vlesshub.parser import extract_proxy_uris, fingerprint_material
+
+    cfg = parse_any(
+        "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=tcp&security=none&note=hello#x"
+    )
+    assert cfg is not None
+    assert cfg.network == "tcp"
+    assert "¬" not in fingerprint_material(cfg)
+    htmlish = extract_proxy_uris(
+        "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:80?type=ws&amp;security=none#x"
+    )
+    assert htmlish and "security=none" in htmlish[0]
+
+
+def test_extra_json_whitespace_is_one_fingerprint():
+    from urllib.parse import quote
+
+    left = parse_any(
+        "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=tcp&security=none&extra="
+        + quote('{"b":2,"a":1}')
+        + "#x"
+    )
+    right = parse_any(
+        "vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=tcp&security=none&extra="
+        + quote('{\n  "a": 1,\n  "b": 2\n}')
+        + "#y"
+    )
+    assert left is not None and right is not None
+    assert left.fingerprint == right.fingerprint
+    assert left.extra == '{"a":1,"b":2}'

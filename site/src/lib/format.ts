@@ -80,6 +80,30 @@ export const FAILURE_LABELS: Record<string, string> = {
 
 export { reasonLabel, statusLabel }
 
+export function flagCode(text: string | null | undefined): string {
+  let letters = ''
+  for (const char of text || '') {
+    const code = char.codePointAt(0) ?? 0
+    if (code >= 0x1f1e6 && code <= 0x1f1ff) {
+      letters += String.fromCharCode(code - 0x1f1e6 + 65)
+      if (letters.length === 2) return letters === 'UK' ? 'GB' : letters
+    } else if (letters) {
+      letters = ''
+    }
+  }
+  return ''
+}
+
+export function countryName(code: string | null | undefined): string {
+  if (!code || !/^[a-z]{2}$/i.test(code)) return ''
+  const upper = code.toUpperCase() === 'UK' ? 'GB' : code.toUpperCase()
+  try {
+    return new Intl.DisplayNames(['ru'], { type: 'region' }).of(upper) || upper
+  } catch {
+    return upper
+  }
+}
+
 export function flagEmoji(code: string | null | undefined): string {
   if (!code || !/^[a-z]{2}$/i.test(code)) return ''
   const upper = code.toUpperCase() === 'UK' ? 'GB' : code.toUpperCase()

@@ -55,6 +55,7 @@ export type ParsedProxy = {
   network: string
   security: string
   remark: string
+  source?: string
 }
 
 type Fields = {
@@ -259,10 +260,32 @@ function blank(protocol: string, uri: string): Fields {
   }
 }
 
+function canonicalExtra(value: string): string {
+  const text = value.trim()
+  if (!text) return ''
+  try {
+    return canonicalJson(JSON.parse(text) as unknown)
+  } catch {
+    return text
+  }
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.keys(value as Record<string, unknown>).sort()
+    return `{${entries
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
 function finish(fields: Fields) {
   if (fields.network === 'tcp' && (fields.path === '' || fields.path === '/')) fields.path = ''
   if (!fields.headerType || fields.headerType.toLowerCase() === 'none') fields.headerType = ''
   fields.sni = fields.sni.trim()
+  fields.extra = canonicalExtra(fields.extra)
 }
 
 function material(fields: Fields): string {

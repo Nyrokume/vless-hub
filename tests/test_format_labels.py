@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_redundant_transport_is_not_repeated():
     script = r"""
 import { distinctTransport, latencyBounds, latencyRange, protocolLabel, protocolLine, transportLabel } from './site/src/lib/format.ts'
+import { splitFresh } from './site/src/lib/live-collect.ts'
+import { parseProxy } from './site/src/lib/parse-proxy.ts'
 
 const cases = [
   ['hysteria2', 'hysteria2', 'Hysteria2'],
@@ -38,6 +40,25 @@ const span = latencyRange(114.2, 2752.6)
 if (span.kind !== 'range' || Math.round(span.min) !== 114 || Math.round(span.max) !== 2753) process.exit(1)
 if (latencyRange(null, 10).kind !== 'empty') process.exit(1)
 if (latencyBounds([]).min !== null) process.exit(1)
+
+const nl = String.fromCharCode(10)
+const prettyBody = '{' + nl + '  "b": 2,' + nl + '  "a": 1' + nl + '}'
+const pretty = await parseProxy('vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=tcp&security=none&extra=' + encodeURIComponent(prettyBody) + '#y')
+const compact = await parseProxy('vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=tcp&security=none&extra=' + encodeURIComponent('{"a":1,"b":2}') + '#x')
+if (!pretty || !compact || pretty.id !== compact.id) {
+  console.error('extra', pretty && pretty.id, compact && compact.id)
+  process.exit(1)
+}
+const noted = await parseProxy('vless://11111111-1111-4111-8111-111111111111@1.2.3.4:443?type=ws&security=tls&sni=example.com&note=hello#x')
+if (!noted || noted.network !== 'ws') process.exit(1)
+const split = splitFresh(
+  [pretty, { ...pretty, remark: 'other' }, compact, { ...noted, id: 'published' }],
+  new Set(['published']),
+)
+if (split.unique.length !== 2 || split.fresh.length !== 1 || split.fresh[0].id !== pretty.id) {
+  console.error('split', split.unique.length, split.fresh.length)
+  process.exit(1)
+}
 """
     result = subprocess.run(
         [

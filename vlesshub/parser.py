@@ -165,9 +165,36 @@ def extract_vless_uris(text: str) -> list[str]:
     return [uri for uri in extract_proxy_uris(text) if uri.lower().startswith("vless://")]
 
 
+def _unescape_markup(text: str) -> str:
+    """Decode HTML entities that include a semicolon.
+
+    ``html.unescape`` also rewrites ``&note`` (no semicolon) into ``¬e``, which
+    corrupts the next query field and splits one config into many fingerprints.
+    """
+    if not text:
+        return ""
+
+    def replace(match: re.Match[str]) -> str:
+        return html.unescape(match.group(0))
+
+    return re.sub(r"&(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]+);", replace, text)
+
+
+def canonical_extra(value: str) -> str:
+    """One JSON spelling, so whitespace does not change the fingerprint."""
+    text = (value or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
 def extract_proxy_uris(text: str) -> list[str]:
     """Pull vless, shadowsocks, trojan, and hysteria2 URIs out of a subscription."""
-    text = html.unescape(text or "")
+    text = _unescape_markup(text or "")
     text = text.replace("\ufeff", "").replace("\\u0026", "&").replace("\\/", "/")
     found: list[str] = []
     seen: set[str] = set()
@@ -203,7 +230,7 @@ def extract_proxy_uris(text: str) -> list[str]:
 
 
 def parse_vless(uri: str, source: str = "") -> VlessConfig | None:
-    cleaned = _clean_uri(html.unescape(uri.strip()))
+    cleaned = _clean_uri(_unescape_markup(uri.strip()))
     if not cleaned.lower().startswith("vless://"):
         return None
     body = cleaned[len("vless://") :]
@@ -237,7 +264,7 @@ def parse_vless(uri: str, source: str = "") -> VlessConfig | None:
 
 
 def parse_any(uri: str, source: str = "") -> VlessConfig | None:
-    cleaned = _clean_uri(html.unescape(uri.strip()))
+    cleaned = _clean_uri(_unescape_markup(uri.strip()))
     scheme = cleaned.split(":", 1)[0].lower()
     if scheme == "vless":
         return parse_vless(cleaned, source=source)
@@ -282,7 +309,7 @@ def parse_document(
 
 def _reject_kind(uri: str) -> str | None:
     """unsupported_protocol for schemes we do not test; None when parse_any should try."""
-    cleaned = _clean_uri(html.unescape(uri.strip()))
+    cleaned = _clean_uri(_unescape_markup(uri.strip()))
     scheme = cleaned.split(":", 1)[0].lower()
     if scheme in _UNSUPPORTED_SCHEMES or _is_wrapped_vmess(cleaned):
         return "unsupported_protocol"
@@ -584,6 +611,7 @@ def _finish(cfg: VlessConfig) -> None:
     if cfg.header_type.lower() in {"", "none"}:
         cfg.header_type = ""
     cfg.sni = cfg.sni.strip()
+    cfg.extra = canonical_extra(cfg.extra)
     cfg.remark_country = extract_flag_code(cfg.remark)
     cfg.fingerprint = fingerprint(cfg)
 

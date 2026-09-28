@@ -134,6 +134,27 @@ function splitHostPort(hostport: string): { host: string; port: number } | null 
   return { host: unquote(host).trim(), port }
 }
 
+function canonicalExtra(value: string): string {
+  const text = value.trim()
+  if (!text) return ''
+  try {
+    return canonicalJson(JSON.parse(text) as unknown)
+  } catch {
+    return text
+  }
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(',')}]`
+  if (value && typeof value === 'object') {
+    const entries = Object.keys(value as Record<string, unknown>).sort()
+    return `{${entries
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
 async function sha256Prefix(material: string): Promise<string> {
   const bytes = new TextEncoder().encode(material)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
@@ -232,6 +253,7 @@ export async function parseVless(uri: string): Promise<ParsedVless | null> {
   if (parsed.network === 'tcp' && (parsed.path === '' || parsed.path === '/')) parsed.path = ''
   if (parsed.headerType.toLowerCase() === 'none' || parsed.headerType === '') parsed.headerType = ''
   if (parsed.fp) parsed.fp = parsed.fp.toLowerCase()
+  parsed.extra = canonicalExtra(parsed.extra)
   parsed.extras = extras
   const extraQuery = Object.keys(extras)
     .sort()
