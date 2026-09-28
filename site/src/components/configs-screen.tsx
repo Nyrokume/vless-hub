@@ -386,7 +386,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  const statsLine = `${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')} · медиана ${latencyText(data.stats.median_latency_ms)}`
+  const statsLine = `${ruNoun(data.stats.published, 'конфиг', 'конфига', 'конфигов')} · ${ruNoun(data.stats.countries, 'страна', 'страны', 'стран')}`
   const filtersOn = sessionFilters > 0 || settings.latencyThreshold != null
 
   const menu = (
