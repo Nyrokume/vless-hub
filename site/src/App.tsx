@@ -52,7 +52,7 @@ export default function App() {
       onValueChange={(value) => setTab(value as AppTab)}
       className="h-dvh gap-0"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-6">
         <TabsContent value="connection" forceMount className="data-[state=inactive]:hidden">
           {loading && !data ? (
             <LoadingState />
@@ -72,13 +72,13 @@ export default function App() {
       </div>
       <TabsList
         aria-label="Разделы"
-        className="h-16 w-full shrink-0 rounded-none border-t bg-background p-1 pb-[env(safe-area-inset-bottom)]"
+        className="h-auto! w-full shrink-0 rounded-none border-t bg-muted px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
       >
-        <TabsTrigger value="connection" className="h-full flex-col gap-1">
+        <TabsTrigger value="connection" className="h-auto! min-h-14 flex-1 flex-col gap-1 py-2">
           <Cable />
           Подключение
         </TabsTrigger>
-        <TabsTrigger value="settings" className="h-full flex-col gap-1">
+        <TabsTrigger value="settings" className="h-auto! min-h-14 flex-1 flex-col gap-1 py-2">
           <Settings />
           Настройки
         </TabsTrigger>
