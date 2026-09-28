@@ -1,5 +1,9 @@
 from vlesshub.parser import fingerprint, parse_vless
+from vlesshub.probe import ProbeResult, failure_reason
 from vlesshub.stages import (
+    HTTP_TARGETS,
+    HttpSample,
+    assess_proxy,
     classify_failure,
     dropped_after,
     exit_leaks,
@@ -57,6 +61,129 @@ def test_exit_leak_requires_both_addresses():
     assert exit_leaks("203.0.113.8", "203.0.113.8")
     assert not exit_leaks("198.51.100.4", "203.0.113.8")
     assert not exit_leaks("", "203.0.113.8")
+
+
+def _ok(start_ms: float, code: int = 204) -> HttpSample:
+    return HttpSample(code=code, start_ms=start_ms, total_ms=start_ms + 20, size=0)
+
+
+def test_assess_splits_handshake_from_median_ping():
+    targets = [(expected, [_ok(100), _ok(140), _ok(120)][index : index + 1]) for index, (_, expected) in enumerate(HTTP_TARGETS)]
+    speed = HttpSample(code=200, start_ms=80, total_ms=2000, size=250_000)
+    result = assess_proxy(
+        security="reality",
+        warmup=_ok(900),
+        targets=targets,
+        speed=speed,
+        exit_body="198.51.100.9\n",
+        exit_timed_out=False,
+        runner_ip="203.0.113.4",
+    )
+    assert result.ok
+    assert result.stage == "ok"
+    assert result.handshake_ms == 900
+    assert result.latency_ms == 120
+    assert result.speed_kbps == round((250_000 / 1024) / 2, 1)
+    assert result.exit_ip == "198.51.100.9"
+
+
+def test_assess_retries_count_toward_majority_and_http_fail_does_not():
+    expected = HTTP_TARGETS[0][1]
+    targets = [
+        (expected, [HttpSample(timed_out=True), _ok(80)]),
+        (expected, [HttpSample(code=403, start_ms=30, total_ms=40)]),
+        (expected, [HttpSample(timed_out=True), HttpSample(timed_out=True)]),
+    ]
+    failed = assess_proxy(
+        security="tls",
+        warmup=_ok(50),
+        targets=targets,
+        speed=None,
+        exit_body="",
+        exit_timed_out=False,
+        runner_ip="203.0.113.4",
+    )
+    assert not failed.ok
+    assert failed.stage == "http"
+    assert failed.reason == "http_fail"
+    assert failed.handshake_ms == 50
+    assert failed.latency_ms is None
+
+    passed = assess_proxy(
+        security="tls",
+        warmup=_ok(50),
+        targets=[
+            (expected, [HttpSample(code=0), _ok(110)]),
+            (expected, [_ok(90)]),
+            (expected, [HttpSample(timed_out=True)]),
+        ],
+        speed=HttpSample(code=200, start_ms=40, total_ms=1000, size=200_000),
+        exit_body="2001:db8::1",
+        exit_timed_out=False,
+        runner_ip="203.0.113.4",
+    )
+    assert passed.ok
+    assert passed.latency_ms == 100
+    assert passed.exit_ip == "2001:db8::1"
+
+
+def test_assess_rejects_zombies_and_exit_leaks():
+    expected = HTTP_TARGETS[0][1]
+    targets = [(expected, [_ok(70)]) for _ in HTTP_TARGETS]
+    zombie = assess_proxy(
+        security="none",
+        warmup=_ok(40),
+        targets=targets,
+        speed=HttpSample(code=200, start_ms=10, total_ms=500, size=100),
+        exit_body="",
+        exit_timed_out=False,
+        runner_ip="203.0.113.4",
+    )
+    assert zombie.reason == "no_data"
+    assert zombie.stage == "throughput"
+
+    leak = assess_proxy(
+        security="reality",
+        warmup=_ok(40),
+        targets=targets,
+        speed=HttpSample(code=200, start_ms=10, total_ms=1000, size=200_000),
+        exit_body="203.0.113.4",
+        exit_timed_out=False,
+        runner_ip="203.0.113.4",
+    )
+    assert leak.reason == "exit_ip_leak"
+    assert leak.stage == "exit"
+
+
+def test_assess_handshake_uses_security_and_timeout():
+    reality = assess_proxy(
+        security="reality",
+        warmup=HttpSample(code=0),
+        targets=[],
+        speed=None,
+        exit_body="",
+        exit_timed_out=False,
+        runner_ip="",
+    )
+    assert reality.stage == "handshake"
+    assert reality.reason == "reality_fail"
+    timed = assess_proxy(
+        security="tls",
+        warmup=HttpSample(timed_out=True),
+        targets=[],
+        speed=None,
+        exit_body="",
+        exit_timed_out=False,
+        runner_ip="",
+    )
+    assert timed.reason == "timeout"
+
+
+def test_failure_reason_keeps_the_stage_and_skips_untested():
+    assert failure_reason(ProbeResult(False, reason="tcp_refused", stage="tcp")) == "tcp_refused"
+    assert failure_reason(ProbeResult(False, error="budget", evaluated=False)) == ""
+    assert failure_reason(ProbeResult(True, latency_ms=80)) == ""
+    assert failure_reason(None) == ""
 
 
 def test_dedup_key_ignores_remark_and_parameter_order():

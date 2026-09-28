@@ -14,12 +14,24 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from vlesshub.models import VlessConfig
+from vlesshub.stages import (
+    CONFIG_BUDGET_SEC,
+    EXIT_URL,
+    HTTP_TARGETS,
+    HttpSample,
+    REQUEST_TIMEOUT_SEC,
+    MIN_SPEED_BYTES,
+    SPEED_URL,
+    assess_proxy,
+    attempt_ok,
+    classify_failure,
+    parse_exit_ip,
+)
 from vlesshub.util import log
 
-_GENERATE_204 = "https://www.gstatic.com/generate_204"
-# Time to first byte of one HTTP response. Xray is already listening, and curl does not retry.
+# Time to first byte of one HTTP response. The core is already listening, and curl does not retry.
 _CURL_WRITE = "%{http_code} %{time_starttransfer} %{time_total} %{size_download}"
-_SPEED = "https://speed.cloudflare.com/__down?bytes=65536"
+_WARM_CODES = frozenset({200, 204})
 _ports_lock = threading.Lock()
 _ports: set[int] = set()
 
@@ -30,6 +42,12 @@ class ProbeResult:
     latency_ms: float | None = None
     speed_kbps: float | None = None
     error: str = ""
+    handshake_ms: float | None = None
+    stage: str = ""
+    reason: str = ""
+    exit_ip: str = ""
+    # False when the phase budget ended before this config was tested.
+    evaluated: bool = True
 
 
 def tcp_probe(configs: list[VlessConfig], timeout: float, concurrency: int) -> dict[str, ProbeResult]:
@@ -49,10 +67,20 @@ def tcp_probe(configs: list[VlessConfig], timeout: float, concurrency: int) -> d
                     try:
                         ok, latency, error = future.result()
                     except Exception as exc:  # noqa: BLE001
-                        results[cfg.fingerprint] = ProbeResult(False, error=str(exc))
+                        results[cfg.fingerprint] = ProbeResult(
+                            False,
+                            error=str(exc),
+                            stage="tcp",
+                            reason=classify_failure("tcp", str(exc)),
+                        )
                         continue
+                    reason = "" if ok else ("timeout" if error == "timeout" else "tcp_refused")
                     results[cfg.fingerprint] = ProbeResult(
-                        ok, latency_ms=latency, error="" if ok else error
+                        ok,
+                        latency_ms=latency,
+                        error="" if ok else error,
+                        stage="" if ok else "tcp",
+                        reason=reason,
                     )
                     done += 1
                     if done % 50 == 0:
@@ -62,20 +90,22 @@ def tcp_probe(configs: list[VlessConfig], timeout: float, concurrency: int) -> d
     finally:
         socket.setdefaulttimeout(previous)
     for cfg in configs:
-        results.setdefault(cfg.fingerprint, ProbeResult(False, error="timeout"))
+        results.setdefault(
+            cfg.fingerprint,
+            ProbeResult(False, error="timeout", stage="tcp", reason="timeout"),
+        )
     ok_count = sum(1 for item in results.values() if item.ok)
     log(f"tcp reachable {ok_count}/{len(configs)}")
     return results
 
 
 def failure_reason(result: ProbeResult | None) -> str:
-    """Classify a failed probe as timeout or dead. Untested configs are not failures."""
-    if result is None or result.ok:
+    """Stable reason for a finished failure. Untested configs are not failures."""
+    if result is None or result.ok or not result.evaluated:
         return ""
-    err = (result.error or "").lower()
-    if "timeout" in err or err in {"http 0", "0"}:
-        return "timeout"
-    return "dead"
+    if result.reason:
+        return result.reason
+    return classify_failure(result.stage or "http", result.error or "timeout")
 
 
 def proxy_probe(
@@ -91,23 +121,47 @@ def proxy_probe(
     hy2 = [cfg for cfg in configs if cfg.protocol == "hysteria2"]
     rest = [cfg for cfg in configs if cfg.protocol != "hysteria2"]
     results: dict[str, ProbeResult] = {}
+    direct = fetch_runner_ip()
+    log(f"runner exit {direct or 'unknown'}")
     if rest:
         if xray_bin is None:
-            results.update({cfg.fingerprint: ProbeResult(False, error="xray unavailable") for cfg in rest})
+            results.update(
+                {
+                    cfg.fingerprint: ProbeResult(
+                        False, error="xray unavailable", stage="handshake", reason="handshake_fail"
+                    )
+                    for cfg in rest
+                }
+            )
         else:
             results.update(
-                _proxy_probe_xray(rest, xray_bin, timeout, speed_timeout, concurrency, batch_size)
+                _proxy_probe_xray(
+                    rest, xray_bin, timeout, speed_timeout, concurrency, batch_size, direct
+                )
             )
     if hy2:
         if singbox_bin is None:
             results.update(
-                {cfg.fingerprint: ProbeResult(False, error="sing-box unavailable") for cfg in hy2}
+                {
+                    cfg.fingerprint: ProbeResult(
+                        False, error="sing-box unavailable", stage="handshake", reason="handshake_fail"
+                    )
+                    for cfg in hy2
+                }
             )
         else:
             results.update(
-                _proxy_probe_singbox(hy2, singbox_bin, timeout, speed_timeout, concurrency, batch_size)
+                _proxy_probe_singbox(
+                    hy2, singbox_bin, timeout, speed_timeout, concurrency, batch_size, direct
+                )
             )
     return results
+
+
+def _wave_budget(batch_count: int, workers: int) -> float:
+    """Wall clock for every wave. Each config has its own CONFIG_BUDGET_SEC after the core is up."""
+    waves = max(1, math.ceil(batch_count / max(1, workers)))
+    return waves * (CONFIG_BUDGET_SEC + 12) + 90
 
 
 def _proxy_probe_xray(
@@ -117,6 +171,7 @@ def _proxy_probe_xray(
     speed_timeout: float,
     concurrency: int,
     batch_size: int = 20,
+    runner_ip: str = "",
 ) -> dict[str, ProbeResult]:
     """Test many configs at once: several Xray processes, each with many SOCKS inbounds."""
     results: dict[str, ProbeResult] = {}
@@ -128,13 +183,15 @@ def _proxy_probe_xray(
     size = max(1, batch_size)
     batches = [configs[offset : offset + size] for offset in range(0, len(configs), size)]
     workers = max(1, min(concurrency, len(batches)))
-    log(f"proxy batches {len(batches)} size<={size} parallel={workers} timeout={timeout}s")
+    budget = _wave_budget(len(batches), workers)
+    log(
+        f"proxy batches {len(batches)} size<={size} parallel={workers} "
+        f"request={REQUEST_TIMEOUT_SEC}s budget={CONFIG_BUDGET_SEC}s wave={budget:.0f}s"
+    )
     done = 0
-    waves = math.ceil(len(batches) / workers)
-    budget = waves * (timeout + speed_timeout + 14) + 90
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_proxy_batch_safe, batch, xray_bin, timeout, speed_timeout): batch
+            pool.submit(_proxy_batch_safe, batch, xray_bin, timeout, speed_timeout, runner_ip): batch
             for batch in batches
         }
         try:
@@ -149,9 +206,9 @@ def _proxy_probe_xray(
                 ok_so_far = sum(1 for item in results.values() if item.ok)
                 log(f"proxy progress {done}/{len(configs)} ok {ok_so_far}")
         except TimeoutError:
-            log("proxy phase hit its time budget; remaining configs count as failed")
+            log("proxy phase hit its time budget; untested configs are left unevaluated")
     for cfg in configs:
-        results.setdefault(cfg.fingerprint, ProbeResult(False, error="timeout"))
+        results.setdefault(cfg.fingerprint, ProbeResult(False, error="budget", evaluated=False))
     ok_count = sum(1 for item in results.values() if item.ok)
     log(f"proxy verified {ok_count}/{len(configs)}")
     return results
@@ -342,7 +399,15 @@ def _tcp_one(host: str, port: int, timeout: float) -> tuple[bool, float | None, 
     except TimeoutError:
         return False, None, "timeout"
     except OSError:
-        return False, None, "dead"
+        return False, None, "tcp_refused"
+
+
+def _handshake_results(configs: list[VlessConfig], error: str) -> dict[str, ProbeResult]:
+    results: dict[str, ProbeResult] = {}
+    for cfg in configs:
+        reason = classify_failure("handshake", error or "xray not listening", cfg.security)
+        results[cfg.fingerprint] = ProbeResult(False, error=error, stage="handshake", reason=reason)
+    return results
 
 
 def _proxy_batch_safe(
@@ -350,11 +415,12 @@ def _proxy_batch_safe(
     xray_bin: Path,
     timeout: float,
     speed_timeout: float,
+    runner_ip: str = "",
 ) -> dict[str, ProbeResult]:
     try:
-        return _run_batch(configs, xray_bin, timeout, speed_timeout, allow_split=True)
+        return _run_batch(configs, xray_bin, timeout, speed_timeout, runner_ip, allow_split=True)
     except Exception as exc:  # noqa: BLE001
-        return {cfg.fingerprint: ProbeResult(False, error=str(exc)) for cfg in configs}
+        return _handshake_results(configs, str(exc))
 
 
 def _run_batch(
@@ -362,6 +428,7 @@ def _run_batch(
     xray_bin: Path,
     timeout: float,
     speed_timeout: float,
+    runner_ip: str = "",
     *,
     allow_split: bool,
 ) -> dict[str, ProbeResult]:
@@ -394,15 +461,25 @@ def _run_batch(
                         ports = []
                         mid = len(configs) // 2
                         left = _run_batch(
-                            configs[:mid], xray_bin, timeout, speed_timeout, allow_split=False
+                            configs[:mid],
+                            xray_bin,
+                            timeout,
+                            speed_timeout,
+                            runner_ip,
+                            allow_split=False,
                         )
                         right = _run_batch(
-                            configs[mid:], xray_bin, timeout, speed_timeout, allow_split=False
+                            configs[mid:],
+                            xray_bin,
+                            timeout,
+                            speed_timeout,
+                            runner_ip,
+                            allow_split=False,
                         )
                         return {**left, **right}
                     error = _tail(log_path) or ("xray exited" if exited else "xray not listening")
-                    return {cfg.fingerprint: ProbeResult(False, error=error) for cfg in configs}
-                return _curl_batch(pairs, timeout, speed_timeout)
+                    return _handshake_results(configs, error)
+                return _curl_batch(pairs, timeout, speed_timeout, runner_ip)
             finally:
                 log_handle.close()
                 _kill(proc)
@@ -415,17 +492,14 @@ def _curl_batch(
     pairs: list[tuple[VlessConfig, int]],
     timeout: float,
     speed_timeout: float,
+    runner_ip: str = "",
 ) -> dict[str, ProbeResult]:
+    del speed_timeout  # Throughput always runs inside the per-config budget.
     results: dict[str, ProbeResult] = {}
+    per_request = min(float(timeout) if timeout else REQUEST_TIMEOUT_SEC, REQUEST_TIMEOUT_SEC)
 
     def one(cfg: VlessConfig, port: int) -> ProbeResult:
-        code, latency, _total, _size = _curl(port, _GENERATE_204, timeout)
-        if code == 0:
-            return ProbeResult(False, error="timeout")
-        if code not in {200, 204} or latency <= 0:
-            return ProbeResult(False, error=f"http {code}")
-        speed = _measure_speed(port, speed_timeout)
-        return ProbeResult(True, latency_ms=round(latency, 1), speed_kbps=speed)
+        return _probe_through_core(cfg, port, per_request, runner_ip)
 
     workers = max(1, len(pairs))
     with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -435,29 +509,124 @@ def _curl_batch(
             try:
                 results[cfg.fingerprint] = future.result()
             except Exception as exc:  # noqa: BLE001
-                results[cfg.fingerprint] = ProbeResult(False, error=str(exc))
+                results[cfg.fingerprint] = ProbeResult(
+                    False,
+                    error=str(exc),
+                    stage="handshake",
+                    reason=classify_failure("handshake", str(exc), cfg.security),
+                )
     return results
 
 
-def _measure_speed(port: int, timeout: float) -> float | None:
-    if timeout <= 0:
-        return None
-    code, _start_ms, elapsed_ms, size = _curl(port, _SPEED, timeout)
-    if code != 200 or size <= 0 or elapsed_ms <= 0:
-        return None
-    return round((size / 1024) / (elapsed_ms / 1000), 1)
+def _probe_through_core(cfg: VlessConfig, port: int, per_request: float, runner_ip: str) -> ProbeResult:
+    """Warmup, then majority HTTP, a payload, and an exit address. Core startup is already done."""
+    deadline = time.perf_counter() + CONFIG_BUDGET_SEC
+
+    def once(url: str, *, read_body: bool = False) -> HttpSample:
+        left = deadline - time.perf_counter()
+        if left < 0.4:
+            return HttpSample(timed_out=True)
+        return _curl(port, url, min(per_request, left), read_body=read_body)
+
+    def with_retry(url: str, expected: frozenset[int]) -> list[HttpSample]:
+        first = once(url)
+        if attempt_ok(first, expected) or deadline - time.perf_counter() < 0.4:
+            return [first]
+        return [first, once(url)]
+
+    warm_url = HTTP_TARGETS[0][0]
+    warm_attempts = with_retry(warm_url, _WARM_CODES)
+    warmup = next((sample for sample in warm_attempts if attempt_ok(sample, _WARM_CODES)), warm_attempts[-1])
+    if not attempt_ok(warmup, _WARM_CODES):
+        return _from_assessment(
+            assess_proxy(
+                security=cfg.security,
+                warmup=warmup,
+                targets=[],
+                speed=None,
+                exit_body="",
+                exit_timed_out=False,
+                runner_ip=runner_ip,
+            )
+        )
+
+    targets: list[tuple[frozenset[int], list[HttpSample]]] = []
+    for url, expected in HTTP_TARGETS:
+        if deadline - time.perf_counter() < 0.4:
+            targets.append((expected, []))
+            continue
+        targets.append((expected, with_retry(url, expected)))
+
+    hits = sum(1 for expected, attempts in targets if any(attempt_ok(sample, expected) for sample in attempts))
+    if hits * 2 <= len(targets):
+        return _from_assessment(
+            assess_proxy(
+                security=cfg.security,
+                warmup=warmup,
+                targets=targets,
+                speed=None,
+                exit_body="",
+                exit_timed_out=False,
+                runner_ip=runner_ip,
+            )
+        )
+
+    speed = once(SPEED_URL)
+    if speed.size < MIN_SPEED_BYTES or speed.total_ms <= 0:
+        return _from_assessment(
+            assess_proxy(
+                security=cfg.security,
+                warmup=warmup,
+                targets=targets,
+                speed=speed,
+                exit_body="",
+                exit_timed_out=False,
+                runner_ip=runner_ip,
+            )
+        )
+
+    exit_sample = once(EXIT_URL, read_body=True)
+    return _from_assessment(
+        assess_proxy(
+            security=cfg.security,
+            warmup=warmup,
+            targets=targets,
+            speed=speed,
+            exit_body=exit_sample.body,
+            exit_timed_out=exit_sample.timed_out,
+            runner_ip=runner_ip,
+        )
+    )
 
 
-def _curl(port: int, url: str, timeout: float) -> tuple[int, float, float, int]:
+def _from_assessment(assessment) -> ProbeResult:
+    return ProbeResult(
+        assessment.ok,
+        latency_ms=assessment.latency_ms,
+        speed_kbps=assessment.speed_kbps,
+        error="" if assessment.ok else assessment.reason,
+        handshake_ms=assessment.handshake_ms,
+        stage="" if assessment.ok else assessment.stage,
+        reason="" if assessment.ok else assessment.reason,
+        exit_ip=assessment.exit_ip,
+    )
+
+
+def _curl(port: int, url: str, timeout: float, *, read_body: bool = False) -> HttpSample:
+    body_path = ""
+    if read_body:
+        handle = tempfile.NamedTemporaryFile(prefix="vlesshub-body-", delete=False)
+        body_path = handle.name
+        handle.close()
     command = [
         "curl",
         "-sS",
         "-o",
-        os.devnull,
+        body_path or os.devnull,
         "--connect-timeout",
-        str(max(2, int(timeout // 2) or 2)),
+        str(max(2, int(min(timeout, 3)) or 2)),
         "--max-time",
-        str(max(3, int(timeout))),
+        f"{max(1.0, timeout):.1f}",
         "--retry",
         "0",
         "-w",
@@ -466,16 +635,47 @@ def _curl(port: int, url: str, timeout: float) -> tuple[int, float, float, int]:
         f"127.0.0.1:{port}",
         url,
     ]
+    timed_out = False
     try:
         proc = subprocess.run(
             command,
             capture_output=True,
             text=True,
-            timeout=timeout + 4,
+            timeout=timeout + 2,
         )
+        code, start_ms, total_ms, size = parse_curl_write(proc.stdout or "")
+        timed_out = proc.returncode == 28
     except subprocess.TimeoutExpired:
-        return 0, 0.0, 0.0, 0
-    return parse_curl_write(proc.stdout or "")
+        code, start_ms, total_ms, size = 0, 0.0, 0.0, 0
+        timed_out = True
+    body = ""
+    if body_path:
+        try:
+            body = Path(body_path).read_text(encoding="utf-8", errors="replace")[:200]
+        except OSError:
+            body = ""
+        Path(body_path).unlink(missing_ok=True)
+    return HttpSample(code, start_ms, total_ms, size, timed_out, body)
+
+
+def fetch_runner_ip(timeout: float = REQUEST_TIMEOUT_SEC) -> str:
+    """Address of this runner, fetched directly so a proxy exit can be compared to it."""
+    command = [
+        "curl",
+        "-fsS",
+        "--max-time",
+        f"{timeout:.0f}",
+        "--retry",
+        "0",
+        EXIT_URL,
+    ]
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout + 2)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return parse_exit_ip(proc.stdout or "")
 
 
 def parse_curl_write(stdout: str) -> tuple[int, float, float, int]:
@@ -559,31 +759,40 @@ def _proxy_probe_singbox(
     speed_timeout: float,
     concurrency: int,
     batch_size: int,
+    runner_ip: str = "",
 ) -> dict[str, ProbeResult]:
     results: dict[str, ProbeResult] = {}
     if not _curl_available():
-        return {cfg.fingerprint: ProbeResult(False, error="curl missing") for cfg in configs}
+        return _handshake_results(configs, "curl missing")
     size = max(1, min(batch_size, 8))
     batches = [configs[offset : offset + size] for offset in range(0, len(configs), size)]
     workers = max(1, min(concurrency, len(batches)))
-    log(f"hysteria2 batches {len(batches)} size<={size} parallel={workers}")
+    budget = _wave_budget(len(batches), workers)
+    log(f"hysteria2 batches {len(batches)} size<={size} parallel={workers} wave={budget:.0f}s")
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {
-            pool.submit(_run_singbox_batch, batch, singbox_bin, timeout, speed_timeout, allow_split=True): batch
+            pool.submit(
+                _run_singbox_batch,
+                batch,
+                singbox_bin,
+                timeout,
+                speed_timeout,
+                runner_ip,
+                allow_split=True,
+            ): batch
             for batch in batches
         }
         try:
-            budget = math.ceil(len(batches) / workers) * (timeout + speed_timeout + 14) + 90
             for future in as_completed(futures, timeout=budget):
                 batch = futures[future]
                 try:
                     results.update(future.result())
                 except Exception as exc:  # noqa: BLE001
-                    results.update({cfg.fingerprint: ProbeResult(False, error=str(exc)) for cfg in batch})
+                    results.update(_handshake_results(batch, str(exc)))
         except TimeoutError:
-            log("hysteria2 phase hit its time budget")
+            log("hysteria2 phase hit its time budget; untested configs are left unevaluated")
     for cfg in configs:
-        results.setdefault(cfg.fingerprint, ProbeResult(False, error="timeout"))
+        results.setdefault(cfg.fingerprint, ProbeResult(False, error="budget", evaluated=False))
     ok_count = sum(1 for cfg in configs if results[cfg.fingerprint].ok)
     log(f"hysteria2 verified {ok_count}/{len(configs)}")
     return results
@@ -629,6 +838,7 @@ def _run_singbox_batch(
     singbox_bin: Path,
     timeout: float,
     speed_timeout: float,
+    runner_ip: str = "",
     *,
     allow_split: bool,
 ) -> dict[str, ProbeResult]:
@@ -661,15 +871,25 @@ def _run_singbox_batch(
                         ports = []
                         mid = len(configs) // 2
                         left = _run_singbox_batch(
-                            configs[:mid], singbox_bin, timeout, speed_timeout, allow_split=False
+                            configs[:mid],
+                            singbox_bin,
+                            timeout,
+                            speed_timeout,
+                            runner_ip,
+                            allow_split=False,
                         )
                         right = _run_singbox_batch(
-                            configs[mid:], singbox_bin, timeout, speed_timeout, allow_split=False
+                            configs[mid:],
+                            singbox_bin,
+                            timeout,
+                            speed_timeout,
+                            runner_ip,
+                            allow_split=False,
                         )
                         return {**left, **right}
                     error = _tail(log_path) or ("sing-box exited" if exited else "sing-box not listening")
-                    return {cfg.fingerprint: ProbeResult(False, error=error) for cfg in configs}
-                return _curl_batch(pairs, timeout, speed_timeout)
+                    return _handshake_results(configs, error)
+                return _curl_batch(pairs, timeout, speed_timeout, runner_ip)
             finally:
                 log_handle.close()
                 _kill(proc)
