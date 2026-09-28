@@ -127,7 +127,7 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
 
   const rejected = data?.stats.rejected
   const rejectedLine = rejected
-    ? `Отброшено: разбор ${rejected.parse_error}, поля ${rejected.invalid_field}, мёртвые ${rejected.dead}, таймаут ${rejected.timeout}`
+    ? `Отброшено: разбор ${rejected.parse_error ?? 0}, tcp_refused ${rejected.tcp_refused ?? 0}, timeout ${rejected.timeout ?? 0}, http_fail ${rejected.http_fail ?? 0}, no_data ${rejected.no_data ?? 0}`
     : ''
 
   return (
@@ -219,7 +219,7 @@ export function SettingsScreen({ data, embedded = false }: { data: HubData | nul
         <Separator />
         <InfoRow
           icon={<Gauge className="size-4" />}
-          text="Задержка: один HTTP-запрос через прокси, без старта Xray"
+          text="Пинг — медиана HTTP после прогрева, отдельно от рукопожатия"
         />
         <Separator />
         <InfoRow

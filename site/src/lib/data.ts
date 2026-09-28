@@ -11,6 +11,7 @@ export async function loadHub(): Promise<HubData> {
     throw new Error('Файл данных повреждён')
   }
   data.catalog ??= []
+  data.unstable ??= []
   data.unverified ??= []
   data.proxies ??= []
   data.stats ??= {

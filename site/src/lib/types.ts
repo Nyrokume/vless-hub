@@ -23,6 +23,10 @@ export type ConfigRecord = {
   extra: Record<string, string>
   source: string
   latency_ms: number | null
+  handshake_ms?: number | null
+  status?: 'working' | 'unstable' | 'dead' | string
+  stability?: number | null
+  exit_ip?: string
   tested_at: string
   uptime?: number
   checks_ok?: number
@@ -89,6 +93,8 @@ export type ProxyRecord = {
   country_name: string
   ip?: string
   latency_ms: number | null
+  status?: 'working' | 'unstable' | 'dead' | string
+  stability?: number | null
   uptime: number
   checks_ok: number
   checks_fail: number
@@ -112,24 +118,22 @@ export type HubData = {
     tested: number
     alive: number
     published: number
+    working?: number
+    unstable?: number
     countries: number
     median_latency_ms: number | null
     transports: Record<string, number>
     unverified?: number
     proxy_tested?: number
     proxy_ok?: number
-    rejected?: {
-      parse_error: number
-      invalid_field: number
-      dead: number
-      timeout: number
-    }
+    rejected?: Record<string, number>
     by_protocol?: Record<string, number>
     telegram?: TelegramStats
   }
   subscriptions: SubscriptionInfo[]
   catalog: CatalogEntry[]
   configs: ConfigRecord[]
+  unstable?: ConfigRecord[]
   unverified: ConfigRecord[]
   proxies: ProxyRecord[]
 }

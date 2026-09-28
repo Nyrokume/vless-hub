@@ -33,7 +33,8 @@ import {
   latencyClass,
   latencyText,
   protocolLine,
-  uptimeText,
+  speedText,
+  stabilityText,
 } from '@/lib/format'
 import { SORTS, VIEWS, sortLabel, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
@@ -149,6 +150,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [showUnverified, setShowUnverified] = useState(false)
+  const [showUnstable, setShowUnstable] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [qr, setQr] = useState<QrRequest | null>(null)
   const [countryOrder, setCountryOrder] = useState<CountryOrder>('count')
@@ -156,10 +158,12 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const listRef = useRef<HTMLDivElement>(null)
   const [range, setRange] = useState({ start: 0, end: 40 })
 
-  const visible = useMemo(
-    () => (showUnverified ? [...data.configs, ...data.unverified] : data.configs),
-    [data.configs, data.unverified, showUnverified],
-  )
+  const visible = useMemo(() => {
+    const rows = [...data.configs]
+    if (showUnstable) rows.push(...(data.unstable ?? []))
+    if (showUnverified) rows.push(...data.unverified)
+    return rows
+  }, [data.configs, data.unstable, data.unverified, showUnstable, showUnverified])
 
   const indexed = useMemo(
     () =>
@@ -393,9 +397,12 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   return (
     <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', chosen.length > 0 && 'pb-36')}>
       <SiteHeader updated={formatStamp(data.generated_at)} menu={sortMenu} />
-      <p className="mb-3 text-[13px] text-muted-foreground">
+      <p className="text-[13px] text-muted-foreground">
         {data.stats.published} в списке · {data.stats.countries} стран · медиана HTTP{' '}
         {data.stats.median_latency_ms == null ? '—' : data.stats.median_latency_ms} мс
+      </p>
+      <p className="mb-3 text-[12px] text-muted-foreground">
+        Проверка идёт с серверов GitHub Actions вне России: рабочий там конфиг может быть закрыт у вашего провайдера.
       </p>
 
       <div className="mb-3 flex flex-col gap-2">
@@ -442,6 +449,18 @@ export function ConfigsScreen({ data }: { data: HubData }) {
               </select>
             </label>
           )}
+          {(data.unstable?.length ?? 0) > 0 && (
+            <button
+              type="button"
+              className={cn(
+                'rounded-full px-3 py-1.5 text-[13px]',
+                showUnstable ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
+              )}
+              onClick={() => setShowUnstable((value) => !value)}
+            >
+              Нестабильные · {data.unstable?.length}
+            </button>
+          )}
           {data.unverified.length > 0 && (
             <button
               type="button"
@@ -458,6 +477,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         <p className="text-[12px] text-muted-foreground">
           {layoutNote}
           {settings.latencyThreshold != null ? ` · до ${settings.latencyThreshold} мс` : ''}
+          {showUnstable ? ' · с нестабильными' : ''}
           {showUnverified ? ' · с непроверенными' : ''}
           {' · '}
           {filtered.length}
@@ -622,6 +642,31 @@ function CountryHeader({
   )
 }
 
+function StatusDot({ status }: { status?: string }) {
+  if (status !== 'working' && status !== 'unstable') return null
+  const unstable = status === 'unstable'
+  return (
+    <span
+      className={cn(
+        'inline-block size-2 shrink-0 rounded-full',
+        unstable ? 'border border-foreground' : 'bg-foreground',
+      )}
+      title={unstable ? 'Нестабильный' : 'Рабочий'}
+      aria-label={unstable ? 'Нестабильный' : 'Рабочий'}
+    />
+  )
+}
+
+function rowMeta(config: ConfigRecord): string {
+  const parts = [protocolLine(config.transport, config.protocol)]
+  const stability = stabilityText(config.stability)
+  const speed = speedText(config.speed_kbps)
+  if (stability) parts.push(stability)
+  if (speed) parts.push(speed)
+  if (config.verified === 'tcp') parts.push('порт открыт')
+  return parts.join(' · ')
+}
+
 function ConfigItem({
   view,
   ...props
@@ -653,8 +698,6 @@ function ConfigRow({
 }) {
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
-  const verified =
-    config.verified === 'tcp' ? 'порт открыт' : config.verified === 'proxy' ? 'Xray' : ''
   return (
     <div className="flex h-[72px] items-center gap-2 border-t border-border px-3 sm:gap-3 sm:px-4">
       <input
@@ -669,15 +712,14 @@ function ConfigRow({
           {flag || <Globe className="size-5 text-muted-foreground" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-medium sm:text-[16px]">
-            {title}
-            {config.country_code ? ` ${config.country_code}` : ''}
+          <span className="flex min-w-0 items-center gap-2 text-[15px] font-medium sm:text-[16px]">
+            <StatusDot status={config.status} />
+            <span className="truncate">
+              {title}
+              {config.country_code ? ` ${config.country_code}` : ''}
+            </span>
           </span>
-          <span className="block truncate text-[12px] text-muted-foreground sm:text-[13px]">
-            {protocolLine(config.transport, config.protocol)}
-            {uptimeText(config.uptime) ? ` · ${uptimeText(config.uptime)}` : ''}
-            {verified ? ` · ${verified}` : ''}
-          </span>
+          <span className="block truncate text-[12px] text-muted-foreground sm:text-[13px]">{rowMeta(config)}</span>
         </span>
       </button>
       <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
@@ -731,10 +773,11 @@ function CompactRow({
         <span className="w-5 shrink-0 text-center text-[16px] leading-none" aria-hidden>
           {flag || <Globe className="size-4 text-muted-foreground" />}
         </span>
+        <StatusDot status={config.status} />
         <span className="min-w-0 flex-1 truncate text-[14px]">
           {title}
           {config.country_code ? ` ${config.country_code}` : ''}
-          <span className="text-muted-foreground"> · {protocolLine(config.transport, config.protocol)}</span>
+          <span className="text-muted-foreground"> · {rowMeta(config)}</span>
         </span>
       </button>
       <span className={cn('shrink-0 text-[13px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
@@ -762,7 +805,6 @@ function CardRow({
 }) {
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
-  const verified = config.verified === 'tcp' ? 'порт открыт' : config.verified === 'proxy' ? 'Xray' : ''
   return (
     <div className="h-28 px-1 py-1.5">
       <div className="flex h-full items-center gap-2 rounded-2xl bg-card px-3">
@@ -778,15 +820,14 @@ function CardRow({
             {flag || <Globe className="size-5 text-muted-foreground" />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[15px] font-medium">
-              {title}
-              {config.country_code ? ` ${config.country_code}` : ''}
+            <span className="flex min-w-0 items-center gap-2 text-[15px] font-medium">
+              <StatusDot status={config.status} />
+              <span className="truncate">
+                {title}
+                {config.country_code ? ` ${config.country_code}` : ''}
+              </span>
             </span>
-            <span className="block truncate text-[12px] text-muted-foreground">
-              {protocolLine(config.transport, config.protocol)}
-              {uptimeText(config.uptime) ? ` · ${uptimeText(config.uptime)}` : ''}
-              {verified ? ` · ${verified}` : ''}
-            </span>
+            <span className="block truncate text-[12px] text-muted-foreground">{rowMeta(config)}</span>
           </span>
         </button>
         <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>

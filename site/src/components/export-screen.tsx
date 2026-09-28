@@ -17,7 +17,7 @@ import { flagEmoji, formatStamp, protocolLabel, securityLabel, transportLabel } 
 import { useSettings } from '@/lib/settings'
 import type { CatalogEntry, HubData } from '@/lib/types'
 
-const SLICE_ORDER = ['all', 'top', 'clash', 'singbox', 'unverified']
+const SLICE_ORDER = ['all', 'unstable', 'top', 'clash', 'singbox', 'unverified']
 
 export function ExportScreen({ data }: { data: HubData }) {
   const { settings } = useSettings()
@@ -49,6 +49,7 @@ export function ExportScreen({ data }: { data: HubData }) {
 
   function titleOf(entry: CatalogEntry): string {
     if (entry.kind === 'all') return 'Все проверенные'
+    if (entry.kind === 'unstable') return 'Вместе с нестабильными'
     if (entry.kind === 'unverified') return 'Только открытый порт'
     if (entry.kind === 'top') return `Топ ${entry.top ?? entry.count}`
     if (entry.kind === 'clash') return 'Clash'

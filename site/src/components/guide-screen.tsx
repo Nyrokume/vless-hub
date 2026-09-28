@@ -1,8 +1,27 @@
 import { InspectScreen } from '@/components/inspect-screen'
 import { SettingsScreen } from '@/components/settings-screen'
 import { SiteHeader } from '@/components/site-header'
-import { formatStamp } from '@/lib/format'
+import { FAILURE_LABELS, formatStamp } from '@/lib/format'
 import type { HubData } from '@/lib/types'
+
+function FailureCounts({ data }: { data: HubData | null }) {
+  const rejected = data?.stats.rejected
+  if (!rejected) return null
+  const rows = Object.keys(FAILURE_LABELS)
+    .map((key) => ({ key, label: FAILURE_LABELS[key], count: rejected[key] ?? 0 }))
+    .filter((row) => row.count > 0)
+  if (rows.length === 0) return null
+  return (
+    <ul className="mt-3 flex flex-col gap-1 text-[13px] text-muted-foreground">
+      {rows.map((row) => (
+        <li key={row.key} className="flex justify-between gap-3">
+          <span>{row.label}</span>
+          <span className="tabular-nums">{row.count}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 export function GuideScreen({ data }: { data: HubData | null }) {
   return (
@@ -16,10 +35,10 @@ export function GuideScreen({ data }: { data: HubData | null }) {
         <div className="rounded-2xl bg-card px-4 py-3">
           <p className="font-medium">Как читать результат</p>
           <p className="mt-1 text-[14px] text-muted-foreground">
-            В список попадает ответ HTTP 200 или 204 через Xray. Задержка — время этого запроса с
-            машины сборщика. Аптайм — доля успешных проверок. «Порт открыт» значит, что TCP ответил,
-            а HTTP через Xray в этом прогоне не проверялся: такие строки скрыты, пока не включить
-            «Непроверенные».
+            Точка на строке — рабочий или нестабильный конфиг. Пинг — медиана нескольких HTTP-запросов
+            через уже запущенный Xray или sing-box, без прогрева. Рядом доля успешных прогонов и
+            скорость. «Порт открыт» значит, что TCP ответил, а полный проход в этом запуске не
+            выполнялся.
           </p>
         </div>
         <div className="rounded-2xl bg-card px-4 py-3">
@@ -30,6 +49,17 @@ export function GuideScreen({ data }: { data: HubData | null }) {
             sing-box. QR и кнопки клиента используют только проверенные схемы: Happ, v2rayNG,
             Hiddify, v2RayTun для VLESS; Clash Meta, Mihomo, NekoBox и sing-box — для своих файлов.
           </p>
+        </div>
+        <div className="rounded-2xl bg-card px-4 py-3">
+          <p className="font-medium">Проверка</p>
+          <p className="mt-1 text-[14px] text-muted-foreground">
+            Сначала разбор ссылки, затем TCP, рукопожатие ядра, большинство из трёх HTTP-адресов,
+            короткая загрузка и чужой адрес выхода. Рабочий — прошёл сейчас и держится хотя бы в 70%
+            последних прогонов. Нестабильный прошёл сейчас, но реже. Мёртвый в список не попадает, а
+            после нескольких провалов подряд выбывает из пула. Проверка идёт с серверов GitHub Actions
+            вне России, поэтому местный провайдер может закрыть то, что здесь открылось.
+          </p>
+          <FailureCounts data={data} />
         </div>
         <div className="rounded-2xl bg-card px-4 py-3">
           <p className="font-medium">Telegram</p>

@@ -33,6 +33,30 @@ export function protocolLine(transport: string, protocol?: string): string {
   return `${protocolLabel(protocol)} / ${transportLabel(transport)}`
 }
 
+export function stabilityText(rate: number | null | undefined): string {
+  if (rate == null || Number.isNaN(rate)) return ''
+  return `${Math.round(rate * 100)}%`
+}
+
+export function speedText(kbps: number | null | undefined): string {
+  if (kbps == null || kbps <= 0) return ''
+  if (kbps >= 1024) return `${(kbps / 1024).toFixed(1)} МБ/с`
+  return `${Math.round(kbps)} КБ/с`
+}
+
+export const FAILURE_LABELS: Record<string, string> = {
+  parse_error: 'разбор',
+  invalid_field: 'поле',
+  tcp_refused: 'tcp_refused',
+  timeout: 'timeout',
+  tls_fail: 'tls_fail',
+  reality_fail: 'reality_fail',
+  handshake_fail: 'рукопожатие',
+  http_fail: 'http_fail',
+  no_data: 'no_data',
+  exit_ip_leak: 'exit_ip_leak',
+}
+
 export function flagEmoji(code: string | null | undefined): string {
   if (!code || !/^[a-z]{2}$/i.test(code)) return ''
   const upper = code.toUpperCase() === 'UK' ? 'GB' : code.toUpperCase()

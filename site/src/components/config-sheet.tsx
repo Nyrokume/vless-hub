@@ -19,6 +19,8 @@ import {
   latencyText,
   protocolLine,
   securityLabel,
+  speedText,
+  stabilityText,
   transportLabel,
   uptimeText,
 } from '@/lib/format'
@@ -76,9 +78,10 @@ export function ConfigSheet({
               ? 'GeoIP адреса'
               : '',
         ],
-        ['Аптайм', uptimeText(config.uptime)],
-        ['Проверки', config.checks_ok != null ? `${config.checks_ok} ок / ${config.checks_fail ?? 0} сбоев` : ''],
-        ['Статус', config.verified === 'proxy' ? 'Прокси через Xray' : config.verified === 'tcp' ? 'Только открытый порт' : ''],
+        ['Стабильность', stabilityText(config.stability) || uptimeText(config.uptime)],
+        ['Скорость', speedText(config.speed_kbps)],
+        ['Рукопожатие', config.handshake_ms != null ? `${config.handshake_ms} мс` : ''],
+        ['Статус', config.status === 'working' ? 'Рабочий' : config.status === 'unstable' ? 'Нестабильный' : config.verified === 'tcp' ? 'Только открытый порт' : ''],
         ['Список', sourceName ?? ''],
         ['Проверено', config.tested_at ? formatStamp(config.tested_at) : ''],
       ].filter(([, value]) => value)
