@@ -10,7 +10,8 @@ const TRANSPORTS: Record<string, string> = {
   httpupgrade: 'HTTPUpgrade',
   xhttp: 'XHTTP',
   kcp: 'mKCP',
-  hysteria2: 'HY2',
+  hysteria2: 'Hysteria2',
+  hy2: 'Hysteria2',
 }
 
 export function transportLabel(value: string): string {
@@ -25,15 +26,31 @@ export function securityLabel(value: string): string {
 }
 
 export function protocolLabel(protocol: string | undefined): string {
-  const key = protocol || 'vless'
-  if (key === 'shadowsocks') return 'SS'
+  const key = (protocol || 'vless').toLowerCase()
+  if (key === 'shadowsocks' || key === 'ss') return 'SS'
   if (key === 'trojan') return 'Trojan'
-  if (key === 'hysteria2') return 'HY2'
-  return 'VLESS'
+  if (key === 'hysteria2' || key === 'hy2') return 'Hysteria2'
+  if (key === 'vless') return 'VLESS'
+  return key.toUpperCase()
+}
+
+/** Transport adds nothing when it is empty or the same thing as the protocol. */
+export function distinctTransport(transport: string, protocol?: string): string | null {
+  const raw = (transport || '').trim()
+  if (!raw) return null
+  const proto = protocolLabel(protocol)
+  const via = transportLabel(raw)
+  const left = (protocol || 'vless').toLowerCase()
+  const right = raw.toLowerCase()
+  if (left === right || proto.toLowerCase() === via.toLowerCase()) return null
+  if ((left === 'hysteria2' && right === 'hy2') || (left === 'hy2' && right === 'hysteria2')) return null
+  return via
 }
 
 export function protocolLine(transport: string, protocol?: string): string {
-  return `${protocolLabel(protocol)} / ${transportLabel(transport)}`
+  const proto = protocolLabel(protocol)
+  const via = distinctTransport(transport, protocol)
+  return via ? `${proto} / ${via}` : proto
 }
 
 export function stabilityText(rate: number | null | undefined): string {

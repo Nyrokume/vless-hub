@@ -18,11 +18,11 @@ import {
   checkedAge,
   latencyClass,
   latencyText,
+  distinctTransport,
   protocolLine,
   securityLabel,
   speedText,
   stabilityText,
-  transportLabel,
   uptimeText,
 } from '@/lib/format'
 import { ru, statusLabel } from '@/lib/ru'
@@ -61,7 +61,7 @@ export function ConfigSheet({
     ? [
         [ru.fields.address, config.host],
         [ru.fields.port, String(config.port)],
-        [ru.fields.connection, transportLabel(config.transport)],
+        [ru.fields.connection, distinctTransport(config.transport, config.protocol) ?? ''],
         [ru.fields.security, securityLabel(config.security)],
         [ru.fields.serverName, config.sni],
         [ru.fields.flow, config.flow],
