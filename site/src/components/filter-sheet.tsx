@@ -129,6 +129,13 @@ export function FilterSheet({
               )}
             </div>
           )}
+          <label className="flex items-center justify-between gap-3 rounded-2xl bg-card px-4 py-3 text-[15px]">
+            <span>{ru.onlyReachable}</span>
+            <Switch
+              checked={draft.onlyReachable}
+              onCheckedChange={(value) => onDraft({ onlyReachable: value })}
+            />
+          </label>
           <div>
             <div className="mb-2 text-[14px] font-medium text-foreground">{ru.ping}</div>
             <div className="flex flex-wrap gap-2">

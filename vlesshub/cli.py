@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from vlesshub.localcheck import DEFAULT_LIST_URL, run_local_check
 from vlesshub.parser import parse_vless
 from vlesshub.pipeline import run_pipeline
 
@@ -26,7 +27,24 @@ def main(argv: list[str] | None = None) -> int:
     show = sub.add_parser("parse", help="parse one vless:// URI and print JSON")
     show.add_argument("uri")
 
+    local = sub.add_parser("check-local", help="test the published list from this machine")
+    local.add_argument("--file", type=Path, default=None, help="configs.json instead of the live list")
+    local.add_argument("--url", default=DEFAULT_LIST_URL)
+    local.add_argument("--out", type=Path, default=Path("local-working.txt"))
+    local.add_argument("--limit", type=int, default=0, help="check only the first N configs")
+    local.add_argument("--concurrency", type=int, default=4)
+    local.add_argument("--list-only", action="store_true", help="print host:port and do not probe")
+
     args = parser.parse_args(argv)
+    if args.cmd == "check-local":
+        return run_local_check(
+            path=args.file,
+            url=args.url,
+            out=args.out,
+            limit=args.limit,
+            concurrency=args.concurrency,
+            list_only=args.list_only,
+        )
     if args.cmd == "parse":
         cfg = parse_vless(args.uri)
         if cfg is None:

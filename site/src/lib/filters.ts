@@ -5,7 +5,7 @@ export const SETTINGS_VERSION = 2
 export const LIST_VERSION = 2
 export const LIST_STORAGE_KEY = 'vless-hub-list'
 
-const SORTS = ['latency-asc', 'latency-desc', 'country', 'transport'] as const
+const SORTS = ['latency-asc', 'latency-desc', 'country', 'transport', 'reach'] as const
 const VIEWS = ['country', 'flat', 'compact', 'cards'] as const
 const THRESHOLDS = [150, 300, 600, 1000] as const
 
@@ -19,6 +19,8 @@ const SORT_ALIASES: Record<string, (typeof SORTS)[number]> = {
   fast: 'latency-asc',
   slow: 'latency-desc',
   network: 'transport',
+  reach: 'reach',
+  mine: 'reach',
 }
 
 const VIEW_ALIASES: Record<string, (typeof VIEWS)[number]> = {
@@ -39,6 +41,7 @@ export type StoredSettings = {
   latencyThreshold: number | null
   client: ClientId
   publicBase: string
+  onlyReachable: boolean
 }
 
 export type ListState = {
@@ -154,6 +157,7 @@ export function migrateSettings(raw: unknown, fallback: StoredSettings): StoredS
     latencyThreshold: normalizeThreshold(parsed.latencyThreshold),
     client,
     publicBase,
+    onlyReachable: flag(parsed.onlyReachable),
   }
 }
 
@@ -266,6 +270,7 @@ export type FilterDraft = {
   view: StoredSettings['view']
   showUnverified: boolean
   showUnstable: boolean
+  onlyReachable: boolean
 }
 
 export function draftFilters(draft: FilterDraft, query: string): ActiveFilters {

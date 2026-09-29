@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { ClientId } from '@/lib/clients'
 import { migrateSettings, SETTINGS_VERSION } from '@/lib/filters'
 
-export type SortKey = 'latency-asc' | 'latency-desc' | 'country' | 'transport'
+export type SortKey = 'latency-asc' | 'latency-desc' | 'country' | 'transport' | 'reach'
 export type ViewMode = 'country' | 'flat' | 'compact' | 'cards'
 
 export type Settings = {
@@ -11,6 +11,7 @@ export type Settings = {
   latencyThreshold: number | null
   client: ClientId
   publicBase: string
+  onlyReachable: boolean
 }
 
 export const DEFAULT_PUBLIC_BASE = 'https://nyrokume.github.io/vless-hub'
@@ -21,6 +22,7 @@ export const SORTS: { value: SortKey; label: string }[] = [
   { value: 'latency-desc', label: 'Сначала медленные' },
   { value: 'country', label: 'По стране' },
   { value: 'transport', label: 'По типу соединения' },
+  { value: 'reach', label: 'Сначала доступные у меня' },
 ]
 
 export const VIEWS: { value: ViewMode; label: string }[] = [
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: Settings = {
   latencyThreshold: null,
   client: 'happ',
   publicBase: DEFAULT_PUBLIC_BASE,
+  onlyReachable: false,
 }
 
 function loadSettings(): Settings {

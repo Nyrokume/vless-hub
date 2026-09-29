@@ -25,6 +25,8 @@ import {
   stabilityText,
   uptimeText,
 } from '@/lib/format'
+import { endpointKey, reachLine } from '@/lib/reach'
+import { useReach } from '@/lib/reach-context'
 import { ru, statusLabel } from '@/lib/ru'
 import type { ConfigRecord, SourceReport } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -53,8 +55,10 @@ export function ConfigSheet({
   onOpenChange: (open: boolean) => void
   onQr: (request: QrRequest) => void
 }) {
+  const { book } = useReach()
   const title = config ? configTitle(config) : ''
   const flag = config ? flagEmoji(config.country_code) : ''
+  const localReach = config ? reachLine(book.byEndpoint[endpointKey(config.host, config.port)]) : ''
   const sourceName = sources.find((item) => item.id === config?.source)?.name ?? config?.source
   const deepLink = config ? configDeepLink(client, config.uri) : null
   const rows = config
@@ -83,6 +87,7 @@ export function ConfigSheet({
         [ru.fields.stability, stabilityText(config.stability) || uptimeText(config.uptime)],
         [ru.fields.speed, speedText(config.speed_kbps)],
         [ru.fields.handshake, config.handshake_ms != null ? latencyText(config.handshake_ms) : ''],
+        [ru.fields.yours, localReach],
         [
           ru.fields.status,
           missing

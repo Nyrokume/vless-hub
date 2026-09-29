@@ -3,12 +3,15 @@ import { Moon, RefreshCw, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { Button } from '@/components/ui/button'
 import { useHub } from '@/lib/hub'
+import { useReach } from '@/lib/reach-context'
 import { ru } from '@/lib/ru'
 import { cn } from '@/lib/utils'
 
 export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme()
   const { refreshing, refresh } = useHub()
+  const { progress, run } = useReach()
+  const busy = refreshing || progress.running
   const dark = resolvedTheme !== 'light'
   return (
     <header className="flex items-center gap-2 pb-2">
@@ -21,10 +24,15 @@ export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNo
         variant="ghost"
         size="icon"
         aria-label={ru.refresh}
-        disabled={refreshing}
-        onClick={() => void refresh()}
+        disabled={busy}
+        onClick={() => {
+          void (async () => {
+            await refresh()
+            await run()
+          })()
+        }}
       >
-        <RefreshCw className={cn(refreshing && 'animate-spin')} />
+        <RefreshCw className={cn(busy && 'animate-spin')} />
       </Button>
       <Button
         variant="ghost"

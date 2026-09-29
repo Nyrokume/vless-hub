@@ -32,7 +32,6 @@ import {
 import { copyText } from '@/lib/copy'
 import {
   LIST_STORAGE_KEY,
-  countMatches,
   defaultListState,
   draftFilters,
   facetCounts,
@@ -57,7 +56,10 @@ import {
   stabilityText,
 } from '@/lib/format'
 import { formatCount } from '@/lib/plural'
+import { endpointKey, reachLine, type ReachBook, type ReachHit } from '@/lib/reach'
+import { useReach } from '@/lib/reach-context'
 import { ru, statusLabel } from '@/lib/ru'
+import { useServerCheck } from '@/lib/server-check-context'
 import { STORAGE_KEY, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -127,7 +129,18 @@ function latencyRank(ms: number | null, desc = false): number {
   return ms
 }
 
-function compareConfigs(sort: SortKey, left: ConfigRecord, right: ConfigRecord): number {
+function reachRank(config: ConfigRecord, book: ReachBook): number {
+  const hit = book.byEndpoint[endpointKey(config.host, config.port)]
+  if (!hit) return 2_000_000
+  if (hit.status === 'open') return hit.ms ?? 100_000
+  if (hit.status === 'skip') return 3_000_000
+  return 4_000_000
+}
+
+function compareConfigs(sort: SortKey, left: ConfigRecord, right: ConfigRecord, book: ReachBook): number {
+  if (sort === 'reach') {
+    return reachRank(left, book) - reachRank(right, book) || left.id.localeCompare(right.id)
+  }
   if (sort === 'latency-desc') {
     return latencyRank(right.latency_ms, true) - latencyRank(left.latency_ms, true) || left.id.localeCompare(right.id)
   }
@@ -143,7 +156,7 @@ function compareConfigs(sort: SortKey, left: ConfigRecord, right: ConfigRecord):
   return latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id)
 }
 
-function groupByCountry(configs: ConfigRecord[]): CountryGroup[] {
+function groupByCountry(configs: ConfigRecord[], sort: SortKey, book: ReachBook): CountryGroup[] {
   const map = new Map<string, ConfigRecord[]>()
   for (const config of configs) {
     const code =
@@ -156,16 +169,19 @@ function groupByCountry(configs: ConfigRecord[]): CountryGroup[] {
   }
   const groups: CountryGroup[] = []
   for (const [code, items] of map) {
-    items.sort(
-      (left, right) => latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id),
+    items.sort((left, right) =>
+      sort === 'reach'
+        ? compareConfigs(sort, left, right, book)
+        : latencyRank(left.latency_ms) - latencyRank(right.latency_ms) || left.id.localeCompare(right.id),
     )
     const name = items.find((item) => item.country)?.country || (code === 'ZZ' ? ru.noCountry : code)
     const bounds = displayedLatencyBounds(items)
     groups.push({ code, name, count: items.length, min: bounds.min, max: bounds.max, configs: items })
   }
-  groups.sort(
-    (left, right) =>
-      latencyRank(left.min) - latencyRank(right.min) || left.name.localeCompare(right.name, 'ru'),
+  groups.sort((left, right) =>
+    sort === 'reach'
+      ? compareConfigs(sort, left.configs[0], right.configs[0], book) || left.name.localeCompare(right.name, 'ru')
+      : latencyRank(left.min) - latencyRank(right.min) || left.name.localeCompare(right.name, 'ru'),
   )
   return groups
 }
@@ -190,6 +206,8 @@ function lowerBound(prefix: number[], target: number): number {
 
 export function ConfigsScreen({ data }: { data: HubData }) {
   const { settings, update } = useSettings()
+  const { book, progress, setTargets } = useReach()
+  const { phase: serverPhase } = useServerCheck()
   const [list, setList] = useState<ListState>(readListState)
   const [draft, setDraft] = useState<FilterDraft | null>(null)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
@@ -239,12 +257,19 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   )
 
   const filtered = useMemo(() => {
-    const matched = appliedIndexed
+    let matched = appliedIndexed
       .filter((item) => matches(item.facet, appliedFilters))
       .map((item) => item.config)
-    if (settings.view !== 'country') matched.sort((left, right) => compareConfigs(settings.sort, left, right))
+    if (settings.onlyReachable) {
+      matched = matched.filter((config) => book.byEndpoint[endpointKey(config.host, config.port)]?.status === 'open')
+    }
+    if (settings.view !== 'country') matched.sort((left, right) => compareConfigs(settings.sort, left, right, book))
     return matched
-  }, [appliedFilters, appliedIndexed, settings.sort, settings.view])
+  }, [appliedFilters, appliedIndexed, book, settings.onlyReachable, settings.sort, settings.view])
+
+  useEffect(() => {
+    setTargets(filtered)
+  }, [filtered, setTargets])
 
   const sheetDraft = draft ?? {
     country: safeList.country,
@@ -256,16 +281,19 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     view: settings.view,
     showUnverified: safeList.showUnverified,
     showUnstable: safeList.showUnstable,
+    onlyReachable: settings.onlyReachable,
   }
   const draftIndexed = useMemo(
     () => poolFor(sheetDraft.showUnstable, sheetDraft.showUnverified),
     [poolFor, sheetDraft.showUnstable, sheetDraft.showUnverified],
   )
   const draftActive = useMemo(() => draftFilters(sheetDraft, safeList.query), [safeList.query, sheetDraft])
-  const draftCount = useMemo(
-    () => countMatches(draftIndexed.map((item) => item.facet), draftActive),
-    [draftActive, draftIndexed],
-  )
+  const draftCount = useMemo(() => {
+    const matched = draftIndexed.filter((item) => matches(item.facet, draftActive))
+    if (!sheetDraft.onlyReachable) return matched.length
+    return matched.filter((item) => book.byEndpoint[endpointKey(item.config.host, item.config.port)]?.status === 'open')
+      .length
+  }, [book, draftActive, draftIndexed, sheetDraft.onlyReachable])
   const draftFacets = useMemo(() => {
     const items = draftIndexed.map((item) => item.facet)
     const names = new Map<string, string>()
@@ -286,8 +314,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
 
   const groups = useMemo(
     () =>
-      settings.view === 'country' ? groupByCountry(filtered) : [],
-    [filtered, settings.view],
+      settings.view === 'country' ? groupByCountry(filtered, settings.sort, book) : [],
+    [book, filtered, settings.sort, settings.view],
   )
 
   const rows = useMemo(() => {
@@ -353,6 +381,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const filtersNarrow =
     Boolean(safeList.country || safeList.transport || safeList.security || safeList.protocol) ||
     settings.latencyThreshold != null ||
+    settings.onlyReachable ||
     safeList.query.trim() !== ''
 
   function toggle(id: string) {
@@ -431,7 +460,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const sheetMissing = Boolean(opened) && !liveOpened
   const filtersOn =
     Boolean(safeList.country || safeList.transport || safeList.security || safeList.protocol) ||
-    settings.latencyThreshold != null
+    settings.latencyThreshold != null ||
+    settings.onlyReachable
 
   function openFilters() {
     setDraft({
@@ -444,6 +474,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       view: settings.view,
       showUnverified: safeList.showUnverified,
       showUnstable: safeList.showUnstable,
+      onlyReachable: settings.onlyReachable,
     })
     setFiltersOpen(true)
   }
@@ -463,7 +494,12 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       draftIndexed.map((item) => item.facet),
     )
     setList(next)
-    update({ latencyThreshold: draft.threshold, sort: draft.sort, view: draft.view })
+    update({
+      latencyThreshold: draft.threshold,
+      sort: draft.sort,
+      view: draft.view,
+      onlyReachable: draft.onlyReachable,
+    })
     setDraft(null)
     setFiltersOpen(false)
   }
@@ -479,12 +515,13 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       view: current?.view ?? settings.view,
       showUnverified: false,
       showUnstable: false,
+      onlyReachable: false,
     }))
   }
 
   function resetAllFilters() {
     setList(defaultListState())
-    update({ latencyThreshold: null })
+    update({ latencyThreshold: null, onlyReachable: false })
     setDraft(null)
   }
   const knownIds = useMemo(() => {
@@ -541,6 +578,15 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         {' · '}
         <Freshness iso={data.generated_at} />
       </p>
+      {(progress.running || progress.done > 0) && (
+        <p data-reach-progress className="mb-1 text-[13px]">
+          {progress.running ? ru.reachProgress(progress.done, progress.total) : ru.reachSummary(progress.open, progress.total)}
+        </p>
+      )}
+      {(progress.running || progress.done > 0) && (
+        <p className="mb-3 text-[12px] leading-snug text-muted-foreground">{ru.reachNote}</p>
+      )}
+      {serverPhase === 'running' && <p className="mb-3 text-[13px]">{ru.serverCheckRunning}</p>}
 
       <div className="mb-3 flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
@@ -734,8 +780,16 @@ function StatusDot({ status }: { status?: string }) {
   )
 }
 
-function rowMeta(config: ConfigRecord): string {
-  const parts = [protocolLine(config.transport, config.protocol)]
+function useRowHit(config: ConfigRecord): ReachHit | undefined {
+  const { book } = useReach()
+  return book.byEndpoint[endpointKey(config.host, config.port)]
+}
+
+function rowMeta(config: ConfigRecord, hit: ReachHit | undefined): string {
+  const parts: string[] = []
+  const local = reachLine(hit)
+  if (local) parts.push(local)
+  parts.push(protocolLine(config.transport, config.protocol))
   const stability = stabilityText(config.stability)
   const speed = speedText(config.speed_kbps)
   if (stability) parts.push(stability)
@@ -812,6 +866,8 @@ function ConfigRow({
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
   const press = usePress(onOpen, onLongPress)
+  const hit = useRowHit(config)
+  const meta = rowMeta(config, hit)
   return (
     <div className="flex h-[72px] items-center gap-2 border-t border-border px-3 sm:gap-3 sm:px-4">
       {selecting && (
@@ -835,7 +891,7 @@ function ConfigRow({
               {config.country_code ? ` ${config.country_code}` : ''}
             </span>
           </span>
-          <span className="block truncate text-[12px] text-muted-foreground sm:text-[13px]">{rowMeta(config)}</span>
+          <span className="block truncate text-[12px] text-muted-foreground sm:text-[13px]">{meta}</span>
         </span>
       </button>
       <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
@@ -881,6 +937,8 @@ function CompactRow({
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
   const press = usePress(onOpen, onLongPress)
+  const hit = useRowHit(config)
+  const meta = rowMeta(config, hit)
   return (
     <div className="flex h-11 items-center gap-2 border-t border-border px-3">
       {selecting && (
@@ -900,7 +958,7 @@ function CompactRow({
         <span className="min-w-0 flex-1 truncate text-[14px]">
           {title}
           {config.country_code ? ` ${config.country_code}` : ''}
-          <span className="text-muted-foreground"> · {rowMeta(config)}</span>
+          <span className="text-muted-foreground"> · {meta}</span>
         </span>
       </button>
       <span className={cn('shrink-0 text-[13px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
@@ -933,6 +991,8 @@ function CardRow({
   const title = configTitle(config)
   const flag = flagEmoji(config.country_code)
   const press = usePress(onOpen, onLongPress)
+  const hit = useRowHit(config)
+  const meta = rowMeta(config, hit)
   return (
     <div className="h-28 px-1 py-1.5">
       <div className="flex h-full items-center gap-2 rounded-2xl bg-card px-3">
@@ -957,7 +1017,7 @@ function CardRow({
                 {config.country_code ? ` ${config.country_code}` : ''}
               </span>
             </span>
-            <span className="block truncate text-[12px] text-muted-foreground">{rowMeta(config)}</span>
+            <span className="block truncate text-[12px] text-muted-foreground">{meta}</span>
           </span>
         </button>
         <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>

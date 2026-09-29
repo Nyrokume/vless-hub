@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
 import {
   Activity,
@@ -36,7 +37,9 @@ import { Switch } from '@/components/ui/switch'
 import { CLIENTS, clientName, type ClientId } from '@/lib/clients'
 import { displayedLatencyBounds, formatStamp } from '@/lib/format'
 import { formatCount } from '@/lib/plural'
-import { probeLabel, reasonLabel, ru } from '@/lib/ru'
+import { phoneCommands, probeLabel, reasonLabel, ru } from '@/lib/ru'
+import { readActionsToken, writeActionsToken } from '@/lib/server-check'
+import { useServerCheck } from '@/lib/server-check-context'
 import {
   DEFAULT_PUBLIC_BASE,
   SORTS,
@@ -193,6 +196,8 @@ function RunLogs({ data }: { data: HubData | null }) {
 
 export function SettingsScreen({ data }: { data: HubData | null }) {
   const { settings, update } = useSettings()
+  const { phase, start: startServerCheck } = useServerCheck()
+  const [tokenDraft, setTokenDraft] = useState(readActionsToken)
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
   const [picker, setPicker] = useState<'sort' | 'threshold' | 'client' | 'base' | null>(null)
@@ -278,6 +283,59 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         </button>
       </Group>
 
+      <Group title={ru.serverCheck}>
+        <div className="flex flex-col gap-3 px-4 py-3">
+          <p className="text-[13px] leading-relaxed text-muted-foreground">{ru.serverTokenHint}</p>
+          <Label htmlFor="actions-token" className="text-[15px] font-normal">
+            {ru.serverToken}
+          </Label>
+          <Input
+            id="actions-token"
+            type="password"
+            value={tokenDraft}
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            onChange={(event) => setTokenDraft(event.target.value)}
+            className="h-11"
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                writeActionsToken(tokenDraft)
+                toast(tokenDraft.trim() ? ru.serverTokenSaved : ru.serverTokenForgotten)
+              }}
+            >
+              {ru.serverTokenSave}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setTokenDraft('')
+                writeActionsToken('')
+                toast(ru.serverTokenForgotten)
+              }}
+            >
+              {ru.serverTokenForget}
+            </Button>
+          </div>
+          <Button
+            type="button"
+            onClick={() => {
+              if (tokenDraft.trim()) writeActionsToken(tokenDraft)
+              void startServerCheck()
+            }}
+          >
+            {ru.serverCheck}
+          </Button>
+          {phase === 'running' && <p className="text-[13px]">{ru.serverCheckRunning}</p>}
+        </div>
+      </Group>
+
       <Group title="Информация">
         <InfoRow icon={<Tag className="size-4" />} text={`Версия: ${SITE_VERSION}`} />
         <Separator />
@@ -340,6 +398,11 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
                   <CollapsibleContent>
                     <div className="px-4 pb-3 text-[14px] leading-relaxed text-muted-foreground">
                       <p>{item.body}</p>
+                      {item.id === 'phone' && (
+                        <pre className="mt-3 overflow-x-auto rounded-xl bg-background p-3 text-[12px] leading-relaxed text-foreground">
+                          {phoneCommands.join('\n')}
+                        </pre>
+                      )}
                       {item.id === 'inspect' && (
                         <div className="mt-3">
                           <InspectScreen embedded />

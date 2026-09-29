@@ -40,15 +40,13 @@ export function HubProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const dataRef = useRef<HubData | null>(null)
-  const busy = useRef(false)
+  const chain = useRef(Promise.resolve())
   dataRef.current = data
 
   const apply = useCallback((next: HubData, mode: 'silent' | 'manual' | 'auto') => {
     const previous = dataRef.current
     const same = Boolean(previous && next.generated_at === previous.generated_at)
-    if (mode === 'manual' && same) {
-      toast.success(ru.alreadyFresh)
-    } else if (previous && !same && (mode === 'manual' || mode === 'auto')) {
+    if (previous && !same && (mode === 'manual' || mode === 'auto')) {
       const { added, removed } = listDelta(previous, next)
       toast(ru.listUpdated(added, removed), { duration: 2800 })
     }
@@ -57,10 +55,8 @@ export function HubProvider({ children }: { children: ReactNode }) {
     setError(null)
   }, [])
 
-  const pull = useCallback(
+  const pullOnce = useCallback(
     async (mode: 'manual' | 'auto') => {
-      if (busy.current) return
-      busy.current = true
       if (mode === 'manual') setRefreshing(true)
       try {
         if (mode === 'auto') {
@@ -80,11 +76,22 @@ export function HubProvider({ children }: { children: ReactNode }) {
           toast.error(reason instanceof Error ? reason.message : ru.refreshFailed)
         }
       } finally {
-        busy.current = false
         setRefreshing(false)
       }
     },
     [apply],
+  )
+
+  const pull = useCallback(
+    (mode: 'manual' | 'auto') => {
+      const job = chain.current.then(() => pullOnce(mode))
+      chain.current = job.then(
+        () => undefined,
+        () => undefined,
+      )
+      return job
+    },
+    [pullOnce],
   )
 
   const refresh = useCallback(() => pull('manual'), [pull])

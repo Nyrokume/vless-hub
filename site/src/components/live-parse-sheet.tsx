@@ -9,7 +9,8 @@ import { copyText } from '@/lib/copy'
 import { countryName, distinctTransport, flagCode, flagEmoji, protocolLabel } from '@/lib/format'
 import { useHub } from '@/lib/hub'
 import { collectFresh, type LiveProgress } from '@/lib/live-collect'
-import { CHECK_WORKFLOW_URL, fetchLatestRun, runLine, runPhase, type RunSnapshot } from '@/lib/live-sources'
+import { fetchLatestRun, runLine, runPhase, type RunSnapshot } from '@/lib/live-sources'
+import { useServerCheck } from '@/lib/server-check-context'
 import type { ParsedProxy } from '@/lib/parse-proxy'
 import { formatCount } from '@/lib/plural'
 import { ru } from '@/lib/ru'
@@ -87,6 +88,7 @@ export function LiveParseSheet({
   onOpenChange: (open: boolean) => void
 }) {
   const { updateAvailable, refresh, data } = useHub()
+  const { start: startServerCheck } = useServerCheck()
   const [running, setRunning] = useState(false)
   const [searched, setSearched] = useState(false)
   const [progress, setProgress] = useState<LiveProgress | null>(null)
@@ -283,7 +285,7 @@ export function LiveParseSheet({
             >
               {ru.live.download}
             </Button>
-            <Button variant="secondary" onClick={() => window.open(CHECK_WORKFLOW_URL, '_blank', 'noopener')}>
+            <Button variant="secondary" onClick={() => void startServerCheck()}>
               {ru.live.check}
             </Button>
           </div>

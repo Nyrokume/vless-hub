@@ -12,7 +12,7 @@ V2Hub состоит из сборщика на Python и сайта на React.
 | `site/` | Сайт: вкладки, строки, подписки |
 | `site/src/lib/ru.ts` | Все строки интерфейса |
 | `site/src/version.ts` | Версия в строке «Настроек» |
-| `state/` | Сжатая история проверок. Её коммитит workflow |
+| `state/` | Сжатая история проверок. Её хранит кэш Actions |
 | `publish/` | Результат прогона. В git не входит |
 | `site/dist/` | Сборка сайта. В git не входит |
 | `.github/workflows/update.yml` | Тесты, прогон, деплой |
@@ -55,18 +55,28 @@ python -m vlesshub run --out publish --site site --max-tcp 20 --max-proxy 0 --ma
 python -m vlesshub parse 'vless://…'
 ```
 
+Проверка опубликованного списка с этой машины, без нового сбора источников:
+
+```bash
+python -m vlesshub check-local --out local-working.txt
+```
+
+`--list-only` только печатает `адрес:порт` и ничего не качает. `--limit 20` берёт первые 20 строк. На Termux то же самое делает `bash scripts/termux-check.sh`. Xray и sing-box скачиваются в `bin/`, этот каталог в git не входит.
+
+Кнопка «Проверить на сервере» на сайте вызывает `workflow_dispatch` для `.github/workflows/update.yml`. Токен fine-grained хранится только в `localStorage` браузера владельца (`vless-hub-actions-token`), в репозиторий не коммитится. Ему нужно право Actions на запись и только этот репозиторий. Без токена сайт открывает страницу Actions.
+
 Сайт в разработке: `cd site && npm run dev`. Он читает файлы из `publish/`.
 
 ## CI
 
-Workflow `.github/workflows/update.yml` запускается по расписанию `17 */6 * * *`, вручную и при push в `main`.
+Workflow `.github/workflows/update.yml` запускается по расписанию `7,22,37,52 * * * *`, вручную и при push в `main`.
 
 - Job `check` гоняет pytest и сборку сайта.
-- Job `build` собирает и проверяет конфиги, затем коммитит только `state/history.json`, `state/tg_history.json`, `state/geo_cache.json`, `state/source_health.json`.
+- Job `build` собирает и проверяет конфиги. Состояние проверки пишется в кэш Actions `probe-state-`, а не в новый коммит.
 - `data/stability.json` остаётся в артефакте Pages и в git не добавляется.
 - Job `deploy` выкладывает `site/dist` на Pages.
 
-Ручной запуск принимает лимиты TCP и прокси. Пустые поля значат лимиты из `sources.yaml`. Группа `vless-hub-pages` не обрывает уже идущий прогон. Если за время прогона `main` ушёл вперёд, шаг с состоянием не сможет запушить коммит, и деплой этого прогона пропускается. Следующий успешный прогон выкладывает уже новый код.
+Ручной запуск принимает лимиты TCP и прокси. Пустые поля значат лимиты из `sources.yaml`. Группа `vless-hub-pages` не обрывает уже идущий прогон. Состояние между прогонами лежит в кэше Actions, поэтому прогон не пушит коммит и не запускает сам себя.
 
 ## Как добавить источник
 
