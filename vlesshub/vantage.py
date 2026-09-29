@@ -1,4 +1,4 @@
-"""Optional TCP checks from check-host.net. A plus, never a reason to drop a config."""
+"""TCP checks from check-host.net. A completed refusal in Russia is not published."""
 
 from __future__ import annotations
 
@@ -7,12 +7,35 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass, field
 
 from vlesshub.models import VlessConfig
 from vlesshub.util import log
 
 _API = "https://check-host.net/check-tcp"
-_NODES = ("ru1.node.check-host.net", "de1.node.check-host.net")
+_RU_NODES = (
+    "ru1.node.check-host.net",
+    "ru2.node.check-host.net",
+    "ru3.node.check-host.net",
+)
+_OTHER_NODES = (
+    "de1.node.check-host.net",
+    "nl1.node.check-host.net",
+    "fi1.node.check-host.net",
+)
+
+
+class RateLimited(RuntimeError):
+    """check-host asked us to slow down. The address was not judged."""
+
+
+@dataclass
+class VantageScan:
+    checked: int = 0
+    open: int = 0
+    closed: int = 0
+    unknown: int = 0
+    closed_endpoints: set[tuple[str, int]] = field(default_factory=set)
 
 
 def interpret(payload: object) -> str:
@@ -45,31 +68,91 @@ def _connected(rows: object) -> bool:
     return isinstance(first, dict) and isinstance(first.get("time"), (int, float))
 
 
-def annotate_vantage(configs: list[VlessConfig], limit: int, user_agent: str) -> None:
-    if limit <= 0 or not configs:
-        return
+def russia_verdict(payload: object) -> str:
+    """``open`` when a Russia node connected, ``closed`` when every Russia node finished without a connection.
+
+    ``unknown`` means the answer was missing or still pending. That is not a refusal.
+    """
+    if not isinstance(payload, dict):
+        return "unknown"
+    saw_ru = False
+    pending = False
+    for node, rows in payload.items():
+        if not isinstance(node, str) or not node.split(".", 1)[0].startswith("ru"):
+            continue
+        saw_ru = True
+        if rows is None or not isinstance(rows, list):
+            pending = True
+            continue
+        if _connected(rows):
+            return "open"
+    if not saw_ru or pending:
+        return "unknown"
+    return "closed"
+
+
+def annotate_vantage(
+    configs: list[VlessConfig],
+    limit: int,
+    user_agent: str,
+    budget_sec: float = 240.0,
+) -> VantageScan:
+    scan = VantageScan()
+    if limit <= 0 or not configs or budget_sec <= 0:
+        return scan
     sample = _sample(configs, limit)
     marks: dict[tuple[str, int], str] = {}
-    misses = 0
-    for cfg in sample:
+    deadline = time.monotonic() + budget_sec
+    backoff = 5.0
+    index = 0
+    while index < len(sample):
+        if time.monotonic() >= deadline:
+            log("vantage stopped: time budget")
+            break
+        cfg = sample[index]
+        ru_node = _RU_NODES[index % len(_RU_NODES)]
+        other_node = _OTHER_NODES[index % len(_OTHER_NODES)]
         try:
-            marks[(cfg.host, cfg.port)] = _check(cfg.host, cfg.port, user_agent)
-            misses = 0
-        except Exception as exc:  # noqa: BLE001
-            misses += 1
-            log(f"vantage {cfg.host}:{cfg.port} skipped: {exc}")
-            if misses >= 3:
-                log("vantage stopped after repeated check-host errors")
+            mark, verdict = _check(cfg.host, cfg.port, user_agent, ru_node, other_node)
+        except RateLimited:
+            wait = min(backoff, max(0.0, deadline - time.monotonic()))
+            log(f"vantage rate limit, wait {wait:.0f}s")
+            if wait <= 0:
                 break
-        time.sleep(0.8)
-    if not marks:
-        return
+            time.sleep(wait)
+            backoff = min(backoff * 2, 30.0)
+            continue
+        except Exception as exc:  # noqa: BLE001
+            log(f"vantage {cfg.host}:{cfg.port} skipped: {exc}")
+            scan.unknown += 1
+            index += 1
+            time.sleep(1.1)
+            continue
+        backoff = 5.0
+        index += 1
+        key = (cfg.host, cfg.port)
+        scan.checked += 1
+        if verdict == "open":
+            scan.open += 1
+            if mark in {"ru", "multi"}:
+                marks[key] = mark
+        elif verdict == "closed":
+            scan.closed += 1
+            scan.closed_endpoints.add(key)
+        else:
+            scan.unknown += 1
+        pause = min(1.1, max(0.0, deadline - time.monotonic()))
+        if pause > 0 and index < len(sample):
+            time.sleep(pause)
     for cfg in configs:
         mark = marks.get((cfg.host, cfg.port), "")
         if mark:
             cfg.vantage = mark
-    ru = sum(1 for mark in marks.values() if mark in {"ru", "multi"})
-    log(f"vantage checked {len(marks)} addresses, russia {ru}")
+    log(
+        f"vantage checked {scan.checked} open {scan.open} "
+        f"closed {scan.closed} unknown {scan.unknown}"
+    )
+    return scan
 
 
 def _sample(configs: list[VlessConfig], limit: int) -> list[VlessConfig]:
@@ -92,18 +175,20 @@ def _sample(configs: list[VlessConfig], limit: int) -> list[VlessConfig]:
     return picked
 
 
-def _check(host: str, port: int, user_agent: str) -> str:
-    query = [("host", f"{host}:{port}")]
-    for node in _NODES:
-        query.append(("node", node))
+def _check(host: str, port: int, user_agent: str, ru_node: str, other_node: str) -> tuple[str, str]:
+    query = [("host", f"{host}:{port}"), ("node", ru_node), ("node", other_node)]
     url = f"{_API}?{urllib.parse.urlencode(query)}"
     started = _get_json(url, user_agent)
     request_id = started.get("request_id") if isinstance(started, dict) else ""
     if not request_id:
-        return ""
-    time.sleep(2.0)
-    result = _get_json(f"https://check-host.net/check-result/{request_id}", user_agent)
-    return interpret(result)
+        return "", "unknown"
+    result: dict = {}
+    for _ in range(4):
+        time.sleep(1.5)
+        result = _get_json(f"https://check-host.net/check-result/{request_id}", user_agent)
+        if result and all(value is not None for value in result.values()):
+            break
+    return interpret(result), russia_verdict(result)
 
 
 def _get_json(url: str, user_agent: str) -> dict:
@@ -112,5 +197,7 @@ def _get_json(url: str, user_agent: str) -> dict:
         with urllib.request.urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
+        if exc.code in {429, 503}:
+            raise RateLimited(f"HTTP {exc.code}") from exc
         raise RuntimeError(f"HTTP {exc.code}") from exc
     return payload if isinstance(payload, dict) else {}

@@ -100,6 +100,7 @@ jobs:
           if [ "$code" -ne 0 ]; then
             exit "$code"
           fi
+          python -m vlesshub check-export --out publish
           echo "publish=true" >> "$GITHUB_OUTPUT"
       - name: Save probe state
         if: always() && github.ref == 'refs/heads/main'
@@ -114,6 +115,9 @@ jobs:
         run: |
           npm ci
           npm run build
+      - name: Check the Pages bundle
+        if: steps.pipe.outputs.publish == 'true'
+        run: python -m vlesshub check-export --out site/dist
       - name: Upload Pages artifact
         if: steps.pipe.outputs.publish == 'true'
         uses: actions/upload-pages-artifact@v3

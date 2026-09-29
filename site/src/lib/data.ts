@@ -47,14 +47,19 @@ export async function loadHub(bust = false): Promise<HubData> {
   return data
 }
 
-export function publicFileUrl(publicBase: string, path: string): string {
-  const base = publicBase.replace(/\/+$/, '')
-  return `${base}/${path.replace(/^\/+/, '')}`
+function withStamp(url: string, stamp = ''): string {
+  const token = stamp.trim()
+  return token ? `${url}?t=${encodeURIComponent(token)}` : url
 }
 
-export function subscriptionUrl(publicBase: string, file: string): string {
+export function publicFileUrl(publicBase: string, path: string, stamp = ''): string {
   const base = publicBase.replace(/\/+$/, '')
-  return `${base}/data/${file.replace(/^\/+/, '')}`
+  return withStamp(`${base}/${path.replace(/^\/+/, '')}`, stamp)
+}
+
+export function subscriptionUrl(publicBase: string, file: string, stamp = ''): string {
+  const base = publicBase.replace(/\/+$/, '')
+  return withStamp(`${base}/data/${file.replace(/^\/+/, '')}`, stamp)
 }
 
 export function membersOf(subId: string, configs: ConfigRecord[], fastMs: number): ConfigRecord[] {

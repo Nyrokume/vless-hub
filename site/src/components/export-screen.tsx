@@ -24,6 +24,7 @@ const SLICE_ORDER = ['all', 'unstable', 'top', 'clash', 'singbox', 'unverified']
 export function ExportScreen({ data }: { data: HubData }) {
   const { settings } = useSettings()
   const [qr, setQr] = useState<QrRequest | null>(null)
+  const fileUrl = (path: string) => publicFileUrl(settings.publicBase, path, data.generated_at)
   const names = useMemo(() => {
     const map = new Map<string, string>()
     for (const config of data.configs) {
@@ -67,7 +68,7 @@ export function ExportScreen({ data }: { data: HubData }) {
   }
 
   function openQr(entry: CatalogEntry) {
-    const url = publicFileUrl(settings.publicBase, entry.path)
+    const url = fileUrl(entry.path)
     const clientFile = entry.format === 'plain' || entry.format === 'clash' || entry.format === 'singbox'
     setQr({
       title: titleOf(entry),
@@ -88,13 +89,13 @@ export function ExportScreen({ data }: { data: HubData }) {
             divided={index > 0}
             title={titleOf(entry)}
             detail={`${formatCount(entry.count)} · ${entry.path}`}
-            onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+            onCopy={() => void copyText(fileUrl(entry.path), 'Ссылка скопирована')}
             onQr={() => openQr(entry)}
             onClient={
               entry.kind === 'unverified'
                 ? undefined
                 : () => {
-                    const url = publicFileUrl(settings.publicBase, entry.path)
+                    const url = fileUrl(entry.path)
                     const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
                     if (link) openExternal(link)
                     else void copyText(url, 'Для этого клиента есть только ссылка')
@@ -113,10 +114,10 @@ export function ExportScreen({ data }: { data: HubData }) {
               divided={index > 0}
               title={titleOf(entry)}
               detail={`${formatCount(entry.count)} · ${entry.path}`}
-              onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+              onCopy={() => void copyText(fileUrl(entry.path), 'Ссылка скопирована')}
               onQr={() => openQr(entry)}
               onClient={() => {
-                const url = publicFileUrl(settings.publicBase, entry.path)
+                const url = fileUrl(entry.path)
                 const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
                 if (link) openExternal(link)
                 else void copyText(url, 'Для этого клиента есть только ссылка')
@@ -134,10 +135,10 @@ export function ExportScreen({ data }: { data: HubData }) {
             divided={index > 0}
             title={titleOf(entry)}
             detail={`${formatCount(entry.count)} · ${entry.path}`}
-            onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+            onCopy={() => void copyText(fileUrl(entry.path), 'Ссылка скопирована')}
             onQr={() => openQr(entry)}
             onClient={() => {
-              const url = publicFileUrl(settings.publicBase, entry.path)
+              const url = fileUrl(entry.path)
               const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
               if (link) openExternal(link)
               else void copyText(url, 'Для этого клиента есть только ссылка')
@@ -154,10 +155,10 @@ export function ExportScreen({ data }: { data: HubData }) {
             divided={index > 0}
             title={titleOf(entry)}
             detail={`${formatCount(entry.count)} · ${entry.path}`}
-            onCopy={() => void copyText(publicFileUrl(settings.publicBase, entry.path), 'Ссылка скопирована')}
+            onCopy={() => void copyText(fileUrl(entry.path), 'Ссылка скопирована')}
             onQr={() => openQr(entry)}
             onClient={() => {
-              const url = publicFileUrl(settings.publicBase, entry.path)
+              const url = fileUrl(entry.path)
               const link = subscriptionDeepLink(settings.client, url, 'V2Hub')
               if (link) openExternal(link)
               else void copyText(url, 'Для этого клиента есть только ссылка')
@@ -180,11 +181,11 @@ export function ExportScreen({ data }: { data: HubData }) {
               divided={index > 0}
               title={String(title)}
               detail={`${formatCount(Number(count))} · ${path}`}
-              onCopy={() => void copyText(publicFileUrl(settings.publicBase, String(path)), 'Ссылка скопирована')}
+              onCopy={() => void copyText(fileUrl(String(path)), 'Ссылка скопирована')}
               onQr={() =>
                 setQr({
                   title: String(title),
-                  value: publicFileUrl(settings.publicBase, String(path)),
+                  value: fileUrl(String(path)),
                   share: 'url',
                 })
               }
@@ -198,6 +199,7 @@ export function ExportScreen({ data }: { data: HubData }) {
           configs={data.configs}
           catalog={data.catalog}
           publicBase={settings.publicBase}
+          generatedAt={data.generated_at}
           onQr={setQr}
         />
       </div>

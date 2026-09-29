@@ -10,16 +10,17 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { downloadText } from '@/lib/bundle'
 import { copyText } from '@/lib/copy'
-import {
-  countryName,
-  flagCode,
-  flagEmoji,
-  latencyClass,
-  latencyText,
-  protocolLine,
-} from '@/lib/format'
+import { flagEmoji, latencyClass, latencyText, protocolLine } from '@/lib/format'
 import { useHub } from '@/lib/hub'
-import { collectFresh, groupLive, type LiveItem, type LiveLine, type LiveStage } from '@/lib/live-collect'
+import {
+  collectFresh,
+  endpointIdentity,
+  groupLive,
+  verifiedUris,
+  type LiveItem,
+  type LiveLine,
+  type LiveStage,
+} from '@/lib/live-collect'
 import { fetchLatestRun, runLine, type RunSnapshot } from '@/lib/live-sources'
 import { browserCanProbe, endpointKey, probeEndpoint, REACH_CONCURRENCY, type ReachHit } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
@@ -32,10 +33,9 @@ import { cn } from '@/lib/utils'
 
 type View = 'new' | 'all'
 
-function pingOf(item: LiveItem, book: Record<string, ReachHit>): number | null {
-  const hit = book[endpointKey(item.host, item.port)]
-  if (!hit || hit.status !== 'open' || hit.ms == null) return null
-  return hit.ms
+function pingOf(item: LiveItem, catalog: Map<string, ConfigRecord>): number | null {
+  const record = catalog.get(endpointIdentity(item.host, item.port, item.uuid))
+  return record?.latency_ms ?? null
 }
 
 function reachWord(hit: ReachHit | undefined): string {
@@ -43,37 +43,6 @@ function reachWord(hit: ReachHit | undefined): string {
   if (hit.status === 'open') return ru.reachOpen
   if (hit.status === 'closed') return ru.reachClosed
   return ru.reachSkip
-}
-
-function toRecord(item: LiveItem, hit: ReachHit | undefined): ConfigRecord {
-  const code = flagCode(item.remark)
-  const country = code ? countryName(code) : ''
-  return {
-    id: item.id,
-    uri: item.uri,
-    protocol: item.protocol,
-    remark: item.remark,
-    uuid: item.uuid,
-    host: item.host,
-    port: item.port,
-    transport: item.network,
-    security: item.security,
-    sni: item.sni,
-    flow: item.flow,
-    path: item.path,
-    host_header: item.hostHeader,
-    service_name: item.serviceName,
-    fingerprint: item.fp,
-    country_code: code || null,
-    country: country || null,
-    country_source: code ? 'remark' : null,
-    ip_country_code: null,
-    ip_country: null,
-    extra: {},
-    source: item.source || '',
-    latency_ms: hit?.status === 'open' ? hit.ms : null,
-    tested_at: '',
-  }
 }
 
 async function probeFound(
@@ -148,7 +117,7 @@ export function LiveParseSheet({
   const [lines, setLines] = useState<LiveLine[]>([])
   const [view, setView] = useState<View>('new')
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<ConfigRecord | null>(null)
   const [qr, setQr] = useState<QrRequest | null>(null)
   const [run, setRun] = useState<RunSnapshot | null>(null)
   const [limited, setLimited] = useState(false)
@@ -191,7 +160,7 @@ export function LiveParseSheet({
     setItems([])
     setLines([])
     setView('new')
-    setSelectedId(null)
+      setSelected(null)
     setOpenGroups(new Set())
     setStage('download')
     setDone(0)
@@ -237,15 +206,20 @@ export function LiveParseSheet({
     abortRef.current?.abort()
   }
 
+  const catalog = useMemo(() => {
+    const map = new Map<string, ConfigRecord>()
+    for (const config of data?.configs ?? []) {
+      map.set(endpointIdentity(config.host, config.port, config.uuid), config)
+    }
+    return map
+  }, [data?.configs])
   const shown = useMemo(() => (view === 'new' ? items.filter((item) => item.fresh) : items), [items, view])
-  const groups = useMemo(
-    () => groupLive(shown, (item) => pingOf(item, book.byEndpoint)),
-    [shown, book],
-  )
+  const groups = useMemo(() => groupLive(shown, (item) => pingOf(item, catalog)), [shown, catalog])
   const freshCount = items.filter((item) => item.fresh).length
-  const openCount = items.filter((item) => book.byEndpoint[endpointKey(item.host, item.port)]?.status === 'open').length
-  const selected = items.find((item) => item.id === selectedId) ?? null
-  const selectedHit = selected ? book.byEndpoint[endpointKey(selected.host, selected.port)] : undefined
+  const openCount = items.filter((item) => {
+    const record = catalog.get(endpointIdentity(item.host, item.port, item.uuid))
+    return Boolean(record) && book.byEndpoint[endpointKey(item.host, item.port)]?.status === 'open'
+  }).length
   const status = runLine(run, limited)
   const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : stage === 'parse' ? 100 : 0
   const stageLabel =
@@ -254,7 +228,11 @@ export function LiveParseSheet({
       : stage === 'parse'
         ? ru.live.parseStage
         : ru.live.reachStage(done, total)
-  const text = shown.map((item) => item.uri).join('\n')
+  const exportUris = useMemo(
+    () => verifiedUris(shown, data?.configs ?? []),
+    [shown, data?.configs],
+  )
+  const text = exportUris.join('\n')
   const fetchFailed = lines.length > 0 && lines.every((line) => !line.ok)
   const emptyText = aborted && items.length === 0
     ? ru.live.emptyCancelled
@@ -370,22 +348,25 @@ export function LiveParseSheet({
                       </button>
                       {expanded &&
                         group.items.map((item) => {
-                          const hit = book.byEndpoint[endpointKey(item.host, item.port)]
-                          const word = reachWord(hit)
+                          const record = catalog.get(endpointIdentity(item.host, item.port, item.uuid))
+                          const ping = record?.latency_ms ?? null
+                          const word = record ? reachWord(book.byEndpoint[endpointKey(item.host, item.port)]) : ru.live.unchecked
                           const meta = [protocolLine(item.network, item.protocol), word].filter(Boolean).join(' · ')
                           return (
                             <button
                               key={item.id}
                               type="button"
                               className="flex min-h-16 w-full items-center gap-3 border-t border-border px-3 py-2 text-left"
-                              onClick={() => setSelectedId(item.id)}
+                              onClick={() => {
+                                if (record) setSelected(record)
+                              }}
                             >
                               <span className="min-w-0 flex-1">
                                 <span className="block truncate text-[15px] font-medium">{item.host}</span>
                                 <span className="mt-0.5 block truncate text-[14px] text-foreground/75">{meta}</span>
                               </span>
-                              <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(pingOf(item, book.byEndpoint)))}>
-                                {latencyText(pingOf(item, book.byEndpoint))}
+                              <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(ping))}>
+                                {record ? latencyText(ping) : ru.live.unchecked}
                               </span>
                             </button>
                           )
@@ -414,8 +395,11 @@ export function LiveParseSheet({
               </Collapsible>
             )}
           </div>
-          {searched && !running && shown.length > 0 && (
+          {searched && !running && exportUris.length > 0 && (
             <div className="shrink-0 border-t border-border bg-popover px-4 py-3">
+              {shown.length > exportUris.length && (
+                <p className="mb-2 text-[14px] text-foreground/75">{ru.live.exportNote}</p>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <Button className="h-11 text-[14px]" onClick={() => void copyText(text, ru.live.copied)}>
                   {ru.live.copy}
@@ -440,11 +424,11 @@ export function LiveParseSheet({
         </SheetContent>
       </Sheet>
       <ConfigSheet
-        config={selected ? toRecord(selected, selectedHit) : null}
+        config={selected}
         sources={data?.sources ?? []}
         client={settings.client}
         onOpenChange={(next) => {
-          if (!next) setSelectedId(null)
+          if (!next) setSelected(null)
         }}
         onQr={setQr}
       />

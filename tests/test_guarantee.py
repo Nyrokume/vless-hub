@@ -96,6 +96,8 @@ def test_dead_source_pauses_and_returns_after_the_skip():
 
 
 def test_vantage_marks_russia_as_a_plus():
+    from vlesshub.vantage import russia_verdict
+
     both = {
         "ru1.node.check-host.net": [{"address": "1.1.1.1", "time": 0.03}],
         "de1.node.check-host.net": [{"address": "1.1.1.1", "time": 0.01}],
@@ -104,3 +106,7 @@ def test_vantage_marks_russia_as_a_plus():
     assert interpret({"ru1.node.check-host.net": [{"time": 0.03}]}) == "ru"
     assert interpret({"de1.node.check-host.net": [{"time": 0.01}]}) == "other"
     assert interpret({"ru1.node.check-host.net": [None]}) == ""
+    assert russia_verdict(both) == "open"
+    assert russia_verdict({"ru1.node.check-host.net": [{"error": "Connection timed out"}]}) == "closed"
+    assert russia_verdict({"ru1.node.check-host.net": None}) == "unknown"
+    assert russia_verdict({"de1.node.check-host.net": [{"time": 0.01}]}) == "unknown"

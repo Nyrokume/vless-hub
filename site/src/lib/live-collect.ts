@@ -50,6 +50,27 @@ export function splitFresh(items: ParsedProxy[], known: Set<string>): { unique: 
   return { unique, fresh }
 }
 
+export function endpointIdentity(host: string, port: number, uuid: string): string {
+  return `${host.trim().toLowerCase()}|${port}|${uuid.trim()}`
+}
+
+/** Subscription text may contain only links that already passed the server check. */
+export function verifiedUris(
+  items: { host: string; port: number; uuid: string }[],
+  configs: { host: string; port: number; uuid: string; uri: string }[],
+): string[] {
+  const byUri = new Map(configs.map((config) => [endpointIdentity(config.host, config.port, config.uuid), config.uri]))
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of items) {
+    const uri = byUri.get(endpointIdentity(item.host, item.port, item.uuid))
+    if (!uri || seen.has(uri)) continue
+    seen.add(uri)
+    out.push(uri)
+  }
+  return out
+}
+
 export function groupLive(items: LiveItem[], pingOf: (item: LiveItem) => number | null): LiveGroup[] {
   const map = new Map<string, LiveItem[]>()
   for (const item of items) {

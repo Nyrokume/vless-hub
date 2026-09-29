@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_redundant_transport_is_not_repeated():
     script = r"""
 import { distinctTransport, latencyBounds, latencyRange, protocolLabel, protocolLine, transportLabel } from './site/src/lib/format.ts'
-import { groupLive, splitFresh } from './site/src/lib/live-collect.ts'
+import { groupLive, splitFresh, verifiedUris } from './site/src/lib/live-collect.ts'
 import { parseProxy } from './site/src/lib/parse-proxy.ts'
 
 const cases = [
@@ -90,6 +90,14 @@ if (grouped[0].code !== 'DE' || grouped[0].min !== 51) {
 }
 if (grouped[1].code !== 'US' || grouped[2].code !== 'ZZ') process.exit(1)
 if (grouped[0].max !== 51 || grouped[1].min !== 900) process.exit(1)
+const catalog = [
+  { host: 'fast.example', port: 443, uuid: 'fast', uri: 'vless://catalog-fast' },
+]
+const exported = verifiedUris([fast, slow], catalog)
+if (exported.length !== 1 || exported[0] !== 'vless://catalog-fast') {
+  console.error('verified export', exported)
+  process.exit(1)
+}
 """
     result = subprocess.run(
         [

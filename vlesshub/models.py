@@ -32,8 +32,10 @@ class Settings:
     confirm_rounds: int = 2
     # Below this, retest previously working configs before replacing the list.
     min_working: int = 40
-    # check-host.net TCP samples. A plus, not a requirement. 0 disables it.
-    vantage_checks: int = 36
+    # check-host.net TCP samples. 0 disables the scan.
+    vantage_checks: int = 800
+    # Stop the scan after this many seconds. Unchecked addresses are not treated as dead.
+    vantage_budget_sec: float = 240.0
 
 
 @dataclass(slots=True)

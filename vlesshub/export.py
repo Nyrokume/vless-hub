@@ -20,8 +20,7 @@ _FAST_MS = 300
 _COLLECTOR_VERSION = "2.0.0"
 _UNSTABLE_HEADER = (
     "#profile-title: V2Hub — рабочие и нестабильные\n"
-    "#profile-update-interval: 12\n"
-    "#profile-web-page-url: https://nyrokume.github.io/vless-hub/\n"
+    "#profile-update-interval: 1\n"
 )
 _LEGACY_SUBS = (
     ("all", "Все рабочие", "Прокси проверены запросом через Xray"),
@@ -34,18 +33,13 @@ _LEGACY_SUBS = (
     ("xhttp", "VLESS / XHTTP", "Транспорт XHTTP"),
 )
 
-_PAGE = "https://nyrokume.github.io/vless-hub/"
 _HEADER = (
     "#profile-title: V2Hub\n"
-    "#profile-update-interval: 6\n"
-    f"#support-url: {_PAGE}\n"
-    f"#profile-web-page-url: {_PAGE}\n"
+    "#profile-update-interval: 1\n"
 )
 _UNVERIFIED_HEADER = (
     "#profile-title: V2Hub — непроверенные (только открытый порт)\n"
-    "#profile-update-interval: 6\n"
-    f"#support-url: {_PAGE}\n"
-    f"#profile-web-page-url: {_PAGE}\n"
+    "#profile-update-interval: 1\n"
 )
 
 
@@ -72,6 +66,7 @@ def publish(
     tg_tested: int = 0,
     unique: int | None = None,
     rejections: dict[str, int] | None = None,
+    vantage: dict | None = None,
 ) -> None:
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -213,6 +208,12 @@ def publish(
         tg_collected=tg_collected,
         tg_tested=tg_tested,
     )
+    stats["vantage"] = vantage or {
+        "checked": 0,
+        "open_from_russia": 0,
+        "closed_from_russia": 0,
+        "unknown": 0,
+    }
     (out_dir / "api/stats.json").write_text(
         json.dumps(stats, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
@@ -263,9 +264,7 @@ def _write_legacy_sub(directory: Path, sub_id: str, title: str, configs: list[Vl
     body = _plain_body(configs, header=False)
     header = (
         f"#profile-title: V2Hub — {title}\n"
-        "#profile-update-interval: 6\n"
-        f"#support-url: {_PAGE}\n"
-        f"#profile-web-page-url: {_PAGE}\n"
+        "#profile-update-interval: 1\n"
     )
     plain = header + body
     (directory / f"{sub_id}.txt").write_text(plain, encoding="utf-8")
@@ -430,6 +429,13 @@ def _write_site_payload(
             "unverified": counts["unverified"],
             "proxy_tested": counts["tested_proxy"],
             "proxy_ok": counts["proxy_ok"],
+            "vantage": stats.get("vantage")
+            or {
+                "checked": 0,
+                "open_from_russia": 0,
+                "closed_from_russia": 0,
+                "unknown": 0,
+            },
             "telegram": {
                 "collected": telegram["collected"],
                 "tested": telegram["tested"],

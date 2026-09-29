@@ -1,10 +1,12 @@
 from vlesshub.parser import fingerprint, parse_vless
 from vlesshub.probe import ProbeResult, failure_reason
 from vlesshub.stages import (
+    CLIENT_URL_TIMEOUT_MS,
     HTTP_TARGETS,
     HttpSample,
     assess_proxy,
     classify_failure,
+    client_url_timeout,
     dropped_after,
     exit_leaks,
     majority,
@@ -33,6 +35,13 @@ def test_http_majority_needs_more_than_half():
     assert not majority(1, 3)
     assert majority(1, 1)
     assert not majority(0, 3)
+
+
+def test_client_url_timeout_follows_the_shortest_default():
+    assert CLIENT_URL_TIMEOUT_MS == 5000
+    assert client_url_timeout(5000) is False
+    assert client_url_timeout(5000.1) is True
+    assert client_url_timeout(None) is True
 
 
 def test_ping_is_the_median_of_successful_round_trips():

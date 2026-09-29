@@ -26,6 +26,11 @@ SPEED_BYTES = 250_000
 MIN_SPEED_BYTES = 50_000
 EXIT_URL = "https://api.ipify.org"
 REQUEST_TIMEOUT_SEC = 5.0
+# mihomo url-test marks a node dead at 5000 ms when the group sets no timeout
+# (v1.19). v2rayN 7.24.9 allows 9 s for a real-delay test, and its development
+# branch 5 s. v2rayNG 2.2.6 allows about 12 s for the HTTP part after a separate
+# 1 s TCP precheck. 5000 ms is the shortest of those URL-test defaults.
+CLIENT_URL_TIMEOUT_MS = 5000.0
 CONFIG_BUDGET_SEC = 20.0
 STABILITY_WINDOW = 10
 STABILITY_MIN_RATE = 0.7
@@ -89,6 +94,13 @@ def median_ms(samples: list[float]) -> float | None:
     if not clean:
         return None
     return round(float(statistics.median(clean)), 1)
+
+
+def client_url_timeout(latency_ms: float | None) -> bool:
+    """True when a default Clash or Hiddify url-test would call the node dead."""
+    if latency_ms is None:
+        return True
+    return float(latency_ms) > CLIENT_URL_TIMEOUT_MS
 
 
 def status_of(passed_now: bool, bits: str, *, min_rate: float = STABILITY_MIN_RATE) -> str:

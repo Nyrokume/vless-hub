@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 from vlesshub.collect import collect_all, load_config
+from vlesshub.consistency import check_publish
 from vlesshub.export import publish
 from vlesshub.geo import GeoCache, apply_exit_countries, enrich
 from vlesshub.health import (
@@ -20,13 +21,13 @@ from vlesshub.parser import exported_config
 from vlesshub.probe import ProbeResult, _proxy_probe_singbox, failure_reason, proxy_probe, tcp_probe
 from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
 from vlesshub.stability import Stability
-from vlesshub.stages import dropped_after, status_of
+from vlesshub.stages import CLIENT_URL_TIMEOUT_MS, client_url_timeout, dropped_after, status_of
 from vlesshub.tgcollect import collect_proxies, select_proxies
 from vlesshub.tgparse import TgProxy
 from vlesshub.tgprobe import probe_many
 from vlesshub.tools import ensure_geoip, ensure_singbox, ensure_xray
 from vlesshub.util import env_flag, env_int, log, utcnow
-from vlesshub.vantage import annotate_vantage
+from vlesshub.vantage import VantageScan, annotate_vantage
 
 
 def run_pipeline(
@@ -300,16 +301,36 @@ def run_pipeline(
     tg_history.save(state_dir / "tg_history.json")
     cache.save(state_dir / "geo_cache.json")
 
+    kept: list[VlessConfig] = []
+    slow = 0
+    for cfg in working:
+        if client_url_timeout(cfg.latency_ms):
+            slow += 1
+            continue
+        kept.append(cfg)
+    if slow:
+        log(f"dropped {slow} slower than {CLIENT_URL_TIMEOUT_MS:.0f} ms")
+    working = kept
+    scan = VantageScan()
     if working and settings.vantage_checks > 0 and not skip_download:
-        annotate_vantage(working, settings.vantage_checks, settings.user_agent)
+        scan = annotate_vantage(
+            working,
+            settings.vantage_checks,
+            settings.user_agent,
+            budget_sec=settings.vantage_budget_sec,
+        )
+        if scan.closed_endpoints:
+            before = len(working)
+            working = [cfg for cfg in working if (cfg.host, cfg.port) not in scan.closed_endpoints]
+            log(f"dropped {before - len(working)} closed from Russia")
     published = rank_published(working)
     proxy_ok = len(published)
     log(
         f"publish {len(published)} working from {len(configs)} unique; "
         f"proxy tested {len(proxy_targets)}; rejected {rejections}"
     )
-    if not passed and had_success:
-        log("no proxy-verified configs in this run; history was saved, site was left unchanged")
+    if not published and had_success:
+        log("no proxy-verified configs left for this run; history was saved, site was left unchanged")
         return 2
 
     publish(
@@ -334,8 +355,19 @@ def run_pipeline(
         tg_reports=tg_reports,
         tg_collected=len(tg_found),
         tg_tested=tg_tested,
+        vantage={
+            "checked": scan.checked,
+            "open_from_russia": scan.open,
+            "closed_from_russia": scan.closed,
+            "unknown": scan.unknown,
+        },
     )
     stability.save(out_dir / "data" / "stability.json")
+    mismatches = check_publish(out_dir)
+    if mismatches:
+        for item in mismatches:
+            log(f"export check: {item}")
+        return 1
     log(f"site written to {out_dir}")
     return 0
 

@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from vlesshub.consistency import check_publish
 from vlesshub.localcheck import DEFAULT_LIST_URL, run_local_check
 from vlesshub.parser import parse_vless
 from vlesshub.pipeline import run_pipeline
@@ -27,6 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     show = sub.add_parser("parse", help="parse one vless:// URI and print JSON")
     show.add_argument("uri")
 
+    check = sub.add_parser("check-export", help="fail if any export file differs from configs.json")
+    check.add_argument("--out", default="publish")
+
     local = sub.add_parser("check-local", help="test the published list from this machine")
     local.add_argument("--file", type=Path, default=None, help="configs.json instead of the live list")
     local.add_argument("--url", default=DEFAULT_LIST_URL)
@@ -36,6 +40,14 @@ def main(argv: list[str] | None = None) -> int:
     local.add_argument("--list-only", action="store_true", help="print host:port and do not probe")
 
     args = parser.parse_args(argv)
+    if args.cmd == "check-export":
+        errors = check_publish(Path(args.out))
+        if errors:
+            for item in errors:
+                print(item)
+            return 1
+        print("export matches the verified list")
+        return 0
     if args.cmd == "check-local":
         return run_local_check(
             path=args.file,

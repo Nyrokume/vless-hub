@@ -230,6 +230,24 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     [data.configs, data.unstable, data.unverified],
   )
 
+  useEffect(() => {
+    const ids = new Set(data.configs.map((item) => item.id))
+    const uris = new Set(data.configs.map((item) => item.uri))
+    setPicked((current) => {
+      let changed = false
+      const next = new Set<string>()
+      for (const id of current) {
+        if (ids.has(id)) next.add(id)
+        else changed = true
+      }
+      return changed ? next : current
+    })
+    setQr((current) => {
+      if (!current || current.share !== 'text') return current
+      return uris.has(current.value) ? current : null
+    })
+  }, [data])
+
   const appliedIndexed = useMemo(
     () => poolFor(list.showUnstable, list.showUnverified),
     [list.showUnstable, list.showUnverified, poolFor],

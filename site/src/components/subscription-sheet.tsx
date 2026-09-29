@@ -169,12 +169,14 @@ export function SubscriptionBuilder({
   configs,
   catalog,
   publicBase,
+  generatedAt = '',
   onQr,
   className,
 }: {
   configs: ConfigRecord[]
   catalog: CatalogEntry[]
   publicBase: string
+  generatedAt?: string
   onQr: (request: QrRequest) => void
   className?: string
 }) {
@@ -202,7 +204,7 @@ export function SubscriptionBuilder({
   }, [country, security, transport])
 
   const published = path ? catalog.some((item) => item.path === path) : false
-  const url = path && published ? publicFileUrl(publicBase, path) : ''
+  const url = path && published ? publicFileUrl(publicBase, path, generatedAt) : ''
   const picked = configs.filter((config) => {
     if (country && config.country_code !== country) return false
     if (security && config.security !== security) return false

@@ -37,8 +37,10 @@ settings:
   confirm_rounds: 2
   # If fewer than this pass, previously working configs are retested before the list is replaced.
   min_working: 40
-  # TCP samples via check-host.net (Russia and Germany). A plus, not a requirement.
-  vantage_checks: 36
+  # check-host.net TCP from Russia. A completed refusal is not published.
+  # Addresses the scan does not finish stay in the list. 0 disables the scan.
+  vantage_checks: 800
+  vantage_budget_sec: 240
 
 sources:
   - name: epodonios-vless
