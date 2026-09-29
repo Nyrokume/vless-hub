@@ -68,10 +68,6 @@ const noun = {
   source: ['источник', 'источника', 'источников'],
 } as const satisfies Record<string, PluralForms>
 
-function pluralFormUnchecked(count: number): string {
-  return pluralCategory(count) === 'one' ? 'не проверен' : 'не проверены'
-}
-
 export const ru = {
   brand: 'V2Hub',
   loading: 'Загружаем список…',
@@ -325,7 +321,7 @@ export const ru = {
     {
       id: 'live',
       title: 'Живой парс',
-      body: 'Пункт «Живой парс» в меню «Конфигов» читает открытые списки прямо в браузере и показывает только новые строки, сгруппированные по странам. Браузер их не проверяет и не смешивает с проверенным списком. «Проверить на сервере» запускает полный прогон, если в настройках сохранён токен, иначе открывает страницу GitHub. Когда прогон закончится, открытая вкладка подхватит новый список сама.',
+      body: 'Пункт «Живой парс» в меню «Конфигов» читает открытые списки в браузере. Сначала скачиваются источники, потом разбираются ссылки, затем адреса проверяются с вашей сети. Новые строки собраны по странам. «Все найденные» показывает и те, что уже есть в проверенном списке. «Проверить на сервере» запускает полный прогон, если в настройках сохранён токен, иначе открывает страницу GitHub.',
     },
     {
       id: 'refresh',
@@ -360,26 +356,32 @@ export const ru = {
   live: {
     title: 'Живой парс',
     find: 'Найти новые',
-    sources: (done: number, total: number) => `Источники ${formatCount(done)} из ${formatCount(total)}`,
+    hint: 'Открытые списки читаются в браузере и не смешиваются с проверенным списком.',
+    downloadStage: (done: number, total: number) =>
+      `Скачиваю источники ${formatCount(done)}/${formatCount(total)}`,
+    parseStage: 'Разбираю ссылки',
+    reachStage: (done: number, total: number) =>
+      `Проверяю доступность у вас ${formatCount(done)}/${formatCount(total)}`,
     cancel: 'Отмена',
-    found: (count: number) =>
-      `Найдено ${plural(count, noun.newOne)} · ${pluralFormUnchecked(count)}`,
-    skipped: (count: number) =>
-      pluralCategory(count) === 'one'
-        ? `Пропущен ${plural(count, noun.source)}`
-        : `Пропущено ${plural(count, noun.source)}`,
+    summary: (found: number, fresh: number, open: number) =>
+      `Найдено ${formatCount(found)} · новых ${formatCount(fresh)} · доступны у вас ${formatCount(open)}`,
+    segmentNew: 'Новые',
+    segmentAll: 'Все найденные',
+    emptyNew: 'Новых нет — все найденные уже в списке',
+    emptyFail: 'Ничего не нашлось — источники не открылись',
+    emptyNone: 'В списках нет подходящих ссылок',
+    emptyCancelled: 'Поиск отменён',
+    sourcesTitle: 'Источники',
     copy: 'Скопировать',
     copied: 'Ссылки скопированы',
     download: 'Скачать',
     check: 'Проверить на сервере',
-    refreshList: 'Обновить список',
     idle: 'Ожидание',
     running: 'Идёт',
     done: 'Готово',
     failed: 'Не вышло',
     cancelled: 'Отменена',
     rateLimit: 'Слишком много запросов, статус позже',
-    source: (name: string) => `Источник: ${name}`,
     skipClosed: 'не открылся',
     skipTelegram: 'страница Telegram',
   },

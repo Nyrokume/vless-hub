@@ -1,81 +1,128 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Globe } from 'lucide-react'
+import { ConfigSheet } from '@/components/config-sheet'
 import { EmptyState } from '@/components/empty-state'
+import { LatencyRange } from '@/components/latency-range'
+import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { downloadText } from '@/lib/bundle'
 import { copyText } from '@/lib/copy'
-import { countryName, distinctTransport, flagCode, flagEmoji, protocolLabel } from '@/lib/format'
+import {
+  countryName,
+  flagCode,
+  flagEmoji,
+  latencyClass,
+  latencyText,
+  protocolLine,
+} from '@/lib/format'
 import { useHub } from '@/lib/hub'
-import { collectFresh, type LiveProgress } from '@/lib/live-collect'
-import { fetchLatestRun, runLine, runPhase, type RunSnapshot } from '@/lib/live-sources'
+import { collectFresh, groupLive, type LiveItem, type LiveLine, type LiveStage } from '@/lib/live-collect'
+import { fetchLatestRun, runLine, type RunSnapshot } from '@/lib/live-sources'
+import { browserCanProbe, endpointKey, probeEndpoint, REACH_CONCURRENCY, type ReachHit } from '@/lib/reach'
+import { useReach } from '@/lib/reach-context'
 import { useServerCheck } from '@/lib/server-check-context'
-import type { ParsedProxy } from '@/lib/parse-proxy'
+import { useSettings } from '@/lib/settings'
 import { formatCount } from '@/lib/plural'
 import { ru } from '@/lib/ru'
+import type { ConfigRecord } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-const HEADER_H = 56
-const ROW_H = 68
-const OVERSCAN = 480
+type View = 'new' | 'all'
 
-type LiveGroup = {
-  code: string
-  name: string
-  items: ParsedProxy[]
+function pingOf(item: LiveItem, book: Record<string, ReachHit>): number | null {
+  const hit = book[endpointKey(item.host, item.port)]
+  if (!hit || hit.status !== 'open' || hit.ms == null) return null
+  return hit.ms
 }
 
-type LiveRow =
-  | { kind: 'group'; key: string; group: LiveGroup; open: boolean }
-  | { kind: 'config'; key: string; item: ParsedProxy }
+function reachWord(hit: ReachHit | undefined): string {
+  if (!hit) return ''
+  if (hit.status === 'open') return ru.reachOpen
+  if (hit.status === 'closed') return ru.reachClosed
+  return ru.reachSkip
+}
 
-function rowTitle(item: ParsedProxy): { flag: string; name: string } {
+function toRecord(item: LiveItem, hit: ReachHit | undefined): ConfigRecord {
   const code = flagCode(item.remark)
-  if (!code) return { flag: '', name: item.host }
-  return { flag: flagEmoji(code), name: countryName(code) || item.host }
+  const country = code ? countryName(code) : ''
+  return {
+    id: item.id,
+    uri: item.uri,
+    protocol: item.protocol,
+    remark: item.remark,
+    uuid: item.uuid,
+    host: item.host,
+    port: item.port,
+    transport: item.network,
+    security: item.security,
+    sni: item.sni,
+    flow: item.flow,
+    path: item.path,
+    host_header: item.hostHeader,
+    service_name: item.serviceName,
+    fingerprint: item.fp,
+    country_code: code || null,
+    country: country || null,
+    country_source: code ? 'remark' : null,
+    ip_country_code: null,
+    ip_country: null,
+    extra: {},
+    source: item.source || '',
+    latency_ms: hit?.status === 'open' ? hit.ms : null,
+    tested_at: '',
+  }
 }
 
-function rowSubtitle(item: ParsedProxy): string {
-  const via = distinctTransport(item.network, item.protocol)
-  const head = via ? `${protocolLabel(item.protocol)} · ${via}` : protocolLabel(item.protocol)
-  return `${head} · ${item.host}:${item.port}`
-}
-
-function groupLive(items: ParsedProxy[]): LiveGroup[] {
-  const map = new Map<string, ParsedProxy[]>()
+async function probeFound(
+  items: LiveItem[],
+  signal: AbortSignal,
+  onProgress: (done: number, total: number) => void,
+  remember: (hits: Record<string, ReachHit>) => void,
+) {
+  const planned: LiveItem[] = []
+  const seen = new Set<string>()
   for (const item of items) {
-    const code = flagCode(item.remark) || 'ZZ'
-    const list = map.get(code)
-    if (list) list.push(item)
-    else map.set(code, [item])
+    const key = endpointKey(item.host, item.port)
+    if (seen.has(key)) continue
+    seen.add(key)
+    planned.push(item)
   }
-  const groups: LiveGroup[] = []
-  for (const [code, rows] of map) {
-    rows.sort((left, right) => left.host.localeCompare(right.host) || left.port - right.port || left.id.localeCompare(right.id))
-    groups.push({
-      code,
-      name: code === 'ZZ' ? ru.noCountry : countryName(code) || code,
-      items: rows,
-    })
+  let done = 0
+  let cursor = 0
+  const batch: Record<string, ReachHit> = {}
+  const flush = () => {
+    if (Object.keys(batch).length === 0) return
+    remember({ ...batch })
+    for (const key of Object.keys(batch)) delete batch[key]
   }
-  groups.sort((left, right) => {
-    if (left.code === 'ZZ') return 1
-    if (right.code === 'ZZ') return -1
-    return left.name.localeCompare(right.name, 'ru')
-  })
-  return groups
-}
-
-function lowerBound(prefix: number[], target: number): number {
-  let lo = 0
-  let hi = prefix.length - 1
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1
-    if (prefix[mid] < target) lo = mid + 1
-    else hi = mid
+  onProgress(0, planned.length)
+  const lanes = Math.max(1, Math.min(REACH_CONCURRENCY, planned.length || 1))
+  async function lane() {
+    for (;;) {
+      if (signal.aborted) return
+      const index = cursor
+      cursor += 1
+      if (index >= planned.length) return
+      const item = planned[index]
+      const key = endpointKey(item.host, item.port)
+      const hit = browserCanProbe(item.protocol)
+        ? await probeEndpoint(item.host, item.port)
+        : { status: 'skip' as const, ms: null, at: Date.now() }
+      if (signal.aborted) return
+      batch[key] = hit
+      done += 1
+      if (done % REACH_CONCURRENCY === 0) flush()
+      onProgress(done, planned.length)
+    }
   }
-  return lo
+  try {
+    if (planned.length > 0) await Promise.all(Array.from({ length: lanes }, () => lane()))
+  } finally {
+    flush()
+  }
 }
 
 export function LiveParseSheet({
@@ -87,20 +134,25 @@ export function LiveParseSheet({
   known: Set<string>
   onOpenChange: (open: boolean) => void
 }) {
-  const { updateAvailable, refresh, data } = useHub()
+  const { data } = useHub()
+  const { settings } = useSettings()
+  const { book, remember } = useReach()
   const { start: startServerCheck } = useServerCheck()
   const [running, setRunning] = useState(false)
   const [searched, setSearched] = useState(false)
-  const [progress, setProgress] = useState<LiveProgress | null>(null)
-  const [found, setFound] = useState<ParsedProxy[]>([])
-  const [run, setRun] = useState<RunSnapshot | null>(null)
-  const [limited, setLimited] = useState(false)
-  const [newer, setNewer] = useState(false)
+  const [aborted, setAborted] = useState(false)
+  const [stage, setStage] = useState<LiveStage | 'reach'>('download')
+  const [done, setDone] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [items, setItems] = useState<LiveItem[]>([])
+  const [lines, setLines] = useState<LiveLine[]>([])
+  const [view, setView] = useState<View>('new')
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [range, setRange] = useState({ start: 0, end: 24 })
+  const [qr, setQr] = useState<QrRequest | null>(null)
+  const [run, setRun] = useState<RunSnapshot | null>(null)
+  const [limited, setLimited] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
-  const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
@@ -115,8 +167,7 @@ export function LiveParseSheet({
           if (stopped) return
           setRun(result.run)
           setLimited(result.limited)
-          const delay = runPhase(result.run) === 'running' ? 15_000 : 90_000
-          timer = window.setTimeout(look, delay)
+          timer = window.setTimeout(look, 90_000)
         })
         .catch(() => {
           if (!stopped) timer = window.setTimeout(look, 90_000)
@@ -130,26 +181,52 @@ export function LiveParseSheet({
     }
   }, [open])
 
-  useEffect(() => {
-    if (updateAvailable) setNewer(true)
-  }, [updateAvailable])
-
   async function start() {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     setRunning(true)
     setSearched(false)
-    setFound([])
+    setAborted(false)
+    setItems([])
+    setLines([])
+    setView('new')
     setSelectedId(null)
     setOpenGroups(new Set())
-    setNewer(false)
-    const startedAt = data?.generated_at
+    setStage('download')
+    setDone(0)
+    setTotal(0)
+    let collected: LiveItem[] = []
+    let reports: LiveLine[] = []
     try {
-      const result = await collectFresh(known, setProgress, controller.signal)
-      setFound(result.items)
-      if (startedAt && data && data.generated_at !== startedAt) setNewer(true)
+      const result = await collectFresh(
+        known,
+        (progress) => {
+          setStage(progress.stage)
+          setDone(progress.done)
+          setTotal(progress.total)
+          setLines(progress.lines)
+        },
+        controller.signal,
+      )
+      collected = result.items
+      reports = result.lines
+      setItems(collected)
+      setLines(reports)
+      if (!controller.signal.aborted && collected.length > 0) {
+        setStage('reach')
+        await probeFound(
+          collected,
+          controller.signal,
+          (reachDone, reachTotal) => {
+            setDone(reachDone)
+            setTotal(reachTotal)
+          },
+          remember,
+        )
+      }
     } finally {
+      if (controller.signal.aborted) setAborted(true)
       if (abortRef.current === controller) abortRef.current = null
       setRunning(false)
       setSearched(true)
@@ -160,207 +237,223 @@ export function LiveParseSheet({
     abortRef.current?.abort()
   }
 
-  const groups = useMemo(() => groupLive(found), [found])
-  const rows = useMemo(() => {
-    const next: LiveRow[] = []
-    for (const group of groups) {
-      const expanded = openGroups.has(group.code)
-      next.push({ kind: 'group', key: `g:${group.code}`, group, open: expanded })
-      if (!expanded) continue
-      for (const item of group.items) next.push({ kind: 'config', key: item.id, item })
-    }
-    return next
-  }, [groups, openGroups])
-
-  const prefix = useMemo(() => {
-    const next = new Array<number>(rows.length + 1)
-    next[0] = 0
-    for (let index = 0; index < rows.length; index += 1) {
-      next[index + 1] = next[index] + (rows[index].kind === 'group' ? HEADER_H : ROW_H)
-    }
-    return next
-  }, [rows])
-
-  useEffect(() => {
-    const node = listRef.current
-    if (!node) return
-    let frame = 0
-    const update = () => {
-      frame = 0
-      const viewStart = Math.max(0, node.scrollTop - OVERSCAN)
-      const viewEnd = node.scrollTop + node.clientHeight + OVERSCAN
-      const start = rows.length === 0 ? 0 : Math.max(0, lowerBound(prefix, viewStart) - 1)
-      const end = rows.length === 0 ? 0 : Math.min(rows.length, Math.max(start + 1, lowerBound(prefix, viewEnd)))
-      setRange((current) => (current.start === start && current.end === end ? current : { start, end }))
-    }
-    const schedule = () => {
-      if (frame) return
-      frame = window.requestAnimationFrame(update)
-    }
-    update()
-    node.addEventListener('scroll', schedule, { passive: true })
-    window.addEventListener('resize', schedule)
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame)
-      node.removeEventListener('scroll', schedule)
-      window.removeEventListener('resize', schedule)
-    }
-  }, [prefix, rows.length])
-
-  const startIndex = Math.min(range.start, rows.length)
-  const endIndex = Math.min(Math.max(range.end, startIndex), rows.length)
-  const slice = rows.slice(startIndex, endIndex)
-  const totalHeight = prefix[rows.length] ?? 0
-  const selected = found.find((item) => item.id === selectedId) ?? null
-  const status = runLine(run, limited)
-  const phase = runPhase(run)
-  const runIsNewer = Boolean(
-    phase === 'done' &&
-      run?.updatedAt &&
-      data?.generated_at &&
-      Date.parse(run.updatedAt) > Date.parse(data.generated_at),
+  const shown = useMemo(() => (view === 'new' ? items.filter((item) => item.fresh) : items), [items, view])
+  const groups = useMemo(
+    () => groupLive(shown, (item) => pingOf(item, book.byEndpoint)),
+    [shown, book],
   )
-  const offerRefresh = Boolean(newer || updateAvailable || runIsNewer)
-  const percent = progress && progress.total > 0 ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0
-  const text = found.map((item) => item.uri).join('\n')
+  const freshCount = items.filter((item) => item.fresh).length
+  const openCount = items.filter((item) => book.byEndpoint[endpointKey(item.host, item.port)]?.status === 'open').length
+  const selected = items.find((item) => item.id === selectedId) ?? null
+  const selectedHit = selected ? book.byEndpoint[endpointKey(selected.host, selected.port)] : undefined
+  const status = runLine(run, limited)
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : stage === 'parse' ? 100 : 0
+  const stageLabel =
+    stage === 'download'
+      ? ru.live.downloadStage(done, total)
+      : stage === 'parse'
+        ? ru.live.parseStage
+        : ru.live.reachStage(done, total)
+  const text = shown.map((item) => item.uri).join('\n')
+  const fetchFailed = lines.length > 0 && lines.every((line) => !line.ok)
+  const emptyText = aborted && items.length === 0
+    ? ru.live.emptyCancelled
+    : items.length > 0 && freshCount === 0
+      ? ru.live.emptyNew
+      : fetchFailed
+        ? ru.live.emptyFail
+        : ru.live.emptyNone
+  const showEmpty = searched && !running && shown.length === 0
+  const showSummary = searched && !running && items.length > 0
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="max-md:h-dvh! max-md:max-h-dvh! max-md:rounded-none! md:h-[min(85dvh,720px)] md:data-[side=bottom]:w-[min(40rem,calc(100%-2rem))]! gap-0 overflow-hidden p-0"
-      >
-        <SheetHeader className="shrink-0 pr-12 text-left">
-          <SheetTitle>{ru.live.title}</SheetTitle>
-        </SheetHeader>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-4">
-          {running ? (
-            <div>
-              <div className="h-0.5 overflow-hidden rounded-full bg-muted" aria-hidden>
-                <div className="h-full bg-foreground transition-[width]" style={{ width: `${percent}%` }} />
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-3">
-                <p className="text-[13px] text-foreground/75">
-                  {ru.live.sources(progress?.done ?? 0, progress?.total ?? 0)}
-                </p>
-                <Button variant="ghost" onClick={cancel}>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent
+          side="bottom"
+          className="max-md:h-dvh! max-md:max-h-dvh! max-md:rounded-none! md:h-[min(85dvh,720px)] md:data-[side=bottom]:w-[min(40rem,calc(100%-2rem))]! gap-0 overflow-hidden p-0"
+        >
+          <SheetHeader className="shrink-0 border-b border-border pr-12 text-left">
+            <SheetTitle className="text-[20px] font-semibold">{ru.live.title}</SheetTitle>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            {running ? (
+              <div className="rounded-2xl bg-card px-4 py-3" data-live-progress>
+                <p className="text-[15px]">{stageLabel}</p>
+                <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+                  <div className="h-full bg-foreground transition-[width]" style={{ width: `${percent}%` }} />
+                </div>
+                <Button variant="ghost" className="mt-2 h-10 px-0 text-[15px]" onClick={cancel}>
                   {ru.live.cancel}
                 </Button>
               </div>
-            </div>
-          ) : (
-            <Button onClick={() => void start()}>{ru.live.find}</Button>
-          )}
+            ) : (
+              <Button className="h-11 w-full text-[15px]" onClick={() => void start()}>
+                {ru.live.find}
+              </Button>
+            )}
 
-          {searched && !running && found.length > 0 && (
-            <p className="text-[15px]">{ru.live.found(found.length)}</p>
-          )}
-          {searched && !running && found.length === 0 && <EmptyState text={ru.live.found(0)} />}
+            {!running && !searched && (
+              <p className="mt-3 text-[14px] leading-5 text-foreground/75">{ru.live.hint}</p>
+            )}
+            {status && !running && (
+              <p className="mt-3 text-[13px] text-muted-foreground">{status}</p>
+            )}
 
-          {searched && !running && (progress?.skips.length ?? 0) > 0 && (
-            <details className="text-[14px] text-foreground/75">
-              <summary className="cursor-pointer">{ru.live.skipped(progress?.skips.length ?? 0)}</summary>
-              <ul className="mt-2 space-y-1">
-                {progress?.skips.map((skip) => (
-                  <li key={`${skip.name}:${skip.reason}`}>
-                    {skip.name} · {skip.reason || ru.live.skipClosed}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
+            {showSummary && (
+              <p className="mt-4 text-[15px] leading-5">{ru.live.summary(items.length, freshCount, openCount)}</p>
+            )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              disabled={found.length === 0}
-              onClick={() => void copyText(text, ru.live.copied)}
-            >
-              {ru.live.copy}
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={found.length === 0}
-              onClick={() => downloadText('v2hub-unverified.txt', text)}
-            >
-              {ru.live.download}
-            </Button>
-            <Button variant="secondary" onClick={() => void startServerCheck()}>
-              {ru.live.check}
-            </Button>
-          </div>
-
-          {status && <p className="text-[13px] text-foreground/75">{status}</p>}
-
-          {offerRefresh && (
-            <Button variant="ghost" onClick={() => void refresh()}>
-              {ru.live.refreshList}
-            </Button>
-          )}
-
-          {selected?.source && (
-            <p className="truncate text-[13px] text-foreground/75">{ru.live.source(selected.source)}</p>
-          )}
-
-          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto rounded-2xl bg-card">
-            {rows.length > 0 && (
-              <div style={{ height: totalHeight, position: 'relative' }}>
-                <div style={{ height: prefix[startIndex] ?? 0 }} />
-                {slice.map((row) =>
-                  row.kind === 'group' ? (
-                    <button
-                      key={row.key}
-                      type="button"
-                      className="flex h-14 w-full items-center gap-2 overflow-hidden border-t border-border px-3 text-left whitespace-nowrap first:border-t-0"
-                      aria-expanded={row.open}
-                      onClick={() =>
-                        setOpenGroups((current) => {
-                          const next = new Set(current)
-                          if (next.has(row.group.code)) next.delete(row.group.code)
-                          else next.add(row.group.code)
-                          return next
-                        })
-                      }
-                    >
-                      {row.open ? <ChevronDown className="size-4 shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
-                      <span className="grid w-6 shrink-0 place-items-center text-xl leading-none" aria-hidden>
-                        {flagEmoji(row.group.code) || <Globe className="size-5 text-muted-foreground" />}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{row.group.name}</span>
-                      <Badge variant="secondary" className="h-6 text-[13px]">
-                        {formatCount(row.group.items.length)}
-                      </Badge>
-                    </button>
-                  ) : (
-                    <button
-                      key={row.key}
-                      type="button"
-                      className={cn(
-                        'flex h-[68px] w-full items-center border-t border-border px-3 text-left',
-                        selectedId === row.item.id && 'bg-muted',
-                      )}
-                      onClick={() => setSelectedId(row.item.id)}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          {rowTitle(row.item).flag && (
-                            <span className="text-xl leading-none" aria-hidden>
-                              {rowTitle(row.item).flag}
-                            </span>
-                          )}
-                          <span className="truncate text-[15px] font-medium">{rowTitle(row.item).name}</span>
-                        </span>
-                        <span className="mt-0.5 block truncate text-[14px] text-foreground/75">{rowSubtitle(row.item)}</span>
-                      </span>
-                    </button>
-                  ),
-                )}
-                <div style={{ height: Math.max(0, totalHeight - (prefix[endIndex] ?? 0)) }} />
+            {searched && !running && items.length > 0 && (
+              <div className="mt-3 grid grid-cols-2 rounded-xl bg-muted p-1" role="tablist" aria-label={ru.live.title}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'new'}
+                  className={cn(
+                    'h-9 rounded-lg text-[14px]',
+                    view === 'new' ? 'bg-background text-foreground' : 'text-foreground/70',
+                  )}
+                  onClick={() => setView('new')}
+                >
+                  {ru.live.segmentNew}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === 'all'}
+                  className={cn(
+                    'h-9 rounded-lg text-[14px]',
+                    view === 'all' ? 'bg-background text-foreground' : 'text-foreground/70',
+                  )}
+                  onClick={() => setView('all')}
+                >
+                  {ru.live.segmentAll}
+                </button>
               </div>
             )}
+
+            {showEmpty && <EmptyState text={emptyText} />}
+
+            {groups.length > 0 && (
+              <div className="mt-4 overflow-hidden rounded-2xl bg-card">
+                {groups.map((group) => {
+                  const expanded = openGroups.has(group.code)
+                  return (
+                    <div key={group.code}>
+                      <button
+                        type="button"
+                        className="flex h-14 w-full items-center gap-2 overflow-hidden border-t border-border px-3 text-left whitespace-nowrap first:border-t-0"
+                        aria-expanded={expanded}
+                        onClick={() =>
+                          setOpenGroups((current) => {
+                            const next = new Set(current)
+                            if (next.has(group.code)) next.delete(group.code)
+                            else next.add(group.code)
+                            return next
+                          })
+                        }
+                      >
+                        {expanded ? (
+                          <ChevronDown className="size-4 shrink-0" />
+                        ) : (
+                          <ChevronRight className="size-4 shrink-0" />
+                        )}
+                        <span className="grid w-6 shrink-0 place-items-center text-xl leading-none" aria-hidden>
+                          {flagEmoji(group.code) || <Globe className="size-5 text-muted-foreground" />}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{group.name}</span>
+                        <Badge variant="secondary" className="h-6 text-[13px]">
+                          {formatCount(group.items.length)}
+                        </Badge>
+                        <LatencyRange min={group.min} max={group.max} className="text-[14px]" />
+                      </button>
+                      {expanded &&
+                        group.items.map((item) => {
+                          const hit = book.byEndpoint[endpointKey(item.host, item.port)]
+                          const word = reachWord(hit)
+                          const meta = [protocolLine(item.network, item.protocol), word].filter(Boolean).join(' · ')
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className="flex min-h-16 w-full items-center gap-3 border-t border-border px-3 py-2 text-left"
+                              onClick={() => setSelectedId(item.id)}
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[15px] font-medium">{item.host}</span>
+                                <span className="mt-0.5 block truncate text-[14px] text-foreground/75">{meta}</span>
+                              </span>
+                              <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(pingOf(item, book.byEndpoint)))}>
+                                {latencyText(pingOf(item, book.byEndpoint))}
+                              </span>
+                            </button>
+                          )
+                        })}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {searched && !running && lines.length > 0 && (
+              <Collapsible className="mt-4">
+                <CollapsibleTrigger className="flex h-11 w-full items-center justify-between text-[14px] text-foreground/75">
+                  {ru.live.sourcesTitle}
+                  <ChevronDown className="size-4" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pb-2">
+                  {lines.map((line) => (
+                    <p key={`${line.name}:${line.error}`} className="truncate py-1 text-[14px]">
+                      {line.name}
+                      {' · '}
+                      {line.ok ? formatCount(line.count) : line.error || ru.live.skipClosed}
+                    </p>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
           </div>
-        </div>
-      </SheetContent>
-    </Sheet>
+          {searched && !running && shown.length > 0 && (
+            <div className="shrink-0 border-t border-border bg-popover px-4 py-3">
+              <div className="grid grid-cols-2 gap-2">
+                <Button className="h-11 text-[14px]" onClick={() => void copyText(text, ru.live.copied)}>
+                  {ru.live.copy}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="h-11 text-[14px]"
+                  onClick={() => downloadText('v2hub-live.txt', text)}
+                >
+                  {ru.live.download}
+                </Button>
+                <Button
+                  variant="secondary"
+                  className="col-span-2 h-11 text-[14px]"
+                  onClick={() => void startServerCheck()}
+                >
+                  {ru.live.check}
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+      <ConfigSheet
+        config={selected ? toRecord(selected, selectedHit) : null}
+        sources={data?.sources ?? []}
+        client={settings.client}
+        onOpenChange={(next) => {
+          if (!next) setSelectedId(null)
+        }}
+        onQr={setQr}
+      />
+      <QrDialog
+        request={qr}
+        onOpenChange={(next) => {
+          if (!next) setQr(null)
+        }}
+      />
+    </>
   )
 }

@@ -56,6 +56,13 @@ export type ParsedProxy = {
   security: string
   remark: string
   source?: string
+  uuid: string
+  sni: string
+  flow: string
+  path: string
+  hostHeader: string
+  serviceName: string
+  fp: string
 }
 
 type Fields = {
@@ -554,6 +561,13 @@ export async function parseProxy(uri: string): Promise<ParsedProxy | null> {
     network: fields.network,
     security: fields.security,
     remark: fields.remark,
+    uuid: fields.uuid,
+    sni: fields.sni,
+    flow: fields.flow,
+    path: fields.path,
+    hostHeader: fields.hostHeader,
+    serviceName: fields.serviceName,
+    fp: fields.fp,
   }
 }
 

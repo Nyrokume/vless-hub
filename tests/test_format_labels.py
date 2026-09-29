@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_redundant_transport_is_not_repeated():
     script = r"""
 import { distinctTransport, latencyBounds, latencyRange, protocolLabel, protocolLine, transportLabel } from './site/src/lib/format.ts'
-import { splitFresh } from './site/src/lib/live-collect.ts'
+import { groupLive, splitFresh } from './site/src/lib/live-collect.ts'
 import { parseProxy } from './site/src/lib/parse-proxy.ts'
 
 const cases = [
@@ -59,6 +59,37 @@ if (split.unique.length !== 2 || split.fresh.length !== 1 || split.fresh[0].id !
   console.error('split', split.unique.length, split.fresh.length)
   process.exit(1)
 }
+function liveItem(host, remark, id) {
+  return {
+    id,
+    uri: 'vless://' + id,
+    protocol: 'vless',
+    host,
+    port: 443,
+    network: 'tcp',
+    security: 'none',
+    remark,
+    uuid: id,
+    sni: '',
+    flow: '',
+    path: '',
+    hostHeader: '',
+    serviceName: '',
+    fp: '',
+    fresh: true,
+  }
+}
+const slow = liveItem('slow.example', '🇺🇸 slow', 'slow')
+const fast = liveItem('fast.example', '🇩🇪 fast', 'fast')
+const plain = liveItem('plain.example', 'no flag', 'plain')
+const pings = { 'fast.example:443': 51, 'slow.example:443': 900 }
+const grouped = groupLive([slow, plain, fast], (item) => pings[item.host + ':' + item.port] ?? null)
+if (grouped[0].code !== 'DE' || grouped[0].min !== 51) {
+  console.error('group order', grouped.map((group) => group.code + ':' + group.min).join(','))
+  process.exit(1)
+}
+if (grouped[1].code !== 'US' || grouped[2].code !== 'ZZ') process.exit(1)
+if (grouped[0].max !== 51 || grouped[1].min !== 900) process.exit(1)
 """
     result = subprocess.run(
         [

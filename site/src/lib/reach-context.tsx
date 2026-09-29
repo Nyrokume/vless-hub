@@ -29,6 +29,7 @@ type ReachContextValue = {
   progress: ReachProgress
   setTargets: (configs: ConfigRecord[]) => void
   run: () => Promise<void>
+  remember: (hits: Record<string, ReachHit>) => void
 }
 
 const ReachContext = createContext<ReachContextValue | null>(null)
@@ -59,6 +60,17 @@ export function ReachProvider({ children }: { children: ReactNode }) {
 
   const setTargets = useCallback((configs: ConfigRecord[]) => {
     targets.current = configs
+  }, [])
+
+  const remember = useCallback((hits: Record<string, ReachHit>) => {
+    const keys = Object.keys(hits)
+    if (keys.length === 0) return
+    setBook((current) => {
+      const next: ReachBook = { at: Date.now(), byEndpoint: { ...current.byEndpoint, ...hits } }
+      bookRef.current = next
+      saveReach(next)
+      return next
+    })
   }, [])
 
   const run = useCallback(async () => {
@@ -119,7 +131,7 @@ export function ReachProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <ReachContext.Provider value={{ book, progress, setTargets, run }}>
+    <ReachContext.Provider value={{ book, progress, setTargets, run, remember }}>
       {children}
     </ReachContext.Provider>
   )
