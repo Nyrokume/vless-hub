@@ -101,6 +101,8 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     assert "de.example" in (out / "sub" / "with-unstable.txt").read_text(encoding="utf-8")
     assert hub["unstable"] == []
     assert "tcp_refused" in hub["stats"]["rejected"]
+    version = json.loads((out / "data" / "version.json").read_text(encoding="utf-8"))
+    assert version == {"generated_at": hub["generated_at"]}
 
 
 def test_a_verified_config_is_not_also_written_as_unverified(tmp_path):

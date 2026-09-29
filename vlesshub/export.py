@@ -448,6 +448,10 @@ def _write_site_payload(
         json.dumps(hub, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    (out_dir / "data" / "version.json").write_text(
+        json.dumps({"generated_at": generated_at}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _write_pair(

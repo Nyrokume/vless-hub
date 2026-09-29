@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { loadHub } from '@/lib/data'
+import { loadHub, loadVersion } from '@/lib/data'
 import { ru } from '@/lib/ru'
 import type { HubData } from '@/lib/types'
 
-const CHECK_MS = 3 * 60 * 1000
+const POLL_MS = 60_000
 
 type HubContextValue = {
   data: HubData | null
@@ -17,10 +17,21 @@ type HubContextValue = {
 
 const HubContext = createContext<HubContextValue | null>(null)
 
-function newConfigCount(previous: HubData | null, next: HubData): number {
-  if (!previous) return next.configs.length
-  const known = new Set(previous.configs.map((item) => item.id))
-  return next.configs.filter((item) => !known.has(item.id)).length
+function membership(data: HubData): Set<string> {
+  const ids = new Set<string>()
+  for (const item of data.configs) ids.add(`c:${item.id}`)
+  for (const item of data.proxies ?? []) ids.add(`p:${item.id}`)
+  return ids
+}
+
+function listDelta(previous: HubData, next: HubData): { added: number; removed: number } {
+  const before = membership(previous)
+  const after = membership(next)
+  let added = 0
+  let removed = 0
+  for (const id of after) if (!before.has(id)) added += 1
+  for (const id of before) if (!after.has(id)) removed += 1
+  return { added, removed }
 }
 
 export function HubProvider({ children }: { children: ReactNode }) {
@@ -28,42 +39,68 @@ export function HubProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [updateAvailable, setUpdateAvailable] = useState(false)
   const dataRef = useRef<HubData | null>(null)
+  const busy = useRef(false)
   dataRef.current = data
 
-  const apply = useCallback((next: HubData, announce: boolean) => {
+  const apply = useCallback((next: HubData, mode: 'silent' | 'manual' | 'auto') => {
     const previous = dataRef.current
-    if (announce) {
-      if (previous && next.generated_at === previous.generated_at) {
-        toast.success(ru.alreadyFresh)
-      } else {
-        const added = newConfigCount(previous, next)
-        toast.success(added > 0 ? ru.refreshedNew(added) : ru.refreshed)
-      }
+    const same = Boolean(previous && next.generated_at === previous.generated_at)
+    if (mode === 'manual' && same) {
+      toast.success(ru.alreadyFresh)
+    } else if (previous && !same && (mode === 'manual' || mode === 'auto')) {
+      const { added, removed } = listDelta(previous, next)
+      toast(ru.listUpdated(added, removed), { duration: 2800 })
     }
+    dataRef.current = next
     setData(next)
-    setUpdateAvailable(false)
     setError(null)
   }, [])
 
-  const refresh = useCallback(async () => {
-    if (refreshing) return
-    setRefreshing(true)
-    try {
-      apply(await loadHub(true), true)
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : ru.refreshFailed)
-    } finally {
-      setRefreshing(false)
-    }
-  }, [apply, refreshing])
+  const pull = useCallback(
+    async (mode: 'manual' | 'auto') => {
+      if (busy.current) return
+      busy.current = true
+      if (mode === 'manual') setRefreshing(true)
+      try {
+        if (mode === 'auto') {
+          let stamp: string | null = null
+          try {
+            stamp = await loadVersion()
+          } catch {
+            stamp = null
+          }
+          const current = dataRef.current?.generated_at
+          if (stamp && current && stamp === current) return
+          setRefreshing(true)
+        }
+        apply(await loadHub(true), mode)
+      } catch (reason) {
+        if (mode === 'manual') {
+          toast.error(reason instanceof Error ? reason.message : ru.refreshFailed)
+        }
+      } finally {
+        busy.current = false
+        setRefreshing(false)
+      }
+    },
+    [apply],
+  )
+
+  const refresh = useCallback(() => pull('manual'), [pull])
+
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    void navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) void registration.unregister()
+    })
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     loadHub(true)
       .then((next) => {
-        if (!cancelled) apply(next, false)
+        if (!cancelled) apply(next, 'silent')
       })
       .catch((reason) => {
         if (!cancelled) setError(reason instanceof Error ? reason.message : ru.loadFailed)
@@ -77,31 +114,40 @@ export function HubProvider({ children }: { children: ReactNode }) {
   }, [apply])
 
   useEffect(() => {
+    if (loading) return
     let timer = 0
-    const look = () => {
-      if (document.visibilityState !== 'visible' || !dataRef.current) return
-      void loadHub(true)
-        .then((next) => {
-          const current = dataRef.current?.generated_at
-          if (current && next.generated_at !== current) setUpdateAvailable(true)
-        })
-        .catch(() => undefined)
-    }
-    const arm = () => {
-      window.clearInterval(timer)
+    const stop = () => window.clearInterval(timer)
+    const start = () => {
+      stop()
       if (document.visibilityState !== 'visible') return
-      timer = window.setInterval(look, CHECK_MS)
+      timer = window.setInterval(() => void pull('auto'), POLL_MS)
     }
-    arm()
-    document.addEventListener('visibilitychange', arm)
+    const now = () => {
+      if (document.visibilityState !== 'visible') return
+      void pull('auto')
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        now()
+        start()
+      } else {
+        stop()
+      }
+    }
+    start()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', now)
+    window.addEventListener('online', now)
     return () => {
-      window.clearInterval(timer)
-      document.removeEventListener('visibilitychange', arm)
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', now)
+      window.removeEventListener('online', now)
     }
-  }, [])
+  }, [loading, pull])
 
   return (
-    <HubContext.Provider value={{ data, error, loading, refreshing, updateAvailable, refresh }}>
+    <HubContext.Provider value={{ data, error, loading, refreshing, updateAvailable: false, refresh }}>
       {children}
     </HubContext.Provider>
   )

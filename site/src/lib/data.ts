@@ -1,10 +1,27 @@
 import { ru } from '@/lib/ru'
 import type { ConfigRecord, HubData } from '@/lib/types'
 
+function freshUrl(path: string): string {
+  const base = import.meta.env.BASE_URL.replace(/\/?$/, '/')
+  return `${base}${path}?t=${Date.now()}`
+}
+
+const freshInit: RequestInit = {
+  cache: 'no-store',
+  headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
+}
+
+export async function loadVersion(): Promise<string> {
+  const response = await fetch(freshUrl('data/version.json'), freshInit)
+  if (!response.ok) throw new Error(`${ru.loadFailed} (${response.status})`)
+  const data = (await response.json()) as { generated_at?: string }
+  if (!data?.generated_at) throw new Error(ru.dataBroken)
+  return data.generated_at
+}
+
 export async function loadHub(bust = false): Promise<HubData> {
-  const stamp = bust ? `?t=${Date.now()}` : ''
-  const url = `${import.meta.env.BASE_URL}data/configs.json${stamp}`
-  const response = await fetch(url, { cache: 'no-store' })
+  const url = bust ? freshUrl('data/configs.json') : `${import.meta.env.BASE_URL}data/configs.json`
+  const response = await fetch(url, bust ? freshInit : { cache: 'no-store' })
   if (!response.ok) {
     throw new Error(`${ru.loadFailed} (${response.status})`)
   }

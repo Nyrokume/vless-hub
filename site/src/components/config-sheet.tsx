@@ -40,12 +40,14 @@ function Field({ label, value }: { label: string; value: string }) {
 
 export function ConfigSheet({
   config,
+  missing = false,
   sources,
   client,
   onOpenChange,
   onQr,
 }: {
   config: ConfigRecord | null
+  missing?: boolean
   sources: SourceReport[]
   client: ClientId
   onOpenChange: (open: boolean) => void
@@ -83,11 +85,13 @@ export function ConfigSheet({
         [ru.fields.handshake, config.handshake_ms != null ? latencyText(config.handshake_ms) : ''],
         [
           ru.fields.status,
-          config.status === 'working' || config.status === 'unstable' || config.status === 'dead'
-            ? statusLabel(config.status)
-            : config.verified === 'tcp'
-              ? ru.portOpen
-              : '',
+          missing
+            ? ru.noLongerWorks
+            : config.status === 'working' || config.status === 'unstable' || config.status === 'dead'
+              ? statusLabel(config.status)
+              : config.verified === 'tcp'
+                ? ru.portOpen
+                : '',
         ],
         [ru.fields.list, sourceName ?? ''],
         [
@@ -116,6 +120,9 @@ export function ConfigSheet({
                 </span>
               </SheetDescription>
             </SheetHeader>
+            {missing && (
+              <p className="px-4 pb-3 text-[15px] font-medium text-foreground">{ru.noLongerWorks}</p>
+            )}
             <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
               <Button onClick={() => void copyText(config.uri, ru.copyConfig)}>
                 <Copy />

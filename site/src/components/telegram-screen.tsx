@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { EmptyState } from '@/components/empty-state'
+import { Freshness } from '@/components/freshness'
 import { LatencyRange } from '@/components/latency-range'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
@@ -30,6 +31,11 @@ export function TelegramScreen({ data }: { data: HubData }) {
   const [qr, setQr] = useState<QrRequest | null>(null)
   const [selected, setSelected] = useState<ProxyRecord | null>(null)
   const stats = data.stats.telegram
+  const liveSelected = selected
+    ? ([...data.proxies, ...(data.unstable_proxies ?? [])].find((item) => item.id === selected.id) ?? null)
+    : null
+  const sheetProxy = liveSelected ?? selected
+  const sheetMissing = Boolean(selected) && !liveSelected
   const pool = showUnstable ? [...data.proxies, ...(data.unstable_proxies ?? [])] : data.proxies
 
   const countries = useMemo(() => {
@@ -63,6 +69,8 @@ export function TelegramScreen({ data }: { data: HubData }) {
       <SiteHeader updated={formatStamp(data.generated_at)} />
       <p className="text-[13px] text-muted-foreground">
         {ru.telegramCounts(stats?.mtproto ?? 0, stats?.socks ?? 0)}
+        {' · '}
+        <Freshness iso={data.generated_at} />
       </p>
       <p className="mb-3 mt-1">
         <LatencyRange min={latency.min} max={latency.max} />
@@ -156,7 +164,8 @@ export function TelegramScreen({ data }: { data: HubData }) {
         )}
       </div>
       <ProxySheet
-        proxy={selected}
+        proxy={sheetProxy}
+        missing={sheetMissing}
         onOpenChange={(open) => {
           if (!open) setSelected(null)
         }}
@@ -184,10 +193,12 @@ function Field({ label, value }: { label: string; value: string }) {
 
 function ProxySheet({
   proxy,
+  missing = false,
   onOpenChange,
   onQr,
 }: {
   proxy: ProxyRecord | null
+  missing?: boolean
   onOpenChange: (open: boolean) => void
   onQr: (proxy: ProxyRecord) => void
 }) {
@@ -200,9 +211,11 @@ function ProxySheet({
         [ru.fields.connection, kindLabel(proxy.kind)],
         [
           ru.fields.status,
-          proxy.status === 'working' || proxy.status === 'unstable' || proxy.status === 'dead'
-            ? statusLabel(proxy.status)
-            : '',
+          missing
+            ? ru.noLongerWorks
+            : proxy.status === 'working' || proxy.status === 'unstable' || proxy.status === 'dead'
+              ? statusLabel(proxy.status)
+              : '',
         ],
         [ru.fields.stability, stabilityText(proxy.stability)],
       ].filter(([, value]) => value)
@@ -227,6 +240,7 @@ function ProxySheet({
                 </span>
               </SheetDescription>
             </SheetHeader>
+            {missing && <p className="px-4 pb-3 text-[15px] font-medium text-foreground">{ru.noLongerWorks}</p>}
             <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
               <Button onClick={() => void copyText(proxy.https, ru.httpsCopied)}>
                 <Copy />

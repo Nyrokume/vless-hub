@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ConfigSheet } from '@/components/config-sheet'
 import { EmptyState } from '@/components/empty-state'
+import { Freshness } from '@/components/freshness'
 import { LatencyRange } from '@/components/latency-range'
 import { FilterSheet } from '@/components/filter-sheet'
 import { LiveParseSheet } from '@/components/live-parse-sheet'
@@ -419,6 +420,15 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   }
 
   const statsLine = ru.listSummary(data.stats.published, data.stats.countries)
+  const opened = selectedId
+  const liveOpened = opened
+    ? (data.configs.find((item) => item.id === opened.id) ??
+      data.unstable?.find((item) => item.id === opened.id) ??
+      data.unverified.find((item) => item.id === opened.id) ??
+      null)
+    : null
+  const sheetConfig = liveOpened ?? opened
+  const sheetMissing = Boolean(opened) && !liveOpened
   const filtersOn =
     Boolean(safeList.country || safeList.transport || safeList.security || safeList.protocol) ||
     settings.latencyThreshold != null
@@ -526,7 +536,11 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         known={knownIds}
         onOpenChange={setLiveOpen}
       />
-      <p className="mb-3 text-[13px] text-muted-foreground">{statsLine}</p>
+      <p className="mb-3 text-[13px] text-muted-foreground">
+        {statsLine}
+        {' · '}
+        <Freshness iso={data.generated_at} />
+      </p>
 
       <div className="mb-3 flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
@@ -638,7 +652,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       )}
 
       <ConfigSheet
-        config={selectedId}
+        config={sheetConfig}
+        missing={sheetMissing}
         sources={data.sources}
         client={settings.client}
         onOpenChange={(open) => {

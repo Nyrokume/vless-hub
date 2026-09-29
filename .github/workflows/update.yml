@@ -2,7 +2,9 @@ name: Update and deploy
 
 on:
   schedule:
-    - cron: "17 */6 * * *"
+    # Every 15 minutes, off the hour. A full run is a few minutes, so the next
+    # one starts after the previous has published. Queued runs wait, they are not cancelled.
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       max_tcp:
@@ -21,6 +23,7 @@ permissions:
   contents: write
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
   group: vless-hub-pages
@@ -62,6 +65,13 @@ jobs:
       publish: ${{ steps.pipe.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
+      - name: Restore probe state
+        continue-on-error: true
+        uses: actions/cache/restore@v4
+        with:
+          path: state
+          key: probe-state-${{ github.run_id }}
+          restore-keys: probe-state-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -91,18 +101,13 @@ jobs:
             exit "$code"
           fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
-      - name: Commit compact probe state
-        if: github.ref == 'refs/heads/main'
-        run: |
-          git config user.name "nyrokume.dev"
-          git config user.email "143820910+Nyrokume@users.noreply.github.com"
-          git add state/history.json state/tg_history.json state/geo_cache.json state/source_health.json
-          if git diff --cached --quiet; then
-            echo "state unchanged"
-          else
-            git commit -m "chore: update probe history"
-            git push
-          fi
+      - name: Save probe state
+        if: always() && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: state
+          key: probe-state-${{ github.run_id }}
       - name: Build the React site
         if: steps.pipe.outputs.publish == 'true'
         working-directory: site

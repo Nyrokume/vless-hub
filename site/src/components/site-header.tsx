@@ -8,22 +8,13 @@ import { cn } from '@/lib/utils'
 
 export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme()
-  const { refreshing, updateAvailable, refresh } = useHub()
+  const { refreshing, refresh } = useHub()
   const dark = resolvedTheme !== 'light'
   return (
     <header className="flex items-center gap-2 pb-2">
       <div className="min-w-0 flex-1">
         <p className="text-[17px] leading-none font-semibold tracking-tight">{ru.brand}</p>
         {updated && <p className="mt-1 text-[13px] text-muted-foreground">{updated}</p>}
-        {updateAvailable && (
-          <button
-            type="button"
-            className="mt-1.5 rounded-full bg-secondary px-2.5 py-1 text-[12px] text-foreground"
-            onClick={() => void refresh()}
-          >
-            {ru.updateAvailable}
-          </button>
-        )}
       </div>
       {menu}
       <Button
