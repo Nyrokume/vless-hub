@@ -16,6 +16,8 @@ export const RAW_KEYS = [
   'mtproto_fail',
   'socks_fail',
   'unsupported_protocol',
+  'export_mismatch',
+  'flaky',
   'dead',
   'working',
   'unstable',
@@ -38,6 +40,8 @@ const reasons = {
   mtproto_fail: 'MTProto не ответил',
   socks_fail: 'SOCKS не открыл туннель',
   unsupported_protocol: 'Протокол не поддерживается',
+  export_mismatch: 'ссылка после сборки не совпала',
+  flaky: 'не прошёл повтор',
   dead: 'Не работает',
 } as const
 
@@ -191,6 +195,7 @@ export const ru = {
   telegramCounts: (mtproto: number, socks: number) =>
     `${plural(mtproto, ['MTProto', 'MTProto', 'MTProto'])} · ${plural(socks, ['SOCKS', 'SOCKS', 'SOCKS'])}`,
   portOpen: 'только открытый порт',
+  fromRussia: 'есть из России',
   noun,
   fields: {
     address: 'Адрес',
@@ -216,6 +221,8 @@ export const ru = {
     list: 'Список',
     checked: 'Проверено',
     yours: 'С вашей сети',
+    core: 'Ядро',
+    opened: 'Другие точки',
     publicKey: 'Ключ Reality',
     shortId: 'Короткий код',
     fingerprint: 'Отпечаток',
@@ -264,6 +271,7 @@ export const ru = {
     sources: 'Источники',
     sourceError: 'ошибка',
     lowYield: 'низкий выход',
+    autoDisabled: 'выключен',
     about: 'Об авторе',
     aboutText: 'Самоучка: Rust, фронтенд, бэкенд, Python, AI, навыки для агентов, промпты.',
     github: 'GitHub',
@@ -327,12 +335,12 @@ export const ru = {
     {
       id: 'phone',
       title: 'Проверка с телефона',
-      body: 'Полная проверка с вашего интернета идёт в Termux теми же ступенями, что на сервере: Xray для VLESS, Shadowsocks и Trojan, sing-box для Hysteria2. Включите мобильные данные, если нужен адрес вашей сети. Команды ниже скачивают текущий список и записывают рабочие ссылки в local-working.txt. На весь список уходит много времени. Для пробы добавьте в конец --limit 20.',
+      body: 'Полная проверка с вашего интернета идёт в Termux теми же ступенями, что на сервере: Xray для VLESS, Shadowsocks и Trojan, sing-box для Hysteria2 и TUIC. Включите мобильные данные, если нужен адрес вашей сети. Команды ниже скачивают текущий список и записывают рабочие ссылки в local-working.txt. На весь список уходит много времени. Для пробы добавьте в конец --limit 20.',
     },
     {
       id: 'check',
       title: 'Как проходит проверка',
-      body: 'Проверка идёт с серверов GitHub за пределами России. Конфиг, который открылся там, домашний провайдер всё равно может закрыть. Сайт сам никуда вас не подключает. В список попадает только то, что в этом прогоне прошло всё: подключение, два сайта из трёх с правильным ответом, скорость и другой адрес выхода. Не прошёл сейчас — сразу убран. В «Логах» видно, сколько отсеялось и почему: не прошёл HTTP-проверку, низкая скорость, не совпал выходной IP.',
+      body: 'Проверка идёт с серверов GitHub за пределами России. Ссылка собирается заново так, как её получит приложение, и весь проход повторяется ещё два раза: все три должны пройти. VLESS, Shadowsocks и Trojan проверяет Xray, Hysteria2 и TUIC — sing-box. Где умеют оба, в карточке написано «Xray и sing-box». Часть адресов дополнительно смотрится из России и Германии: «есть из России» — плюс, не условие. Конфиг, который открылся там, домашний провайдер всё равно может закрыть. Сайт сам никуда не подключает. Не прошёл повтор или ссылка после сборки разошлась — сразу убран. Если рабочих мало, прошлые рабочие проверяются ещё раз, но в список попадают только прошедшие сейчас. В «Логах» видно выход каждого источника. Источник, который несколько прогонов мёртв, помечается «выключен» и пропускается, потом пробуется снова.',
     },
     {
       id: 'inspect',
@@ -407,6 +415,13 @@ export function probeLabel(probe: string | null | undefined): string {
   if (!probe) return ru.settings.dash
   const label = (probes as Record<string, string>)[probe]
   return label ?? ru.probeFallback
+}
+
+export function coreLabel(core: string | null | undefined): string {
+  if (core === 'xray') return 'Xray'
+  if (core === 'sing-box') return 'sing-box'
+  if (core === 'xray+sing-box') return 'Xray и sing-box'
+  return ''
 }
 
 export function kindLabel(kind: string): string {

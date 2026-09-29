@@ -19,6 +19,13 @@ def test_starter_sources_are_editable_yaml():
     assert any(source.type == "subscription" and "proxy" in source.url for source in tg)
     assert any(source.type == "telegram" and source.channel for source in tg)
     assert settings.max_tg_tests >= 40
+    assert settings.confirm_rounds >= 2
+    assert settings.min_working >= 40
+    assert settings.vantage_checks >= 1
+    enabled = [source for source in sources if source.enabled]
+    assert len(enabled) >= 45
+    subs = [source for source in enabled if source.type == "subscription" and source.kind != "telegram-proxy"]
+    assert len(subs) >= 30
     assert normalize_country_code("de") == "DE"
     assert normalize_country_code("CLOUDFLARE") == ""
     assert normalize_country_code("FASTLY") == ""

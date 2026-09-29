@@ -20,6 +20,8 @@ RAW_KEYS = (
     "mtproto_fail",
     "socks_fail",
     "unsupported_protocol",
+    "export_mismatch",
+    "flaky",
     "dead",
     "working",
     "unstable",

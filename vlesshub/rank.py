@@ -130,6 +130,56 @@ def carry_verified(
     return carried
 
 
+def _bucket(cfg: VlessConfig) -> str:
+    if cfg.network in {"ws", "grpc", "xhttp"}:
+        return cfg.network
+    if cfg.network == "httpupgrade":
+        return "ws"
+    if cfg.security == "reality":
+        return "reality"
+    if cfg.security == "tls":
+        return "tls"
+    return "other"
+
+
+def reserve_diverse(
+    configs: list[VlessConfig],
+    history: History,
+    limit: int,
+    drop_after: int,
+    deprioritized: set[str] | None = None,
+) -> list[VlessConfig]:
+    """Keep a slice of each connection type before filling the rest of the budget."""
+    if limit <= 0:
+        return []
+    groups: dict[str, list[VlessConfig]] = {}
+    for cfg in configs:
+        groups.setdefault(_bucket(cfg), []).append(cfg)
+    floor = max(2, limit // 8)
+    chosen: list[VlessConfig] = []
+    used: set[str] = set()
+    for name in ("reality", "tls", "ws", "grpc", "xhttp", "other"):
+        pool = groups.get(name) or []
+        if not pool or len(chosen) >= limit:
+            continue
+        take = min(len(pool), floor, limit - len(chosen))
+        for cfg in select_candidates(pool, history, take, drop_after, deprioritized):
+            if cfg.fingerprint in used:
+                continue
+            chosen.append(cfg)
+            used.add(cfg.fingerprint)
+    if len(chosen) < limit:
+        rest = [cfg for cfg in configs if cfg.fingerprint not in used]
+        for cfg in select_candidates(rest, history, limit - len(chosen), drop_after, deprioritized):
+            if cfg.fingerprint in used:
+                continue
+            chosen.append(cfg)
+            used.add(cfg.fingerprint)
+            if len(chosen) >= limit:
+                break
+    return chosen
+
+
 def mix_proxy_targets(
     tcp_ok: list[VlessConfig],
     hysteria: list[VlessConfig],
@@ -143,7 +193,7 @@ def mix_proxy_targets(
         return []
     reserved = len(hysteria) if len(hysteria) <= max(8, limit // 8) else max(8, limit // 8)
     hy2_chosen = select_candidates(hysteria, history, min(reserved, limit), drop_after, deprioritized)
-    rest = select_candidates(
+    rest = reserve_diverse(
         tcp_ok,
         history,
         limit - len(hy2_chosen),
@@ -159,6 +209,7 @@ def rank_published(configs: list[VlessConfig]) -> list[VlessConfig]:
     def key(cfg: VlessConfig) -> tuple:
         latency = cfg.latency_ms if cfg.latency_ms is not None else 9_999_999
         verified_bonus = 0 if cfg.verified == "proxy" else 1
-        return (verified_bonus, latency, -cfg.uptime, cfg.fingerprint)
+        vantage = {"multi": 0, "ru": 1}.get(cfg.vantage, 2)
+        return (verified_bonus, latency, vantage, -cfg.uptime, cfg.fingerprint)
 
     return sorted(configs, key=key)

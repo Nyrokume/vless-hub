@@ -9,11 +9,30 @@ from vlesshub.tgparse import TgProxy, dedup, parse_many
 from vlesshub.util import log
 
 
-def collect_proxies(settings: Settings, sources: list[Source]) -> tuple[list[SourceReport], list[TgProxy]]:
+def collect_proxies(
+    settings: Settings,
+    sources: list[Source],
+    paused: set[str] | None = None,
+) -> tuple[list[SourceReport], list[TgProxy]]:
+    held = paused or set()
     enabled = [source for source in sources if source.enabled and source.kind == "telegram-proxy"]
     reports: list[SourceReport] = []
     proxies: list[TgProxy] = []
     for source in enabled:
+        if source.name not in held:
+            continue
+        report = SourceReport(
+            name=source.name,
+            url=_source_url(source),
+            ok=False,
+            error="auto-disabled",
+            disabled=True,
+        )
+        reports.append(report)
+        log(f"tg source {report.name}: auto-disabled")
+    for source in enabled:
+        if source.name in held:
+            continue
         report, found = _fetch(settings, source)
         reports.append(report)
         proxies.extend(found)

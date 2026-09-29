@@ -27,7 +27,7 @@ import {
 } from '@/lib/format'
 import { endpointKey, reachLine } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
-import { ru, statusLabel } from '@/lib/ru'
+import { coreLabel, ru, statusLabel } from '@/lib/ru'
 import type { ConfigRecord, SourceReport } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -88,6 +88,8 @@ export function ConfigSheet({
         [ru.fields.speed, speedText(config.speed_kbps)],
         [ru.fields.handshake, config.handshake_ms != null ? latencyText(config.handshake_ms) : ''],
         [ru.fields.yours, localReach],
+        [ru.fields.core, coreLabel(config.core)],
+        [ru.fields.opened, config.vantage === 'ru' || config.vantage === 'multi' ? ru.fromRussia : ''],
         [
           ru.fields.status,
           missing

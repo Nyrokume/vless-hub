@@ -6,10 +6,18 @@ from pathlib import Path
 from vlesshub.collect import collect_all, load_config
 from vlesshub.export import publish
 from vlesshub.geo import GeoCache, apply_exit_countries, enrich
-from vlesshub.health import apply_source_health, deprioritized_names, load_health, save_health
+from vlesshub.health import (
+    apply_source_health,
+    begin_run,
+    deprioritized_names,
+    load_health,
+    note_fetch,
+    save_health,
+)
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
-from vlesshub.probe import ProbeResult, failure_reason, proxy_probe, tcp_probe
+from vlesshub.parser import exported_config
+from vlesshub.probe import ProbeResult, _proxy_probe_singbox, failure_reason, proxy_probe, tcp_probe
 from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
 from vlesshub.stability import Stability
 from vlesshub.stages import dropped_after, status_of
@@ -18,6 +26,7 @@ from vlesshub.tgparse import TgProxy
 from vlesshub.tgprobe import probe_many
 from vlesshub.tools import ensure_geoip, ensure_singbox, ensure_xray
 from vlesshub.util import env_flag, env_int, log, utcnow
+from vlesshub.vantage import annotate_vantage
 
 
 def run_pipeline(
@@ -66,24 +75,35 @@ def run_pipeline(
         f"tg<={settings.max_tg_tests} batch={settings.proxy_batch_size} "
         f"xray={settings.proxy_concurrency} drop_after={settings.drop_after_failures}"
     )
+    state_dir.mkdir(parents=True, exist_ok=True)
+    health = load_health(state_dir / "source_health.json")
+    paused = begin_run(health)
+    if paused:
+        log(f"paused sources: {', '.join(sorted(paused))}")
     vless_sources = [source for source in sources if source.kind != "telegram-proxy"]
     tg_sources = [source for source in sources if source.kind == "telegram-proxy"]
-    reports, configs, rejections = collect_all(settings, vless_sources)
+    reports, configs, rejections = collect_all(settings, vless_sources, paused)
     rejections.setdefault("dead", 0)
     rejections.setdefault("timeout", 0)
-    tg_reports, tg_found = collect_proxies(settings, tg_sources)
+    tg_reports, tg_found = collect_proxies(settings, tg_sources, paused)
+    for report in reports + tg_reports:
+        note_fetch(health, report)
     if not any(report.ok for report in reports) and not any(report.ok for report in tg_reports):
         log("every source failed; nothing to publish")
+        save_health(state_dir / "source_health.json", health)
         return 1
 
-    state_dir.mkdir(parents=True, exist_ok=True)
     stability = Stability.load(out_dir / "data" / "stability.json")
     history = History.load(state_dir / "history.json")
-    health = load_health(state_dir / "source_health.json")
     blocked = deprioritized_names(health)
     if blocked:
         log(f"deprioritized sources: {', '.join(sorted(blocked))}")
     had_success = history.has_success()
+    proven_before = {
+        fingerprint
+        for fingerprint, entry in history.entries.items()
+        if isinstance(entry, dict) and int(entry.get("ok", 0)) > 0 and int(entry.get("streak_fail", 0)) == 0
+    }
     history.mark_misses({cfg.fingerprint for cfg in configs})
 
     alive = [
@@ -95,8 +115,8 @@ def run_pipeline(
     dropped = len(configs) - len(alive)
     if dropped:
         log(f"dropped {dropped} configs after {settings.drop_after_failures} failed runs")
-    tcp_pool = [cfg for cfg in alive if cfg.protocol != "hysteria2"]
-    hy2_pool = [cfg for cfg in alive if cfg.protocol == "hysteria2"]
+    tcp_pool = [cfg for cfg in alive if cfg.protocol not in {"hysteria2", "tuic"}]
+    hy2_pool = [cfg for cfg in alive if cfg.protocol in {"hysteria2", "tuic"}]
     candidates = select_candidates(
         tcp_pool,
         history,
@@ -119,29 +139,54 @@ def run_pipeline(
             settings.drop_after_failures,
             blocked,
         )
-        needs_xray = any(cfg.protocol != "hysteria2" for cfg in proxy_targets)
-        needs_singbox = any(cfg.protocol == "hysteria2" for cfg in proxy_targets)
+        ready, mismatched = _lock_exports(proxy_targets)
+        for cfg in mismatched:
+            proxy_results[cfg.fingerprint] = ProbeResult(
+                False, error="export mismatch", stage="parse", reason="export_mismatch"
+            )
+        proxy_targets = ready + mismatched
+        needs_xray = any(cfg.protocol not in {"hysteria2", "tuic"} for cfg in ready)
+        needs_singbox = any(cfg.protocol in {"hysteria2", "tuic"} for cfg in ready) or any(
+            cfg.protocol in {"vless", "trojan", "shadowsocks"} and cfg.network in _SINGBOX_NETS for cfg in ready
+        )
         xray = ensure_xray(root / "bin") if needs_xray else None
         singbox = ensure_singbox(root / "bin") if needs_singbox else None
-        if needs_xray and xray is None and not needs_singbox:
+        if needs_xray and xray is None and not any(cfg.protocol in {"hysteria2", "tuic"} for cfg in ready):
             log("proxy tests skipped because Xray is unavailable")
-            proxy_targets = []
+            proxy_targets = mismatched
         else:
-            hy2_n = sum(1 for cfg in proxy_targets if cfg.protocol == "hysteria2")
-            log(f"proxy candidates {len(proxy_targets)} hysteria2={hy2_n}")
-            proxy_results = proxy_probe(
-                proxy_targets,
-                xray,
-                settings.proxy_timeout_sec,
-                settings.speed_timeout_sec,
-                settings.proxy_concurrency,
-                settings.proxy_batch_size,
-                singbox_bin=singbox,
-            )
+            hy2_n = sum(1 for cfg in ready if cfg.protocol in {"hysteria2", "tuic"})
+            log(f"proxy candidates {len(ready)} udp={hy2_n} export_mismatch={len(mismatched)}")
+            if ready:
+                proxy_results.update(
+                    proxy_probe(
+                        ready,
+                        xray,
+                        settings.proxy_timeout_sec,
+                        settings.speed_timeout_sec,
+                        settings.proxy_concurrency,
+                        settings.proxy_batch_size,
+                        singbox_bin=singbox,
+                    )
+                )
+                _confirm(ready, proxy_results, settings, xray, singbox)
+                _rescue_previous(
+                    alive,
+                    proven_before,
+                    proxy_targets,
+                    proxy_results,
+                    settings,
+                    xray,
+                    singbox,
+                    history,
+                    blocked,
+                )
+                _note_cores(proxy_targets, proxy_results, settings, singbox)
     elif settings.max_proxy_tests > 0 and skip_download:
         log("proxy tests skipped (--skip-download)")
 
     tested_proxy = {cfg.fingerprint for cfg in proxy_targets}
+    probed = {cfg.fingerprint: cfg for cfg in proxy_targets}
     working: list[VlessConfig] = []
     evaluated: list[tuple[VlessConfig, bool]] = []
 
@@ -193,10 +238,11 @@ def run_pipeline(
         tcp_result = tcp.get(cfg.fingerprint)
         proxy_result = proxy_results.get(cfg.fingerprint)
         if cfg.fingerprint in tested_proxy:
+            chosen = probed.get(cfg.fingerprint, cfg)
             if proxy_result and proxy_result.ok:
-                _accept(cfg, proxy_result)
+                _accept(chosen, proxy_result)
             else:
-                _fail_proxy(cfg, proxy_result)
+                _fail_proxy(chosen, proxy_result)
         elif tcp_result and tcp_result.ok:
             # Open port only. Not a success and not a displayed latency.
             cfg.latency_ms = None
@@ -214,7 +260,7 @@ def run_pipeline(
             evaluated.append((cfg, False))
 
     for cfg in proxy_targets:
-        if cfg.protocol != "hysteria2":
+        if cfg.protocol not in {"hysteria2", "tuic"}:
             continue
         proxy_result = proxy_results.get(cfg.fingerprint)
         if proxy_result and proxy_result.ok:
@@ -254,6 +300,8 @@ def run_pipeline(
     tg_history.save(state_dir / "tg_history.json")
     cache.save(state_dir / "geo_cache.json")
 
+    if working and settings.vantage_checks > 0 and not skip_download:
+        annotate_vantage(working, settings.vantage_checks, settings.user_agent)
     published = rank_published(working)
     proxy_ok = len(published)
     log(
@@ -290,6 +338,120 @@ def run_pipeline(
     stability.save(out_dir / "data" / "stability.json")
     log(f"site written to {out_dir}")
     return 0
+
+
+_SINGBOX_NETS = {"tcp", "ws", "grpc", "h2", "xhttp", "httpupgrade"}
+_UDP = {"hysteria2", "tuic"}
+
+
+def _lock_exports(configs: list[VlessConfig]) -> tuple[list[VlessConfig], list[VlessConfig]]:
+    ready: list[VlessConfig] = []
+    broken: list[VlessConfig] = []
+    for cfg in configs:
+        exported = exported_config(cfg)
+        if exported is None:
+            broken.append(cfg)
+            continue
+        ready.append(exported)
+    return ready, broken
+
+
+def _probe_call(configs, settings, xray, singbox):
+    return proxy_probe(
+        configs,
+        xray,
+        settings.proxy_timeout_sec,
+        settings.speed_timeout_sec,
+        settings.proxy_concurrency,
+        settings.proxy_batch_size,
+        singbox_bin=singbox,
+    )
+
+
+def _confirm(configs, results: dict[str, ProbeResult], settings, xray, singbox) -> None:
+    passed = [cfg for cfg in configs if (hit := results.get(cfg.fingerprint)) and hit.ok and hit.evaluated]
+    rounds = max(0, settings.confirm_rounds)
+    for index in range(rounds):
+        if not passed:
+            break
+        time.sleep(1.0)
+        log(f"confirm {index + 1}/{rounds} on {len(passed)}")
+        again = _probe_call(passed, settings, xray, singbox)
+        still: list[VlessConfig] = []
+        for cfg in passed:
+            hit = again.get(cfg.fingerprint)
+            if hit is None or not hit.evaluated:
+                still.append(cfg)
+                continue
+            if hit.ok:
+                results[cfg.fingerprint] = hit
+                still.append(cfg)
+                continue
+            hit.reason = "flaky"
+            hit.ok = False
+            results[cfg.fingerprint] = hit
+        passed = still
+
+
+def _rescue_previous(alive, proven_before, proxy_targets, results, settings, xray, singbox, history, blocked) -> None:
+    passed = [cfg for cfg in proxy_targets if (hit := results.get(cfg.fingerprint)) and hit.ok]
+    if len(passed) >= settings.min_working or not proven_before:
+        if len(passed) < settings.min_working:
+            log(
+                f"warning: only {len(passed)} working configs; publishing the verified ones"
+            )
+        return
+    tested = {cfg.fingerprint for cfg in proxy_targets}
+    missing = [cfg for cfg in alive if cfg.fingerprint in proven_before and cfg.fingerprint not in tested]
+    log(f"warning: only {len(passed)} working; retesting {len(missing)} previously working")
+    if not missing or xray is None and singbox is None:
+        log("warning: few working configs after retest; publishing only verified ones")
+        return
+    from vlesshub.rank import select_candidates
+
+    extra = select_candidates(missing, history, min(400, settings.max_proxy_tests), settings.drop_after_failures, blocked)
+    ready, mismatched = _lock_exports(extra)
+    for cfg in mismatched:
+        results[cfg.fingerprint] = ProbeResult(False, error="export mismatch", stage="parse", reason="export_mismatch")
+        proxy_targets.append(cfg)
+    if ready:
+        results.update(_probe_call(ready, settings, xray, singbox))
+        _confirm(ready, results, settings, xray, singbox)
+        proxy_targets.extend(ready)
+    still = [cfg for cfg in proxy_targets if (hit := results.get(cfg.fingerprint)) and hit.ok]
+    if len(still) < settings.min_working:
+        log(f"warning: {len(still)} working after retest; publishing only verified ones")
+
+
+def _note_cores(configs, results: dict[str, ProbeResult], settings, singbox) -> None:
+    passed = [
+        cfg
+        for cfg in configs
+        if cfg.protocol not in _UDP
+        and cfg.network in _SINGBOX_NETS
+        and (hit := results.get(cfg.fingerprint))
+        and hit.ok
+    ]
+    second: dict[str, ProbeResult] = {}
+    if passed and singbox is not None:
+        log(f"sing-box check on {len(passed)}")
+        second = _proxy_probe_singbox(
+            passed,
+            singbox,
+            settings.proxy_timeout_sec,
+            0.0,
+            settings.proxy_concurrency,
+            min(8, settings.proxy_batch_size),
+        )
+    for cfg in configs:
+        hit = results.get(cfg.fingerprint)
+        if not hit or not hit.ok:
+            continue
+        if cfg.protocol in _UDP:
+            cfg.core = "sing-box"
+            continue
+        other = second.get(cfg.fingerprint)
+        cfg.core = "xray+sing-box" if other and other.ok else "xray"
 
 
 def _probe_telegram(

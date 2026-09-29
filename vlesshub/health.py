@@ -10,6 +10,8 @@ from vlesshub.models import SourceReport, VlessConfig
 MIN_SAMPLE = 8
 NEAR_ZERO = 0.02
 STREAK_LIMIT = 2
+DISABLE_AFTER = 3
+PAUSE_RUNS = 8
 
 
 def load_health(path: Path) -> dict:
@@ -28,6 +30,45 @@ def load_health(path: Path) -> dict:
 def save_health(path: Path, health: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(health, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def begin_run(health: dict) -> set[str]:
+    """Sources paused after repeated dead fetches or zero yield.
+
+    A pause lasts several runs, then the source is tried once more.
+    """
+    paused: set[str] = set()
+    for name, row in health.get("sources", {}).items():
+        if not isinstance(row, dict) or not row.get("disabled"):
+            continue
+        left = int(row.get("skip_left", 0))
+        if left <= 1:
+            row["disabled"] = False
+            row["skip_left"] = 0
+            row["fetch_streak"] = 0
+            row["zero_streak"] = 0
+            continue
+        row["skip_left"] = left - 1
+        paused.add(str(name))
+    return paused
+
+
+def note_fetch(health: dict, report: SourceReport) -> None:
+    """Count dead fetches. Several in a row pause the source."""
+    if report.error == "auto-disabled":
+        report.disabled = True
+        return
+    sources = health.setdefault("sources", {})
+    row = dict(sources.get(report.name) or {})
+    if report.ok and report.kept > 0:
+        row["fetch_streak"] = 0
+    else:
+        row["fetch_streak"] = int(row.get("fetch_streak", 0)) + 1
+    if int(row.get("fetch_streak", 0)) >= DISABLE_AFTER:
+        row["disabled"] = True
+        row["skip_left"] = PAUSE_RUNS
+    sources[report.name] = row
+    report.disabled = bool(row.get("disabled"))
 
 
 def deprioritized_names(health: dict) -> set[str]:
@@ -51,6 +92,9 @@ def note_yield(health: dict, name: str, tested: int, verified: int) -> dict:
         streak = streak + 1 if near_zero else 0
     row["zero_streak"] = streak
     row["deprioritized"] = streak >= STREAK_LIMIT
+    if streak >= DISABLE_AFTER:
+        row["disabled"] = True
+        row["skip_left"] = PAUSE_RUNS
     sources[name] = row
     return row
 
@@ -88,3 +132,4 @@ def apply_source_health(
         report.verified = verified
         report.yield_ratio = row["yield"]
         report.deprioritized = bool(row["deprioritized"])
+        report.disabled = bool(row.get("disabled"))

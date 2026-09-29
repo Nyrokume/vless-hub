@@ -789,6 +789,7 @@ function rowMeta(config: ConfigRecord, hit: ReachHit | undefined): string {
   const parts: string[] = []
   const local = reachLine(hit)
   if (local) parts.push(local)
+  if (config.vantage === 'ru' || config.vantage === 'multi') parts.push(ru.fromRussia)
   parts.push(protocolLine(config.transport, config.protocol))
   const stability = stabilityText(config.stability)
   const speed = speedText(config.speed_kbps)

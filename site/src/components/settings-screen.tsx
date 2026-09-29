@@ -180,9 +180,11 @@ function RunLogs({ data }: { data: HubData | null }) {
               <div key={source.id} className="border-t border-border py-2">
                 <p className="truncate text-[15px] text-foreground">{source.name}</p>
                 <p className="text-[13px]">
-                  {source.ok
-                    ? ru.settings.sourceMeta(source.fetched, source.kept ?? 0, source.verified ?? 0, yieldPct)
-                    : ru.settings.sourceError}
+                  {source.disabled
+                    ? ru.settings.autoDisabled
+                    : source.ok
+                      ? ru.settings.sourceMeta(source.fetched, source.kept ?? 0, source.verified ?? 0, yieldPct)
+                      : ru.settings.sourceError}
                   {source.deprioritized ? ` · ${ru.settings.lowYield}` : ''}
                 </p>
               </div>

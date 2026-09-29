@@ -118,8 +118,8 @@ def proxy_probe(
     singbox_bin: Path | None = None,
 ) -> dict[str, ProbeResult]:
     """Test VLESS, Shadowsocks, and Trojan with Xray, and Hysteria2 with sing-box."""
-    hy2 = [cfg for cfg in configs if cfg.protocol == "hysteria2"]
-    rest = [cfg for cfg in configs if cfg.protocol != "hysteria2"]
+    hy2 = [cfg for cfg in configs if cfg.protocol in {"hysteria2", "tuic"}]
+    rest = [cfg for cfg in configs if cfg.protocol not in {"hysteria2", "tuic"}]
     results: dict[str, ProbeResult] = {}
     direct = fetch_runner_ip()
     log(f"runner exit {direct or 'unknown'}")
@@ -814,6 +814,97 @@ def _proxy_probe_singbox(
     return results
 
 
+def build_singbox_outbound(cfg: VlessConfig) -> dict:
+    if cfg.protocol == "hysteria2":
+        return build_hy2_outbound(cfg)
+    if cfg.protocol == "tuic":
+        alpn = [part.strip() for part in (cfg.alpn or "h3").split(",") if part.strip()]
+        return {
+            "type": "tuic",
+            "tag": "proxy",
+            "server": cfg.host,
+            "server_port": cfg.port,
+            "uuid": cfg.uuid,
+            "password": cfg.extras.get("password") or cfg.encryption,
+            "congestion_control": cfg.extras.get("congestion_control") or "bbr",
+            "tls": {
+                "enabled": True,
+                "server_name": cfg.sni or cfg.host,
+                "insecure": bool(cfg.allow_insecure),
+                "alpn": alpn or ["h3"],
+            },
+        }
+    if cfg.protocol == "shadowsocks":
+        return {
+            "type": "shadowsocks",
+            "tag": "proxy",
+            "server": cfg.host,
+            "server_port": cfg.port,
+            "method": cfg.encryption,
+            "password": cfg.uuid,
+        }
+    if cfg.protocol == "trojan":
+        item: dict = {
+            "type": "trojan",
+            "tag": "proxy",
+            "server": cfg.host,
+            "server_port": cfg.port,
+            "password": cfg.uuid,
+            "tls": _singbox_tls(cfg),
+        }
+        transport = _singbox_transport(cfg)
+        if transport:
+            item["transport"] = transport
+        return item
+    item = {
+        "type": "vless",
+        "tag": "proxy",
+        "server": cfg.host,
+        "server_port": cfg.port,
+        "uuid": cfg.uuid,
+    }
+    if cfg.flow and cfg.network == "tcp":
+        item["flow"] = cfg.flow
+    if cfg.security in {"tls", "reality"}:
+        item["tls"] = _singbox_tls(cfg)
+    transport = _singbox_transport(cfg)
+    if transport:
+        item["transport"] = transport
+    return item
+
+
+def _singbox_tls(cfg: VlessConfig) -> dict:
+    tls: dict = {
+        "enabled": True,
+        "server_name": cfg.sni or cfg.host_header or cfg.host,
+        "insecure": bool(cfg.allow_insecure),
+    }
+    if cfg.fp or cfg.security == "reality":
+        tls["utls"] = {"enabled": True, "fingerprint": cfg.fp or "chrome"}
+    if cfg.alpn:
+        tls["alpn"] = [part.strip() for part in cfg.alpn.split(",") if part.strip()]
+    if cfg.security == "reality":
+        tls["reality"] = {"enabled": True, "public_key": cfg.pbk, "short_id": cfg.sid}
+    return tls
+
+
+def _singbox_transport(cfg: VlessConfig) -> dict | None:
+    if cfg.network == "ws":
+        transport: dict = {"type": "ws", "path": cfg.path or "/"}
+        if cfg.host_header:
+            transport["headers"] = {"Host": cfg.host_header}
+        return transport
+    if cfg.network == "grpc":
+        return {"type": "grpc", "service_name": cfg.service_name}
+    if cfg.network == "h2":
+        return {"type": "http", "path": cfg.path or "/"}
+    if cfg.network == "xhttp":
+        return {"type": "xhttp", "path": cfg.path or "/", "mode": cfg.mode or "auto"}
+    if cfg.network == "httpupgrade":
+        return {"type": "httpupgrade", "path": cfg.path or "/"}
+    return None
+
+
 def build_hy2_outbound(cfg: VlessConfig) -> dict:
     item: dict = {
         "type": "hysteria2",
@@ -842,7 +933,7 @@ def build_singbox_batch(pairs: list[tuple[VlessConfig, int]]) -> dict:
         in_tag = f"in-{index}"
         out_tag = f"out-{index}"
         inbounds.append({"type": "socks", "tag": in_tag, "listen": "127.0.0.1", "listen_port": port})
-        outbound = build_hy2_outbound(cfg)
+        outbound = build_singbox_outbound(cfg)
         outbound["tag"] = out_tag
         outbounds.append(outbound)
         rules.append({"inbound": in_tag, "outbound": out_tag})

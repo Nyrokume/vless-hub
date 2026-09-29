@@ -34,6 +34,8 @@ export type ConfigRecord = {
   bits?: string
   verified?: string
   speed_kbps?: number | null
+  core?: string
+  vantage?: string
 }
 
 export type SubscriptionInfo = {
@@ -68,6 +70,7 @@ export type SourceReport = {
   verified?: number
   yield?: number | null
   deprioritized?: boolean
+  disabled?: boolean
   error: string | null
 }
 

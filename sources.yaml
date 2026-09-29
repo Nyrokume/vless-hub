@@ -3,7 +3,8 @@
 # type: subscription — сырой файл или base64-подписка (определяется автоматически)
 # type: telegram — веб-превью https://t.me/s/<channel>, без API и токена
 # enabled: false — выключить, не удаляя запись
-# Источник с нулевым выходом два прогона подряд отодвигается в конец очереди тестов.
+# Источник с нулевым выходом два прогона подряд отодвигается в конец очереди.
+# Три прогона без живых ссылок или без рабочих конфигов ставят источник на паузу.
 
 settings:
   drop_after_failures: 4
@@ -32,6 +33,12 @@ settings:
   max_tg_links_per_source: 500
   tg_top_sizes: [20, 50]
   user_agent: "vless-hub/1.0 (+https://github.com/Nyrokume/vless-hub)"
+  # Two extra full passes after the first. A config is published only if every pass succeeds.
+  confirm_rounds: 2
+  # If fewer than this pass, previously working configs are retested before the list is replaced.
+  min_working: 40
+  # TCP samples via check-host.net (Russia and Germany). A plus, not a requirement.
+  vantage_checks: 36
 
 sources:
   - name: epodonios-vless
@@ -124,6 +131,116 @@ sources:
     enabled: true
     url: https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge_base64.txt
 
+  - name: mahdibland-eternity
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/Eternity
+
+  - name: mahdibland-ss
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/mahdibland/ShadowsocksAggregator/master/sub/sub_merge.txt
+
+  - name: epodonios-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt
+
+  - name: barry-far-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/barry-far/V2ray-Config/main/All_Configs_Sub.txt
+
+  - name: radikal-trojan
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/trojan.txt
+
+  - name: radikal-hysteria2
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/hysteria2.txt
+
+  - name: peasoft-raw
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list_raw.txt
+
+  - name: ermaozi-v2ray
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt
+
+  - name: kwinshadow-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/Kwinshadow/TelegramV2rayCollector/main/sublinks/mix.txt
+
+  - name: surfboard-converted
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/Surfboardv2ray/Proxy-sorter/main/output/converted.txt
+
+  - name: aliilapro-base64
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt
+
+  - name: soli-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/all_configs.txt
+
+  - name: sevcator-vless
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/sevcator/5ubscrpt10n/main/protocols/vl.txt
+
+  - name: sevcator-trojan
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/sevcator/5ubscrpt10n/main/protocols/tr.txt
+
+  - name: sevcator-ss
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/sevcator/5ubscrpt10n/main/protocols/ss.txt
+
+  - name: mhdi-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/MhdiTaheri/V2rayCollector/main/sub/mix
+
+  - name: coldwater-mix
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/coldwater-10/V2ray-Config/main/All_Configs_Sub.txt
+
+  - name: coldwater-hysteria2
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/coldwater-10/V2ray-Config/main/Splitted-By-Protocol/hysteria2.txt
+
+  - name: tg-v2ray-configs
+    type: telegram
+    enabled: true
+    channel: v2ray_configs
+
+  - name: tg-outlinev2ray
+    type: telegram
+    enabled: true
+    channel: outlinev2ray
+
+  - name: tg-v2raycollector
+    type: telegram
+    enabled: true
+    channel: V2rayCollector
+
+  - name: tg-privatevpns
+    type: telegram
+    enabled: true
+    channel: PrivateVPNs
+
 # kind: telegram-proxy — публичные MTProto (tg://proxy, t.me/proxy, секреты ee/dd)
 # и SOCKS5 (tg://socks, t.me/socks, socks5://). type как у VLESS: subscription или telegram.
 # limit — сколько ссылок брать из этого источника (0 = max_tg_links_per_source).
@@ -170,3 +287,15 @@ sources:
     type: telegram
     enabled: true
     channel: mtpro_xyz
+
+  - name: tg-mtproto-proxy
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: mtproto_proxy
+
+  - name: tg-proxy-mtg
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: proxy_mtg

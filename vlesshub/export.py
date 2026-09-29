@@ -313,6 +313,8 @@ def _hub_config(cfg: VlessConfig, generated_at: str) -> dict:
         "bits": cfg.bits,
         "verified": cfg.verified,
         "speed_kbps": None if cfg.speed_kbps is None else round(float(cfg.speed_kbps), 1),
+        "core": cfg.core,
+        "vantage": cfg.vantage,
     }
 
 
@@ -336,6 +338,7 @@ def _hub_source(report: SourceReport) -> dict:
         "verified": report.verified,
         "yield": report.yield_ratio,
         "deprioritized": report.deprioritized,
+        "disabled": report.disabled,
         "parse_error": report.parse_error,
         "invalid_field": report.invalid_field,
         "error": report.error or None,
@@ -985,6 +988,7 @@ def _source_row(report: SourceReport) -> dict:
         "verified": report.verified,
         "yield": report.yield_ratio,
         "deprioritized": report.deprioritized,
+        "disabled": report.disabled,
         "parse_error": report.parse_error,
         "invalid_field": report.invalid_field,
         "elapsed_ms": report.elapsed_ms,

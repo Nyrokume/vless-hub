@@ -232,7 +232,8 @@ def test_vmess_is_unsupported_and_broken_link_stays_parse_error():
     )
     kept, reasons = parse_document(text, validate=True)
     assert len(kept) == 1
-    assert reasons["unsupported_protocol"] == 4
+    assert reasons["unsupported_protocol"] == 3
+    assert reasons["invalid_field"] >= 1
     assert reasons["parse_error"] == 1
 
 

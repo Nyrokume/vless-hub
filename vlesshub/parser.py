@@ -31,7 +31,6 @@ PROXY_RE = re.compile(
 _UNSUPPORTED_SCHEMES = {
     "vmess",
     "ssr",
-    "tuic",
     "hysteria",
     "juicity",
     "wireguard",
@@ -59,7 +58,10 @@ _FP_RANK = {
     "android": 5,
     "random": 6,
     "qq": 7,
+    "360": 8,
+    "randomized": 9,
 }
+_FLOWS = {"xtls-rprx-vision", "xtls-rprx-vision-udp443"}
 _KEEP_EXTRAS = {"obfs", "obfs-password", "mport"}
 UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -274,6 +276,8 @@ def parse_any(uri: str, source: str = "") -> VlessConfig | None:
         return _parse_trojan(cleaned, source)
     if scheme in {"hysteria2", "hy2"}:
         return _parse_hysteria2(cleaned, source)
+    if scheme == "tuic":
+        return _parse_tuic(cleaned, source)
     return None
 
 
@@ -332,12 +336,16 @@ def invalid_reason(cfg: VlessConfig) -> str | None:
     """Return invalid_field when a parsed config must not be tested or published."""
     if cfg.port < 1 or cfg.port > 65535 or not cfg.host:
         return "invalid_field"
+    if _bad_transport(cfg):
+        return "invalid_field"
     if cfg.protocol == "vless":
         if not is_uuid(cfg.uuid):
             return "invalid_field"
         if cfg.security == "reality":
             if len(cfg.pbk) < 16 or not _plausible_name(cfg.sni):
                 return "invalid_field"
+        if cfg.security == "tls" and _missing_server_name(cfg):
+            return "invalid_field"
         return None
     if cfg.protocol == "shadowsocks":
         if cfg.encryption not in _SS_METHODS or not cfg.uuid:
@@ -346,12 +354,66 @@ def invalid_reason(cfg: VlessConfig) -> str | None:
     if cfg.protocol == "trojan":
         if len(cfg.uuid) < 4:
             return "invalid_field"
+        if _missing_server_name(cfg):
+            return "invalid_field"
         return None
     if cfg.protocol == "hysteria2":
         if not cfg.uuid:
             return "invalid_field"
+        if _missing_server_name(cfg):
+            return "invalid_field"
+        return None
+    if cfg.protocol == "tuic":
+        if not is_uuid(cfg.uuid) or not (cfg.extras.get("password") or cfg.encryption):
+            return "invalid_field"
+        if _missing_server_name(cfg):
+            return "invalid_field"
         return None
     return "invalid_field"
+
+
+def _bad_transport(cfg: VlessConfig) -> bool:
+    if cfg.flow and (cfg.network != "tcp" or cfg.flow.lower() not in _FLOWS):
+        return True
+    if cfg.fp and cfg.fp.lower() not in _FP_RANK:
+        return True
+    if cfg.sid and not re.fullmatch(r"[0-9a-fA-F]{1,16}", cfg.sid):
+        return True
+    return False
+
+
+def _missing_server_name(cfg: VlessConfig) -> bool:
+    """TLS without a name fails certificate checks in ordinary clients."""
+    if cfg.allow_insecure and cfg.security != "reality" and cfg.protocol != "hysteria2":
+        return False
+    if cfg.protocol == "hysteria2" and cfg.allow_insecure:
+        return False
+    if _plausible_name(cfg.sni) or _plausible_name(cfg.host_header):
+        return False
+    if _domain_name(cfg.host):
+        return False
+    return True
+
+
+def _domain_name(value: str) -> bool:
+    token = (value or "").strip()
+    if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", token):
+        return False
+    return _plausible_name(token)
+
+
+def exported_config(cfg: VlessConfig) -> VlessConfig | None:
+    """Rebuild the share link and parse it. The result is what clients import."""
+    uri = build_uri(cfg, remark=cfg.remark)
+    again = parse_any(uri)
+    if again is None or fingerprint_material(again) != fingerprint_material(cfg):
+        return None
+    if (again.fp or "").lower() != (cfg.fp or "").lower():
+        return None
+    again.sources = list(cfg.sources)
+    again.remark = cfg.remark
+    again.raw = uri
+    return again
 
 
 def access_key(cfg: VlessConfig) -> str:
@@ -412,6 +474,8 @@ def build_uri(cfg: VlessConfig, remark: str | None = None) -> str:
         return _build_user_uri("trojan", cfg, remark)
     if cfg.protocol == "hysteria2":
         return _build_user_uri("hysteria2", cfg, remark)
+    if cfg.protocol == "tuic":
+        return _build_tuic_uri(cfg, remark)
     params: list[tuple[str, str]] = [("encryption", cfg.encryption or "none")]
     if cfg.flow:
         params.append(("flow", cfg.flow))
@@ -560,7 +624,7 @@ def _apply_query(cfg: VlessConfig, query: dict[str, str]) -> None:
         if key == "encryption":
             cfg.encryption = val or "none"
         elif key == "flow":
-            cfg.flow = val
+            cfg.flow = val.lower() if val else ""
         elif key in {"type", "network"} and val:
             cfg.network = normalize_network(val)
         elif key == "security":
@@ -598,6 +662,8 @@ def _apply_query(cfg: VlessConfig, query: dict[str, str]) -> None:
             cfg.packet_encoding = val
         elif key in {"obfs-password", "obfspassword"} and val:
             extras["obfs-password"] = val
+        elif key in {"congestion_control", "udp_relay_mode"} and val:
+            extras[key] = val
         elif key in _KEEP_EXTRAS and val:
             extras[key] = val
         elif key in _IGNORE_KEYS or key == "telegram":
@@ -781,6 +847,42 @@ def _parse_hysteria2(uri: str, source: str) -> VlessConfig | None:
     return cfg
 
 
+def _parse_tuic(uri: str, source: str) -> VlessConfig | None:
+    rest = uri.split("://", 1)[1]
+    body, remark = _split_remark(rest)
+    query = ""
+    if "?" in body:
+        body, query = body.split("?", 1)
+    if "@" not in body or ":" not in body.split("@", 1)[0]:
+        return None
+    user, hostport = body.rsplit("@", 1)
+    user = unquote(user).strip()
+    uuid, password = user.split(":", 1)
+    host, port = _split_host_port(hostport)
+    if not uuid or not password or not host or port is None:
+        return None
+    if host.lower() in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+        return None
+    cfg = VlessConfig(
+        protocol="tuic",
+        uuid=uuid.lower() if is_uuid(uuid.lower()) else uuid,
+        encryption=password,
+        host=host.lower().rstrip("."),
+        port=port,
+        network="tuic",
+        security="tls",
+        remark=remark,
+        raw=uri,
+        sources=[source] if source else [],
+    )
+    _apply_query(cfg, _parse_query(query))
+    cfg.network = "tuic"
+    cfg.security = "tls"
+    cfg.extras["password"] = password
+    _finish(cfg)
+    return cfg
+
+
 def _split_remark(body: str) -> tuple[str, str]:
     if "#" not in body:
         return body, ""
@@ -828,6 +930,14 @@ def _build_user_uri(scheme: str, cfg: VlessConfig, remark: str | None) -> str:
             params.append(("type", cfg.network))
         if cfg.fp:
             params.append(("fp", cfg.fp))
+        if cfg.path:
+            params.append(("path", cfg.path))
+        if cfg.host_header:
+            params.append(("host", cfg.host_header))
+        if cfg.service_name:
+            params.append(("serviceName", cfg.service_name))
+        if cfg.alpn:
+            params.append(("alpn", cfg.alpn))
         if cfg.allow_insecure:
             params.append(("allowInsecure", "1"))
     else:
@@ -835,14 +945,32 @@ def _build_user_uri(scheme: str, cfg: VlessConfig, remark: str | None) -> str:
             params.append(("sni", cfg.sni))
         if cfg.allow_insecure:
             params.append(("insecure", "1"))
-        if cfg.extras.get("obfs"):
-            params.append(("obfs", cfg.extras["obfs"]))
-        if cfg.extras.get("obfs-password"):
-            params.append(("obfs-password", cfg.extras["obfs-password"]))
+        for key in sorted(cfg.extras):
+            if cfg.extras[key]:
+                params.append((key, cfg.extras[key]))
     query = urlencode(params, quote_via=quote, safe="")
     title = cfg.remark if remark is None else remark
     suffix = f"?{query}" if query else ""
     return f"{scheme}://{quote(cfg.uuid, safe='')}@{_host_token(cfg)}:{cfg.port}{suffix}#{quote(title, safe='')}"
+
+
+def _build_tuic_uri(cfg: VlessConfig, remark: str | None) -> str:
+    password = cfg.extras.get("password") or cfg.encryption
+    params: list[tuple[str, str]] = []
+    if cfg.sni:
+        params.append(("sni", cfg.sni))
+    if cfg.alpn:
+        params.append(("alpn", cfg.alpn))
+    if cfg.allow_insecure:
+        params.append(("allow_insecure", "1"))
+    for key in ("congestion_control", "udp_relay_mode"):
+        if cfg.extras.get(key):
+            params.append((key, cfg.extras[key]))
+    query = urlencode(params, quote_via=quote, safe="")
+    title = cfg.remark if remark is None else remark
+    suffix = f"?{query}" if query else ""
+    user = f"{quote(cfg.uuid, safe='')}:{quote(password, safe='')}"
+    return f"tuic://{user}@{_host_token(cfg)}:{cfg.port}{suffix}#{quote(title, safe='')}"
 
 
 def _host_token(cfg: VlessConfig) -> str:

@@ -44,14 +44,29 @@ def load_config(path: Path) -> tuple[Settings, list[Source]]:
 def collect_all(
     settings: Settings,
     sources: list[Source],
+    paused: set[str] | None = None,
 ) -> tuple[list[SourceReport], list[VlessConfig], dict[str, int]]:
+    held = paused or set()
     enabled = [source for source in sources if source.enabled and source.kind != "telegram-proxy"]
     reports: list[SourceReport] = []
     configs: list[VlessConfig] = []
     reasons = {"parse_error": 0, "invalid_field": 0, "unsupported_protocol": 0}
+    for source in enabled:
+        if source.name not in held:
+            continue
+        report = SourceReport(
+            name=source.name,
+            url=_source_url(source),
+            ok=False,
+            error="auto-disabled",
+            disabled=True,
+        )
+        reports.append(report)
+        log(f"source {report.name}: auto-disabled")
+    active = [source for source in enabled if source.name not in held]
     workers = max(1, settings.fetch_concurrency)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_fetch_source, settings, source): source for source in enabled}
+        futures = {pool.submit(_fetch_source, settings, source): source for source in active}
         for future in as_completed(futures):
             source = futures[future]
             try:

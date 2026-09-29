@@ -44,6 +44,8 @@ REASONS = (
     "exit_ip_leak",
     "mtproto_fail",
     "socks_fail",
+    "export_mismatch",
+    "flaky",
 )
 
 

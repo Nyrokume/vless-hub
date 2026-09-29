@@ -28,6 +28,12 @@ class Settings:
     max_tg_links_per_source: int = 500
     tg_top_sizes: list[int] = field(default_factory=lambda: [20, 50])
     user_agent: str = "vless-hub/1.0 (+https://github.com/Nyrokume/vless-hub)"
+    # Extra full probes after the first pass. 2 means three passes, all must succeed.
+    confirm_rounds: int = 2
+    # Below this, retest previously working configs before replacing the list.
+    min_working: int = 40
+    # check-host.net TCP samples. A plus, not a requirement. 0 disables it.
+    vantage_checks: int = 36
 
 
 @dataclass(slots=True)
@@ -58,6 +64,7 @@ class SourceReport:
     tested: int = 0
     yield_ratio: float | None = None
     deprioritized: bool = False
+    disabled: bool = False
 
 
 @dataclass(slots=True)
@@ -107,6 +114,8 @@ class VlessConfig:
     checks_fail: int = 0
     bits: str = ""
     tested_at: str = ""
+    core: str = ""
+    vantage: str = ""
 
     def __post_init__(self) -> None:
         if not self.fingerprint:
