@@ -63,7 +63,7 @@ python -m vlesshub check-local --out local-working.txt
 
 `--list-only` только печатает `адрес:порт` и ничего не качает. `--limit 20` берёт первые 20 строк. На Termux то же самое делает `bash scripts/termux-check.sh`. Xray и sing-box скачиваются в `bin/`, этот каталог в git не входит.
 
-Кнопка «Проверить на сервере» на сайте вызывает `workflow_dispatch` для `.github/workflows/update.yml`. Токен fine-grained хранится только в `localStorage` браузера владельца (`vless-hub-actions-token`), в репозиторий не коммитится. Ему нужно право Actions на запись и только этот репозиторий. Без токена сайт открывает страницу Actions.
+Кнопка «Открыть проверку на GitHub» в «Живом парсе» открывает страницу `.github/workflows/update.yml`. Сайт не хранит токен и не вызывает `workflow_dispatch`. Ручной запуск — с этой страницы GitHub. Старый ключ `vless-hub-actions-token` при загрузке страницы удаляется из браузера.
 
 Сайт в разработке: `cd site && npm run dev`. Он читает файлы из `publish/`.
 

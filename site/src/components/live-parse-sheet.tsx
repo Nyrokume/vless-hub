@@ -24,7 +24,7 @@ import {
 import { fetchLatestRun, runLine, type RunSnapshot } from '@/lib/live-sources'
 import { browserCanProbe, endpointKey, probeEndpoint, REACH_CONCURRENCY, type ReachHit } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
-import { useServerCheck } from '@/lib/server-check-context'
+import { openActionsPage } from '@/lib/server-check'
 import { useSettings } from '@/lib/settings'
 import { formatCount } from '@/lib/plural'
 import { ru } from '@/lib/ru'
@@ -106,7 +106,6 @@ export function LiveParseSheet({
   const { data } = useHub()
   const { settings } = useSettings()
   const { book, remember } = useReach()
-  const { start: startServerCheck } = useServerCheck()
   const [running, setRunning] = useState(false)
   const [searched, setSearched] = useState(false)
   const [aborted, setAborted] = useState(false)
@@ -414,7 +413,7 @@ export function LiveParseSheet({
                 <Button
                   variant="secondary"
                   className="col-span-2 h-11 text-[14px]"
-                  onClick={() => void startServerCheck()}
+                  onClick={() => openActionsPage()}
                 >
                   {ru.live.check}
                 </Button>

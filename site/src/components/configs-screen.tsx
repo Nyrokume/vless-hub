@@ -59,7 +59,6 @@ import { formatCount } from '@/lib/plural'
 import { endpointKey, reachLine, type ReachBook, type ReachHit } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
 import { ru, statusLabel } from '@/lib/ru'
-import { useServerCheck } from '@/lib/server-check-context'
 import { STORAGE_KEY, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -207,7 +206,6 @@ function lowerBound(prefix: number[], target: number): number {
 export function ConfigsScreen({ data }: { data: HubData }) {
   const { settings, update } = useSettings()
   const { book, progress, setTargets } = useReach()
-  const { phase: serverPhase } = useServerCheck()
   const [list, setList] = useState<ListState>(readListState)
   const [draft, setDraft] = useState<FilterDraft | null>(null)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
@@ -604,8 +602,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       {(progress.running || progress.done > 0) && (
         <p className="mb-3 text-[12px] leading-snug text-muted-foreground">{ru.reachNote}</p>
       )}
-      {serverPhase === 'running' && <p className="mb-3 text-[13px]">{ru.serverCheckRunning}</p>}
-
       <div className="mb-3 flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
