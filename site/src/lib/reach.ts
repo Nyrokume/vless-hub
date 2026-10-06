@@ -27,9 +27,82 @@ export function browserCanProbe(protocol: string | null | undefined): boolean {
   return name !== 'hysteria2' && name !== 'hy2' && name !== 'tuic'
 }
 
-export function classifyReach(elapsedMs: number, aborted: boolean, timeoutMs = REACH_TIMEOUT_MS): ReachStatus {
-  if (aborted || elapsedMs >= timeoutMs - 200) return 'closed'
-  return 'open'
+/** A finished fetch or socket, or a failure with how long it took. */
+export type ReachSample = {
+  elapsedMs: number
+  aborted: boolean
+  resolved: boolean
+  /** True when resource timing shows a finished TLS handshake. Chrome hides this on errors. */
+  tlsDone?: boolean
+}
+
+/**
+ * Extra time a TLS handshake needs versus a refusal on the same host.
+ * Loopback refusals are ~1 ms and a certificate error is ~2 ms, so the
+ * candidate must be twice as slow. On a real network the refusal is slower
+ * and one extra round trip is about 1.75×; anything closer is a refusal,
+ * a DNS error, or noise.
+ */
+export const LOOPBACK_REFUSAL_MS = 3
+export const LOOPBACK_HANDSHAKE_FACTOR = 2
+export const HANDSHAKE_FACTOR = 1.75
+/** A failure slower than this is a stall, not a finished handshake. */
+export const HANDSHAKE_CEILING_MS = 1500
+
+/** Two closed-port samples that disagree this much are a name lookup, not a refusal. */
+export const STEADY_FACTOR = 1.75
+
+const CONTROL_PORTS = [48123, 39281, 28447]
+export const CONTROL_TIMEOUT_MS = 1200
+
+export function controlPorts(servicePort: number): [number, number] {
+  const picks = CONTROL_PORTS.filter((port) => port !== servicePort)
+  return [picks[0], picks[1]]
+}
+
+export function steadyRefusal(samples: ReachSample[], timeoutMs = CONTROL_TIMEOUT_MS): number | null {
+  const times = samples
+    .filter((sample) => !sample.resolved && !sample.aborted && sample.elapsedMs < timeoutMs - 200 && sample.elapsedMs >= 0)
+    .map((sample) => sample.elapsedMs)
+  if (times.length === 0) return null
+  const fastest = Math.min(...times)
+  const slowest = Math.max(...times)
+  if (times.length >= 2 && fastest > 0 && slowest > fastest * STEADY_FACTOR) return null
+  return Math.max(1, slowest)
+}
+
+/** A refusal that takes about as long as a measured DNS failure is not a refusal. */
+export function usableRefusal(refusalMs: number | null, dnsMs: number | null): number | null {
+  if (refusalMs == null || refusalMs <= 0) return null
+  if (dnsMs != null && dnsMs >= 30 && refusalMs >= dnsMs * 0.75 && refusalMs <= dnsMs * 1.35) return null
+  return refusalMs
+}
+
+export function classifyReach(
+  sample: ReachSample,
+  refusalMs: number | null,
+  timeoutMs = REACH_TIMEOUT_MS,
+): ReachStatus {
+  if (sample.resolved || sample.tlsDone) return 'open'
+  if (sample.aborted || sample.elapsedMs >= timeoutMs - 200 || sample.elapsedMs > HANDSHAKE_CEILING_MS) return 'closed'
+  if (refusalMs == null || refusalMs <= 0) return 'closed'
+  const factor = refusalMs <= LOOPBACK_REFUSAL_MS ? LOOPBACK_HANDSHAKE_FACTOR : HANDSHAKE_FACTOR
+  if (sample.elapsedMs > refusalMs && sample.elapsedMs >= refusalMs * factor) return 'open'
+  return 'closed'
+}
+
+export function judgeReach(
+  service: ReachSample,
+  controls: ReachSample[],
+  dnsMs: number | null,
+  timeoutMs = REACH_TIMEOUT_MS,
+): ReachStatus {
+  if (service.resolved || service.tlsDone) return 'open'
+  if (service.aborted || service.elapsedMs >= timeoutMs - 200) return 'closed'
+  if (dnsMs != null && dnsMs >= 30 && service.elapsedMs >= dnsMs * 0.75 && service.elapsedMs <= dnsMs * 1.35) {
+    return 'closed'
+  }
+  return classifyReach(service, usableRefusal(steadyRefusal(controls), dnsMs), timeoutMs)
 }
 
 export function emptyBook(): ReachBook {
@@ -63,37 +136,168 @@ export function reachLine(hit: ReachHit | undefined): string {
   return ru.reachClosed
 }
 
-function probeUrl(host: string, port: number): string {
+export function probeUrl(host: string, port: number): string {
   const bare = host.trim().replace(/^\[|\]$/g, '')
   const literal = bare.includes(':') ? `[${bare}]` : bare
   return `https://${literal}:${port}/`
 }
 
-export async function probeEndpoint(host: string, port: number, timeoutMs = REACH_TIMEOUT_MS): Promise<ReachHit> {
+function socketUrl(host: string, port: number, path?: string): string {
+  const bare = host.trim().replace(/^\[|\]$/g, '')
+  const literal = bare.includes(':') ? `[${bare}]` : bare
+  const suffix = path && path.startsWith('/') ? path : `/${(path || '').replace(/^\/+/, '')}`
+  return `wss://${literal}:${port}${suffix}`
+}
+
+function wantsSocket(transport?: string): boolean {
+  const name = (transport || '').trim().toLowerCase()
+  return name === 'ws' || name === 'websocket'
+}
+
+function isAbort(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'name' in error && (error as { name?: string }).name === 'AbortError'
+}
+
+function tlsDone(url: string): boolean {
+  const entries = performance.getEntriesByType('resource')
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index]
+    if (entry.name !== url) continue
+    const timing = entry as PerformanceResourceTiming
+    return timing.secureConnectionStart > 0 && timing.connectEnd >= timing.secureConnectionStart
+  }
+  return false
+}
+
+export async function timedFetch(url: string, timeoutMs: number): Promise<ReachSample> {
   const started = performance.now()
   const controller = new AbortController()
   const timer = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
-    await fetch(probeUrl(host, port), { mode: 'no-cors', cache: 'no-store', signal: controller.signal })
-    return { status: 'open', ms: Math.round(performance.now() - started), at: Date.now() }
+    await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: controller.signal })
+    return { elapsedMs: Math.round(performance.now() - started), aborted: false, resolved: true, tlsDone: true }
   } catch (error) {
-    const elapsed = Math.round(performance.now() - started)
-    const aborted =
-      typeof error === 'object' && error !== null && 'name' in error && (error as { name?: string }).name === 'AbortError'
+    const elapsedMs = Math.round(performance.now() - started)
     return {
-      status: classifyReach(elapsed, aborted, timeoutMs),
-      ms: aborted ? null : elapsed,
-      at: Date.now(),
+      elapsedMs,
+      aborted: isAbort(error) || elapsedMs >= timeoutMs - 200,
+      resolved: false,
+      tlsDone: tlsDone(url),
     }
   } finally {
     window.clearTimeout(timer)
   }
 }
 
+function probeSocket(url: string, timeoutMs: number): Promise<ReachSample> {
+  return new Promise((resolve) => {
+    const started = performance.now()
+    let socket: WebSocket
+    try {
+      socket = new WebSocket(url)
+    } catch {
+      resolve({ elapsedMs: 0, aborted: false, resolved: false })
+      return
+    }
+    let settled = false
+    const finish = (sample: ReachSample) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      try {
+        socket.close()
+      } catch {
+        // The socket is already gone.
+      }
+      resolve(sample)
+    }
+    const timer = window.setTimeout(
+      () => finish({ elapsedMs: Math.round(performance.now() - started), aborted: true, resolved: false }),
+      timeoutMs,
+    )
+    socket.addEventListener('open', () =>
+      finish({ elapsedMs: Math.round(performance.now() - started), aborted: false, resolved: true, tlsDone: true }),
+    )
+    socket.addEventListener('close', () =>
+      finish({ elapsedMs: Math.round(performance.now() - started), aborted: false, resolved: false }),
+    )
+  })
+}
+
+const refusalCache = new Map<string, Promise<number | null>>()
+let dnsClock: Promise<number | null> | null = null
+
+async function dnsFailureMs(): Promise<number | null> {
+  if (!dnsClock) {
+    const nonce = Math.random().toString(36).slice(2)
+    dnsClock = Promise.all([
+      timedFetch(`https://${nonce}-a.example/`, 2000),
+      timedFetch(`https://${nonce}-b.example/`, 2000),
+    ]).then(([left, right]) => {
+      const times = [left, right].filter((sample) => !sample.aborted && !sample.resolved).map((sample) => sample.elapsedMs)
+      if (times.length === 0) return null
+      return Math.max(...times)
+    })
+  }
+  return dnsClock
+}
+
+function refusalFor(host: string, servicePort: number): Promise<number | null> {
+  const key = host.trim().toLowerCase()
+  const cached = refusalCache.get(key)
+  if (cached) return cached
+  const pending = (async () => {
+    const [first, second] = controlPorts(servicePort)
+    const samples = await Promise.all([
+      timedFetch(probeUrl(host, first), CONTROL_TIMEOUT_MS),
+      timedFetch(probeUrl(host, second), CONTROL_TIMEOUT_MS),
+    ])
+    return steadyRefusal(samples)
+  })()
+  refusalCache.set(key, pending)
+  return pending
+}
+
+export type ProbeHints = {
+  transport?: string
+  path?: string
+}
+
+export async function probeEndpoint(
+  host: string,
+  port: number,
+  timeoutMs = REACH_TIMEOUT_MS,
+  hints?: ProbeHints,
+): Promise<ReachHit> {
+  if (wantsSocket(hints?.transport)) {
+    const socket = await probeSocket(socketUrl(host, port, hints?.path), timeoutMs)
+    if (socket.resolved) return { status: 'open', ms: socket.elapsedMs, at: Date.now() }
+  }
+  const url = probeUrl(host, port)
+  const refusalPromise = refusalFor(host, port)
+  const dnsPromise = dnsFailureMs()
+  const sample = await timedFetch(url, timeoutMs)
+  const dnsMs = await dnsPromise
+  if (sample.resolved || sample.tlsDone) {
+    return { status: 'open', ms: sample.elapsedMs, at: Date.now() }
+  }
+  if (sample.aborted || sample.elapsedMs >= timeoutMs - 200 || sample.elapsedMs > HANDSHAKE_CEILING_MS) {
+    return { status: 'closed', ms: null, at: Date.now() }
+  }
+  if (dnsMs != null && dnsMs >= 30 && sample.elapsedMs >= dnsMs * 0.75 && sample.elapsedMs <= dnsMs * 1.35) {
+    return { status: 'closed', ms: null, at: Date.now() }
+  }
+  const judged = classifyReach(sample, usableRefusal(await refusalPromise, dnsMs), timeoutMs)
+  return { status: judged, ms: judged === 'open' ? sample.elapsedMs : null, at: Date.now() }
+}
+
 export type ReachTarget = {
   host: string
   port: number
   protocol?: string
+  transport?: string
+  path?: string
+  country?: string
 }
 
 export const MIN_READY = 5
@@ -133,7 +337,14 @@ export function targetsFrom(configs: ConfigRecord[]): ReachTarget[] {
     const key = endpointKey(config.host, config.port)
     if (seen.has(key)) continue
     seen.add(key)
-    targets.push({ host: config.host, port: config.port, protocol: config.protocol })
+    targets.push({
+      host: config.host,
+      port: config.port,
+      protocol: config.protocol,
+      transport: config.transport,
+      path: config.path,
+      country: config.country || undefined,
+    })
   }
   return targets
 }

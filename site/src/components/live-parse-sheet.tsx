@@ -76,7 +76,7 @@ async function probeFound(
       const item = planned[index]
       const key = endpointKey(item.host, item.port)
       const hit = browserCanProbe(item.protocol)
-        ? await probeEndpoint(item.host, item.port)
+        ? await probeEndpoint(item.host, item.port, undefined, { transport: item.network, path: item.path })
         : { status: 'skip' as const, ms: null, at: Date.now() }
       if (signal.aborted) return
       batch[key] = hit

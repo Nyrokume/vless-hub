@@ -7,6 +7,7 @@ import {
   orderForProbe,
   probeEndpoint,
   REACH_CONCURRENCY,
+  REACH_TIMEOUT_MS,
   saveReach,
   targetsFrom,
   type ReachBook,
@@ -21,6 +22,7 @@ type ReachProgress = {
   open: number
   closed: number
   skipped: number
+  label: string
 }
 
 export type GatePhase = 'idle' | 'scan' | 'ready' | 'short'
@@ -37,7 +39,7 @@ type ReachContextValue = {
 
 const ReachContext = createContext<ReachContextValue | null>(null)
 
-const idle: ReachProgress = { running: false, done: 0, total: 0, open: 0, closed: 0, skipped: 0 }
+const idle: ReachProgress = { running: false, done: 0, total: 0, open: 0, closed: 0, skipped: 0, label: '' }
 const MIN_VISIBLE_MS = 700
 
 async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
@@ -94,6 +96,7 @@ export function ReachProvider({ children }: { children: ReactNode }) {
     let done = 0
     let open = 0
     let closed = 0
+    let label = ''
     let revealed = false
     const publish = () => {
       if (ticket !== generation.current) return
@@ -101,7 +104,7 @@ export function ReachProvider({ children }: { children: ReactNode }) {
       bookRef.current = snapshot
       setBook(snapshot)
       setOpenCount(open)
-      setProgress({ running: true, done, total: planned.length, open, closed, skipped: 0 })
+      setProgress({ running: true, done, total: planned.length, open, closed, skipped: 0, label })
     }
     const reveal = async () => {
       if (revealed || ticket !== generation.current) return
@@ -116,7 +119,12 @@ export function ReachProvider({ children }: { children: ReactNode }) {
       await runPool(planned, REACH_CONCURRENCY, async (target) => {
         if (ticket !== generation.current) return
         const key = endpointKey(target.host, target.port)
-        const hit = await probeEndpoint(target.host, target.port)
+        label = target.country || target.host
+        publish()
+        const hit = await probeEndpoint(target.host, target.port, REACH_TIMEOUT_MS, {
+          transport: target.transport,
+          path: target.path,
+        })
         if (ticket !== generation.current) return
         if (hit.status === 'open') open += 1
         else closed += 1

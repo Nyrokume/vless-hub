@@ -17,6 +17,7 @@ import { Freshness } from '@/components/freshness'
 import { LatencyRange } from '@/components/latency-range'
 import { LiveParseSheet } from '@/components/live-parse-sheet'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
+import { SearchSplash } from '@/components/search-splash'
 import { SiteHeader } from '@/components/site-header'
 import { configImportActions } from '@/lib/clients'
 import {
@@ -49,7 +50,7 @@ import {
   stabilityText,
 } from '@/lib/format'
 import { formatCount } from '@/lib/plural'
-import { browserCanProbe, endpointKey, reachLine, type ReachBook, type ReachHit } from '@/lib/reach'
+import { browserCanProbe, endpointKey, MIN_READY, reachLine, type ReachBook, type ReachHit } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
 import { ru, statusLabel } from '@/lib/ru'
 import { STORAGE_KEY, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
@@ -198,7 +199,7 @@ function lowerBound(prefix: number[], target: number): number {
 
 export function ConfigsScreen({ data }: { data: HubData }) {
   const { settings } = useSettings()
-  const { book, gate, openCount, setTargets, run } = useReach()
+  const { book, gate, progress, setTargets, run } = useReach()
   const [list, setList] = useState<ListState>(readListState)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
   const [liveOpen, setLiveOpen] = useState(false)
@@ -431,14 +432,18 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         onOpenChange={setLiveOpen}
       />
       {gate === 'scan' ? (
-        <div data-reach-gate className="flex min-h-[70dvh] flex-col items-center justify-center gap-6 text-foreground">
-          <div className="flex flex-col gap-2" aria-hidden>
-            <span className="v2-sweep" />
-            <span className="v2-sweep" style={{ animationDelay: '0.15s' }} />
-            <span className="v2-sweep" style={{ animationDelay: '0.3s' }} />
+        <div data-reach-gate className="flex min-h-[70dvh] flex-col items-center justify-center gap-5 px-6 text-foreground" role="status">
+          <SearchSplash className="size-40 text-foreground" />
+          <div className="h-2.5 w-full max-w-xs overflow-hidden rounded-full bg-foreground/15" aria-hidden>
+            <div
+              className="v2-search-bar h-full rounded-full bg-foreground"
+              style={{ width: `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%` }}
+            />
           </div>
-          <p className="text-center text-[28px] leading-tight font-semibold">{ru.gateTitle}</p>
-          <p className="text-[18px] tabular-nums">{ru.gateFound(openCount)}</p>
+          <p className="text-center text-[22px] leading-snug font-semibold tabular-nums">
+            {ru.gateProgress(progress.done, progress.total, progress.open, MIN_READY)}
+          </p>
+          {progress.label ? <p className="text-center text-[18px] text-foreground/80">{progress.label}</p> : null}
         </div>
       ) : gate === 'short' ? (
         <EmptyState
