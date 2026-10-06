@@ -333,11 +333,11 @@ function ProxyRow({
               {flagEmoji(proxy.country)} {title}
             </span>
           </p>
-          <p className="truncate text-[15px] text-foreground/80">
+          <p className="text-[15px] leading-5 text-foreground/80">
             {kindLabel(proxy.kind)} · {proxy.host}:{proxy.port}
             {stable ? ` · ${stable}` : ''}
-            {reach ? ` · ${reach}` : ''}
           </p>
+          {reach ? <p className="text-[15px] leading-5 font-medium text-foreground">{reach}</p> : null}
         </button>
         <span className={cn('text-[16px] font-semibold tabular-nums', latencyClass(hit && hit.status === 'open' ? hit.ms : proxy.latency_ms))}>
           {userPing(hit, proxy.latency_ms)}
