@@ -449,9 +449,9 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         <EmptyState
           title={ru.gateShortTitle}
           text={`${ru.gateShort} ${ru.gateUdp}`}
-          action={{ label: ru.retry, onClick: () => void run() }}
+          action={{ label: ru.retry, onClick: () => void run(true) }}
         />
-      ) : (
+      ) : gate === 'idle' ? null : (
       <>
       <p className="mb-3 text-[15px] text-foreground/80">
         {statsLine}

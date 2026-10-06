@@ -22,7 +22,7 @@ import {
   type LiveStage,
 } from '@/lib/live-collect'
 import { fetchLatestRun, runLine, type RunSnapshot } from '@/lib/live-sources'
-import { browserCanProbe, endpointKey, probeEndpoint, REACH_CONCURRENCY, type ReachHit } from '@/lib/reach'
+import { browserCanProbe, endpointKey, type ReachHit, type ReachTarget } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
 import { openActionsPage } from '@/lib/server-check'
 import { useSettings } from '@/lib/settings'
@@ -43,55 +43,6 @@ function reachWord(hit: ReachHit | undefined): string {
   return ru.reachSkip
 }
 
-async function probeFound(
-  items: LiveItem[],
-  signal: AbortSignal,
-  onProgress: (done: number, total: number) => void,
-  remember: (hits: Record<string, ReachHit>) => void,
-) {
-  const planned: LiveItem[] = []
-  const seen = new Set<string>()
-  for (const item of items) {
-    const key = endpointKey(item.host, item.port)
-    if (seen.has(key)) continue
-    seen.add(key)
-    planned.push(item)
-  }
-  let done = 0
-  let cursor = 0
-  const batch: Record<string, ReachHit> = {}
-  const flush = () => {
-    if (Object.keys(batch).length === 0) return
-    remember({ ...batch })
-    for (const key of Object.keys(batch)) delete batch[key]
-  }
-  onProgress(0, planned.length)
-  const lanes = Math.max(1, Math.min(REACH_CONCURRENCY, planned.length || 1))
-  async function lane() {
-    for (;;) {
-      if (signal.aborted) return
-      const index = cursor
-      cursor += 1
-      if (index >= planned.length) return
-      const item = planned[index]
-      const key = endpointKey(item.host, item.port)
-      const hit = browserCanProbe(item.protocol)
-        ? await probeEndpoint(item.host, item.port, undefined, { transport: item.network, path: item.path })
-        : { status: 'skip' as const, ms: null, at: Date.now() }
-      if (signal.aborted) return
-      batch[key] = hit
-      done += 1
-      if (done % REACH_CONCURRENCY === 0) flush()
-      onProgress(done, planned.length)
-    }
-  }
-  try {
-    if (planned.length > 0) await Promise.all(Array.from({ length: lanes }, () => lane()))
-  } finally {
-    flush()
-  }
-}
-
 export function LiveParseSheet({
   open,
   known,
@@ -103,7 +54,7 @@ export function LiveParseSheet({
 }) {
   const { data } = useHub()
   const { settings } = useSettings()
-  const { book, remember } = useReach()
+  const { book, remember, scanTargets } = useReach()
   const [running, setRunning] = useState(false)
   const [searched, setSearched] = useState(false)
   const [aborted, setAborted] = useState(false)
@@ -178,16 +129,33 @@ export function LiveParseSheet({
       setItems(collected)
       setLines(reports)
       if (!controller.signal.aborted && collected.length > 0) {
-        setStage('reach')
-        await probeFound(
-          collected,
-          controller.signal,
-          (reachDone, reachTotal) => {
+        const skips: Record<string, ReachHit> = {}
+        const targets: ReachTarget[] = []
+        const seen = new Set<string>()
+        for (const item of collected) {
+          const key = endpointKey(item.host, item.port)
+          if (seen.has(key)) continue
+          seen.add(key)
+          if (!browserCanProbe(item.protocol)) {
+            skips[key] = { status: 'skip', ms: null, at: Date.now() }
+            continue
+          }
+          targets.push({
+            host: item.host,
+            port: item.port,
+            protocol: item.protocol,
+            transport: item.network,
+            path: item.path,
+          })
+        }
+        if (Object.keys(skips).length > 0) remember(skips)
+        if (!controller.signal.aborted && targets.length > 0 && !document.hidden) {
+          setStage('reach')
+          await scanTargets(targets, controller.signal, (reachDone, reachTotal) => {
             setDone(reachDone)
             setTotal(reachTotal)
-          },
-          remember,
-        )
+          })
+        }
       }
     } finally {
       if (controller.signal.aborted) setAborted(true)

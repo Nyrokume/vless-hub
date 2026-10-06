@@ -28,7 +28,7 @@ export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNo
         onClick={() => {
           void (async () => {
             await refresh()
-            await run()
+            await run(true)
           })()
         }}
       >

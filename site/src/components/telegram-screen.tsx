@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Copy, QrCode, Search, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,26 +17,11 @@ import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
 import { displayedLatencyBounds, flagEmoji, formatStamp, latencyClass, latencyText, shownPing, stabilityText } from '@/lib/format'
-import { endpointKey, isCore, probeEndpoint, REACH_CONCURRENCY, type ReachHit } from '@/lib/reach'
+import { endpointKey, hitFresh, isCore, type ReachHit, type ReachTarget } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
 import { kindLabel, ru, statusLabel } from '@/lib/ru'
 import type { HubData, ProxyRecord } from '@/lib/types'
 import { cn } from '@/lib/utils'
-
-async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
-  if (items.length === 0) return
-  let cursor = 0
-  const lanes = Math.max(1, Math.min(limit, items.length))
-  async function lane(): Promise<void> {
-    for (;;) {
-      const index = cursor
-      cursor += 1
-      if (index >= items.length) return
-      await worker(items[index])
-    }
-  }
-  await Promise.all(Array.from({ length: lanes }, () => lane()))
-}
 
 function userPing(hit: ReachHit | undefined, serverMs: number | null): string {
   if (hit && hit.status === 'open' && hit.ms != null) return latencyText(hit.ms)
@@ -53,11 +38,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
   const [query, setQuery] = useState('')
   const [qr, setQr] = useState<QrRequest | null>(null)
   const [selected, setSelected] = useState<ProxyRecord | null>(null)
-  const [hits, setHits] = useState<Record<string, ReachHit>>({})
-  const [scan, setScan] = useState({ done: 0, total: 0, found: 0 })
-  const { book, remember } = useReach()
-  const bookRef = useRef(book)
-  bookRef.current = book
+  const { book, fill } = useReach()
   const proxies = useMemo(
     () => data.proxies.filter((proxy) => shownPing(proxy.latency_ms) != null),
     [data.proxies],
@@ -66,49 +47,37 @@ export function TelegramScreen({ data }: { data: HubData }) {
   const socksCount = proxies.filter((proxy) => proxy.kind === 'socks').length
   const roster = useMemo(() => {
     const seen = new Set<string>()
-    const targets: { host: string; port: number }[] = []
+    const targets: ReachTarget[] = []
     for (const proxy of proxies) {
       if (!proxy.host || !proxy.port) continue
       const key = endpointKey(proxy.host, proxy.port)
       if (seen.has(key)) continue
       seen.add(key)
-      targets.push({ host: proxy.host, port: proxy.port })
+      targets.push({ host: proxy.host, port: proxy.port, country: proxy.country_name || proxy.country || undefined })
     }
     return targets
   }, [proxies])
-  const rosterKey = roster.map((item) => endpointKey(item.host, item.port)).join('\n')
 
   useEffect(() => {
-    let cancelled = false
-    const known = bookRef.current.byEndpoint
-    const seeded: Record<string, ReachHit> = {}
+    fill(roster)
+  }, [roster, fill])
+
+  const scan = useMemo(() => {
+    const now = Date.now()
+    let done = 0
     let found = 0
     for (const target of roster) {
-      const key = endpointKey(target.host, target.port)
-      const hit = known[key]
-      if (!hit || hit.status === 'skip') continue
-      seeded[key] = hit
-      if (hit.status === 'open') found += 1
-    }
-    setHits(seeded)
-    const pending = roster.filter((target) => !seeded[endpointKey(target.host, target.port)])
-    let done = Object.keys(seeded).length
-    setScan({ done, total: roster.length, found })
-    void runPool(pending, REACH_CONCURRENCY, async (target) => {
-      if (cancelled) return
-      const key = endpointKey(target.host, target.port)
-      const hit = await probeEndpoint(target.host, target.port)
-      if (cancelled) return
-      setHits((current) => ({ ...current, [key]: hit }))
-      remember({ [key]: hit })
+      const hit = book.byEndpoint[endpointKey(target.host, target.port)]
+      if (!hitFresh(hit, now)) continue
       done += 1
-      if (hit.status === 'open') found += 1
-      setScan({ done, total: roster.length, found })
-    })
-    return () => {
-      cancelled = true
+      if (hit?.status === 'open') found += 1
     }
-  }, [roster, rosterKey, remember])
+    return { done, total: roster.length, found }
+  }, [book, roster])
+
+  function hitFor(host: string, port: number): ReachHit | undefined {
+    return book.byEndpoint[endpointKey(host, port)]
+  }
 
   const liveSelected = selected
     ? ([...data.proxies, ...(data.unstable_proxies ?? [])].find((item) => item.id === selected.id) ?? null)
@@ -126,8 +95,8 @@ export function TelegramScreen({ data }: { data: HubData }) {
           .includes(needle)
       })
       .sort((left, right) => {
-        const leftHit = hits[endpointKey(left.host, left.port)]
-        const rightHit = hits[endpointKey(right.host, right.port)]
+        const leftHit = hitFor(left.host, left.port)
+        const rightHit = hitFor(right.host, right.port)
         const rank = reachRank(leftHit) - reachRank(rightHit)
         if (rank !== 0) return rank
         if (leftHit?.status === 'open' && rightHit?.status === 'open') {
@@ -137,10 +106,10 @@ export function TelegramScreen({ data }: { data: HubData }) {
         if (core !== 0) return core
         return (left.latency_ms ?? 9_999_999) - (right.latency_ms ?? 9_999_999)
       })
-  }, [proxies, hits, query])
+  }, [book, proxies, query])
 
   const best = filtered[0]
-  const bestHit = best ? hits[endpointKey(best.host, best.port)] : undefined
+  const bestHit = best ? hitFor(best.host, best.port) : undefined
   const latency = displayedLatencyBounds(proxies)
 
   return (
@@ -185,7 +154,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
             <ProxyRow
               key={proxy.id}
               proxy={proxy}
-              hit={hits[endpointKey(proxy.host, proxy.port)]}
+              hit={hitFor(proxy.host, proxy.port)}
               divided={index > 0}
               onOpen={() => setSelected(proxy)}
               onQr={() =>
@@ -201,7 +170,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
       </div>
       <ProxySheet
         proxy={sheetProxy}
-        hit={sheetProxy ? hits[endpointKey(sheetProxy.host, sheetProxy.port)] : undefined}
+        hit={sheetProxy ? hitFor(sheetProxy.host, sheetProxy.port) : undefined}
         missing={sheetMissing}
         onOpenChange={(open) => {
           if (!open) setSelected(null)

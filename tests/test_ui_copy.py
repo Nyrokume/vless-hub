@@ -75,7 +75,8 @@ def test_telegram_buttons_open_tg_links():
     source = (ROOT / "site/src/components/telegram-screen.tsx").read_text(encoding="utf-8")
     assert "href={proxy.tg}" in source
     assert "href={best.tg}" in source
-    assert "probeEndpoint" in source
+    assert "fill(roster)" in source
+    assert "probeEndpoint" not in source
     assert "run()" not in source
 
 

@@ -2,8 +2,26 @@ import { ru } from '@/lib/ru'
 import type { ConfigRecord } from '@/lib/types'
 
 export const REACH_KEY = 'vless-hub-reach'
+export const MANUAL_KEY = 'vless-hub-reach-manual'
+export const LOCK_KEY = 'vless-hub-reach-lock'
+export const LOCK_NAME = 'vless-hub-reach'
+export const CHANNEL_NAME = 'vless-hub-reach'
 export const REACH_TIMEOUT_MS = 4000
-export const REACH_CONCURRENCY = 6
+export const REACH_CONCURRENCY = 3
+/**
+ * A finished handshake is evidence for this visit, not for the whole afternoon.
+ * Twenty minutes sits inside the 15–30 minute window and covers reloads.
+ */
+export const OPEN_TTL_MS = 20 * 60 * 1000
+/**
+ * A refusal or a timeout is often a blip. Five minutes stops a reload from
+ * repeating hundreds of failures, without hiding a server that just came back.
+ */
+export const CLOSED_TTL_MS = 5 * 60 * 1000
+/** The refresh button may look again, but not on every tap. */
+export const MANUAL_GAP_MS = 2 * 60 * 1000
+export const STALE_BATCH = 4
+export const LOCK_LEASE_MS = 20_000
 
 export type ReachStatus = 'open' | 'closed' | 'skip'
 
@@ -301,6 +319,8 @@ export type ReachTarget = {
 }
 
 export const MIN_READY = 5
+/** Stop once the list has five open addresses and a few spare. */
+export const REACH_STOP_AT = MIN_READY + 3
 export const CORE_PASSES = 3
 
 export function passStreak(bits: string | null | undefined): number {
@@ -347,4 +367,102 @@ export function targetsFrom(configs: ConfigRecord[]): ReachTarget[] {
     })
   }
   return targets
+}
+
+export function hitFresh(hit: ReachHit | undefined | null, now: number): boolean {
+  if (!hit || typeof hit !== 'object') return false
+  if (typeof hit.at !== 'number' || !Number.isFinite(hit.at) || hit.at <= 0) return false
+  const ttl = hit.status === 'open' || hit.status === 'skip' ? OPEN_TTL_MS : CLOSED_TTL_MS
+  return now - hit.at < ttl
+}
+
+export type ReachPlan = {
+  splash: boolean
+  gate: 'scan' | 'ready' | 'short'
+  pending: ReachTarget[]
+  freshOpen: number
+  freshAny: boolean
+}
+
+/**
+ * What to show and what to probe.
+ * A fresh cache never asks for the splash. Enough open addresses recheck only
+ * a handful of expired rows; a short list still looks for more.
+ */
+export function planReach(targets: ReachTarget[], book: ReachBook, now: number, force = false): ReachPlan {
+  const seen = new Set<string>()
+  const freshOpenTargets: ReachTarget[] = []
+  const freshOther: ReachTarget[] = []
+  const stale: ReachTarget[] = []
+  const missing: ReachTarget[] = []
+  for (const target of targets) {
+    if (!target?.host || !target.port) continue
+    const key = endpointKey(target.host, target.port)
+    if (seen.has(key)) continue
+    seen.add(key)
+    const hit = book.byEndpoint?.[key]
+    if (!hitFresh(hit, now)) {
+      if (hit) stale.push(target)
+      else missing.push(target)
+      continue
+    }
+    if (hit!.status === 'open') freshOpenTargets.push(target)
+    else freshOther.push(target)
+  }
+  const freshOpen = freshOpenTargets.length
+  const freshAny = freshOpen + freshOther.length > 0
+  const gate: ReachPlan['gate'] = !freshAny ? 'scan' : freshOpen > 0 ? 'ready' : 'short'
+  let pending: ReachTarget[]
+  if (force) pending = [...freshOpenTargets, ...freshOther, ...stale, ...missing]
+  else if (freshOpen >= REACH_STOP_AT) pending = stale.slice(0, STALE_BATCH)
+  else if (freshOpen >= MIN_READY) pending = [...missing, ...stale.slice(0, STALE_BATCH)]
+  else pending = [...missing, ...stale]
+  return { splash: !freshAny, gate, pending, freshOpen, freshAny }
+}
+
+export function gateFromBook(book: ReachBook, now: number): 'idle' | 'ready' | 'short' {
+  let opens = 0
+  let any = false
+  for (const hit of Object.values(book.byEndpoint || {})) {
+    if (!hitFresh(hit, now)) continue
+    any = true
+    if (hit.status === 'open') opens += 1
+  }
+  if (opens > 0) return 'ready'
+  if (any) return 'short'
+  return 'idle'
+}
+
+export function manualDue(last: number | null, now: number): boolean {
+  if (last == null || !Number.isFinite(last) || last <= 0) return true
+  return now - last >= MANUAL_GAP_MS
+}
+
+export type LockRecord = { owner: string; until: number }
+
+export function parseLock(raw: string | null | undefined): LockRecord | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as LockRecord
+    if (!parsed || typeof parsed.owner !== 'string' || typeof parsed.until !== 'number') return null
+    if (!Number.isFinite(parsed.until)) return null
+    return { owner: parsed.owner, until: parsed.until }
+  } catch {
+    return null
+  }
+}
+
+/** True when some other tab still owns the lock. */
+export function lockHeld(record: LockRecord | null | undefined, now: number, me: string): boolean {
+  if (!record || record.until <= now) return false
+  return record.owner !== me
+}
+
+export type ProbeMode = 'find' | 'topup' | 'force'
+export type ProbeKind = 'find' | 'stale' | 'force'
+
+export function shouldProbeMore(mode: ProbeMode, kind: ProbeKind, freshOpen: number, started: number): boolean {
+  if (mode === 'topup') return kind === 'stale'
+  if (mode === 'force') return started < REACH_STOP_AT
+  return freshOpen < REACH_STOP_AT
 }
