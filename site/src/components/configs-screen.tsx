@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { ChevronDown, ChevronRight, Globe, Info, MoreVertical, QrCode, Search, SlidersHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronRight, Globe, Info, MoreVertical, QrCode, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
@@ -17,7 +15,6 @@ import { ConfigSheet } from '@/components/config-sheet'
 import { EmptyState } from '@/components/empty-state'
 import { Freshness } from '@/components/freshness'
 import { LatencyRange } from '@/components/latency-range'
-import { FilterSheet } from '@/components/filter-sheet'
 import { LiveParseSheet } from '@/components/live-parse-sheet'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
@@ -33,15 +30,11 @@ import { copyText } from '@/lib/copy'
 import {
   LIST_STORAGE_KEY,
   defaultListState,
-  draftFilters,
-  facetCounts,
-  matches,
   migrateListState,
   sameListState,
   sanitizeListState,
   toFacet,
   type FacetItem,
-  type FilterDraft,
   type ListState,
 } from '@/lib/filters'
 import {
@@ -56,7 +49,7 @@ import {
   stabilityText,
 } from '@/lib/format'
 import { formatCount } from '@/lib/plural'
-import { endpointKey, reachLine, type ReachBook, type ReachHit } from '@/lib/reach'
+import { browserCanProbe, endpointKey, reachLine, type ReachBook, type ReachHit } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
 import { ru, statusLabel } from '@/lib/ru'
 import { STORAGE_KEY, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
@@ -204,12 +197,10 @@ function lowerBound(prefix: number[], target: number): number {
 }
 
 export function ConfigsScreen({ data }: { data: HubData }) {
-  const { settings, update } = useSettings()
-  const { book, progress, setTargets } = useReach()
+  const { settings } = useSettings()
+  const { book, gate, openCount, setTargets, run } = useReach()
   const [list, setList] = useState<ListState>(readListState)
-  const [draft, setDraft] = useState<FilterDraft | null>(null)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
-  const [filtersOpen, setFiltersOpen] = useState(false)
   const [liveOpen, setLiveOpen] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set())
@@ -260,84 +251,29 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     if (!sameListState(list, safeList)) setList(safeList)
   }, [list, safeList])
 
-  const appliedFilters = useMemo(
-    () => ({
-      query: safeList.query,
-      country: safeList.country,
-      transport: safeList.transport,
-      security: safeList.security,
-      protocol: safeList.protocol,
-      threshold: settings.latencyThreshold,
-    }),
-    [safeList, settings.latencyThreshold],
-  )
-
   const filtered = useMemo(() => {
-    let matched = appliedIndexed
-      .filter((item) => matches(item.facet, appliedFilters))
-      .map((item) => item.config)
-    if (settings.onlyReachable) {
-      matched = matched.filter((config) => book.byEndpoint[endpointKey(config.host, config.port)]?.status === 'open')
-    }
-    if (settings.view !== 'country') matched.sort((left, right) => compareConfigs(settings.sort, left, right, book))
+    const needle = safeList.query.trim().toLowerCase()
+    const matched = data.configs.filter((config) => {
+      if (!browserCanProbe(config.protocol)) return false
+      if (book.byEndpoint[endpointKey(config.host, config.port)]?.status !== 'open') return false
+      if (!needle) return true
+      return [config.host, config.country, config.country_code, config.remark, configTitle(config), String(config.port)]
+        .join(' ')
+        .toLowerCase()
+        .includes(needle)
+    })
+    matched.sort((left, right) => reachRank(left, book) - reachRank(right, book) || left.id.localeCompare(right.id))
     return matched
-  }, [appliedFilters, appliedIndexed, book, settings.onlyReachable, settings.sort, settings.view])
+  }, [book, data.configs, safeList.query])
 
   useEffect(() => {
-    setTargets(filtered)
-  }, [filtered, setTargets])
+    setTargets(data.configs)
+    void run()
+  }, [data.configs, data.generated_at, run, setTargets])
 
-  const sheetDraft = draft ?? {
-    country: safeList.country,
-    transport: safeList.transport,
-    security: safeList.security,
-    protocol: safeList.protocol,
-    threshold: settings.latencyThreshold,
-    sort: settings.sort,
-    view: settings.view,
-    showUnverified: safeList.showUnverified,
-    showUnstable: safeList.showUnstable,
-    onlyReachable: settings.onlyReachable,
-  }
-  const draftIndexed = useMemo(
-    () => poolFor(sheetDraft.showUnstable, sheetDraft.showUnverified),
-    [poolFor, sheetDraft.showUnstable, sheetDraft.showUnverified],
-  )
-  const draftActive = useMemo(() => draftFilters(sheetDraft, safeList.query), [safeList.query, sheetDraft])
-  const draftCount = useMemo(() => {
-    const matched = draftIndexed.filter((item) => matches(item.facet, draftActive))
-    if (!sheetDraft.onlyReachable) return matched.length
-    return matched.filter((item) => book.byEndpoint[endpointKey(item.config.host, item.config.port)]?.status === 'open')
-      .length
-  }, [book, draftActive, draftIndexed, sheetDraft.onlyReachable])
-  const draftFacets = useMemo(() => {
-    const items = draftIndexed.map((item) => item.facet)
-    const names = new Map<string, string>()
-    for (const item of draftIndexed) {
-      if (item.facet.country && item.config.country) names.set(item.facet.country, item.config.country)
-    }
-    return {
-      protocols: facetCounts(items, draftActive, 'protocol'),
-      transports: facetCounts(items, draftActive, 'transport'),
-      securities: facetCounts(items, draftActive, 'security'),
-      countries: facetCounts(items, draftActive, 'country').map((row) => ({
-        code: row.id,
-        name: names.get(row.id) || row.id,
-        count: row.count,
-      })),
-    }
-  }, [draftActive, draftIndexed])
-
-  const groups = useMemo(
-    () =>
-      settings.view === 'country' ? groupByCountry(filtered, settings.sort, book) : [],
-    [book, filtered, settings.sort, settings.view],
-  )
+  const groups = useMemo(() => groupByCountry(filtered, 'reach', book), [book, filtered])
 
   const rows = useMemo(() => {
-    if (settings.view !== 'country') {
-      return filtered.map((config) => ({ kind: 'config' as const, key: config.id, config }))
-    }
     const next: ListRow[] = []
     for (const group of groups) {
       const open = openGroups.has(group.code)
@@ -346,16 +282,16 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       for (const config of group.configs) next.push({ kind: 'config', key: config.id, config })
     }
     return next
-  }, [filtered, groups, openGroups, settings.view])
+  }, [groups, openGroups])
 
   const prefix = useMemo(() => {
     const next = new Array<number>(rows.length + 1)
     next[0] = 0
     for (let index = 0; index < rows.length; index += 1) {
-      next[index + 1] = next[index] + rowHeight(rows[index], settings.view)
+      next[index + 1] = next[index] + rowHeight(rows[index], 'country')
     }
     return next
-  }, [rows, settings.view])
+  }, [rows])
 
   useEffect(() => {
     const node = listRef.current
@@ -390,15 +326,10 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const totalHeight = prefix[rows.length] ?? 0
 
   const chosen = useMemo(
-    () => appliedIndexed.filter((item) => picked.has(item.config.id)).map((item) => item.config),
-    [appliedIndexed, picked],
+    () => data.configs.filter((config) => picked.has(config.id)),
+    [data.configs, picked],
   )
   const allFilteredPicked = filtered.length > 0 && filtered.every((config) => picked.has(config.id))
-  const filtersNarrow =
-    Boolean(safeList.country || safeList.transport || safeList.security || safeList.protocol) ||
-    settings.latencyThreshold != null ||
-    settings.onlyReachable ||
-    safeList.query.trim() !== ''
 
   function toggle(id: string) {
     setPicked((current) => {
@@ -430,14 +361,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  function expandGroups() {
-    setOpenGroups(new Set(groups.map((group) => group.code)))
-  }
-
-  function collapseGroups() {
-    setOpenGroups(new Set())
-  }
-
   function toggleFiltered() {
     setPicked((current) => {
       const next = new Set(current)
@@ -464,7 +387,10 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
   }
 
-  const statsLine = ru.listSummary(data.stats.published, data.stats.countries)
+  const statsLine = ru.listSummary(
+    filtered.length,
+    new Set(filtered.map((config) => config.country_code).filter(Boolean)).size,
+  )
   const opened = selectedId
   const liveOpened = opened
     ? (data.configs.find((item) => item.id === opened.id) ??
@@ -474,72 +400,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     : null
   const sheetConfig = liveOpened ?? opened
   const sheetMissing = Boolean(opened) && !liveOpened
-  const filtersOn =
-    Boolean(safeList.country || safeList.transport || safeList.security || safeList.protocol) ||
-    settings.latencyThreshold != null ||
-    settings.onlyReachable
-
-  function openFilters() {
-    setDraft({
-      country: safeList.country,
-      transport: safeList.transport,
-      security: safeList.security,
-      protocol: safeList.protocol,
-      threshold: settings.latencyThreshold,
-      sort: settings.sort,
-      view: settings.view,
-      showUnverified: safeList.showUnverified,
-      showUnstable: safeList.showUnstable,
-      onlyReachable: settings.onlyReachable,
-    })
-    setFiltersOpen(true)
-  }
-
-  function applyDraft() {
-    if (!draft) return
-    const next = sanitizeListState(
-      {
-        ...safeList,
-        country: draft.country,
-        transport: draft.transport,
-        security: draft.security,
-        protocol: draft.protocol,
-        showUnverified: draft.showUnverified,
-        showUnstable: draft.showUnstable,
-      },
-      draftIndexed.map((item) => item.facet),
-    )
-    setList(next)
-    update({
-      latencyThreshold: draft.threshold,
-      sort: draft.sort,
-      view: draft.view,
-      onlyReachable: draft.onlyReachable,
-    })
-    setDraft(null)
-    setFiltersOpen(false)
-  }
-
-  function resetDraft() {
-    setDraft((current) => ({
-      country: null,
-      transport: null,
-      security: null,
-      protocol: null,
-      threshold: null,
-      sort: current?.sort ?? settings.sort,
-      view: current?.view ?? settings.view,
-      showUnverified: false,
-      showUnstable: false,
-      onlyReachable: false,
-    }))
-  }
-
-  function resetAllFilters() {
-    setList(defaultListState())
-    update({ latencyThreshold: null, onlyReachable: false })
-    setDraft(null)
-  }
   const knownIds = useMemo(() => {
     const ids = new Set<string>()
     for (const item of [...data.configs, ...(data.unstable ?? []), ...data.unverified]) ids.add(item.id)
@@ -558,25 +418,6 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           {selecting ? ru.doneSelecting : ru.select}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => setLiveOpen(true)}>{ru.liveParse}</DropdownMenuItem>
-        {data.unverified.length > 0 && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={safeList.showUnverified}
-              onCheckedChange={(value) => setList((current) => ({ ...current, showUnverified: value }))}
-            >
-              {ru.showUnverified}
-            </DropdownMenuCheckboxItem>
-          </>
-        )}
-        {(data.unstable?.length ?? 0) > 0 && (
-          <DropdownMenuCheckboxItem
-            checked={safeList.showUnstable}
-            onCheckedChange={(value) => setList((current) => ({ ...current, showUnstable: value }))}
-          >
-            {ru.showUnstable}
-          </DropdownMenuCheckboxItem>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -589,41 +430,42 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         known={knownIds}
         onOpenChange={setLiveOpen}
       />
-      <p className="mb-3 text-[13px] text-muted-foreground">
+      {gate === 'scan' ? (
+        <div data-reach-gate className="flex min-h-[70dvh] flex-col items-center justify-center gap-6 text-foreground">
+          <div className="flex flex-col gap-2" aria-hidden>
+            <span className="v2-sweep" />
+            <span className="v2-sweep" style={{ animationDelay: '0.15s' }} />
+            <span className="v2-sweep" style={{ animationDelay: '0.3s' }} />
+          </div>
+          <p className="text-center text-[28px] leading-tight font-semibold">{ru.gateTitle}</p>
+          <p className="text-[18px] tabular-nums">{ru.gateFound(openCount)}</p>
+        </div>
+      ) : gate === 'short' ? (
+        <EmptyState
+          title={ru.gateShortTitle}
+          text={`${ru.gateShort} ${ru.gateUdp}`}
+          action={{ label: ru.retry, onClick: () => void run() }}
+        />
+      ) : (
+      <>
+      <p className="mb-3 text-[15px] text-foreground/80">
         {statsLine}
         {' · '}
         <Freshness iso={data.generated_at} />
       </p>
-      {(progress.running || progress.done > 0) && (
-        <p data-reach-progress className="mb-1 text-[13px]">
-          {progress.running ? ru.reachProgress(progress.done, progress.total) : ru.reachSummary(progress.open, progress.total)}
-        </p>
-      )}
-      {(progress.running || progress.done > 0) && (
-        <p className="mb-3 text-[12px] leading-snug text-muted-foreground">{ru.reachNote}</p>
-      )}
-      <div className="mb-3 flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={safeList.query}
-            onChange={(event) => setList((current) => ({ ...current, query: event.target.value }))}
-            placeholder={ru.searchConfigsPlaceholder}
-            aria-label={ru.searchConfigs}
-            className="h-10 rounded-xl border-0 bg-card pl-9"
-          />
-        </div>
-        <Button
-          variant={filtersOn ? 'secondary' : 'ghost'}
-          size="icon"
-          aria-label="Фильтры"
-          onClick={openFilters}
-        >
-          <SlidersHorizontal />
-        </Button>
+      <p className="mb-3 text-[15px] leading-snug">{ru.gateUdp}</p>
+      <div className="relative mb-3">
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={safeList.query}
+          onChange={(event) => setList((current) => ({ ...current, query: event.target.value }))}
+          placeholder={ru.searchConfigsPlaceholder}
+          aria-label={ru.searchConfigs}
+          className="h-12 rounded-xl border-0 bg-card pl-9 text-[16px]"
+        />
       </div>
 
-      <div className={settings.view === 'cards' ? '' : 'overflow-hidden rounded-2xl bg-card'}>
+      <div className="overflow-hidden rounded-2xl bg-card">
         {selecting && (
           <div className="flex items-center gap-3 px-4 py-2">
             <input
@@ -637,10 +479,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           </div>
         )}
         {filtered.length === 0 ? (
-          <EmptyState
-            text={ru.nothingFound}
-            action={filtersNarrow ? { label: ru.resetFilters, onClick: resetAllFilters } : undefined}
-          />
+          <EmptyState text={ru.nothingFound} />
         ) : (
           <div ref={listRef} style={{ height: totalHeight, position: 'relative' }}>
             <div style={{ height: prefix[start] ?? 0 }} />
@@ -655,7 +494,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
               ) : (
                 <ConfigItem
                   key={row.key}
-                  view={settings.view}
+                  view="country"
                   config={row.config}
                   selecting={selecting}
                   checked={picked.has(row.config.id)}
@@ -721,26 +560,8 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         }}
         onQr={setQr}
       />
-      <FilterSheet
-        open={filtersOpen}
-        onOpenChange={(open) => {
-          setFiltersOpen(open)
-          if (!open) setDraft(null)
-        }}
-        countries={draftFacets.countries}
-        transports={draftFacets.transports}
-        securities={draftFacets.securities}
-        protocols={draftFacets.protocols}
-        draft={sheetDraft}
-        onDraft={(patch) => setDraft((current) => ({ ...(current ?? sheetDraft), ...patch }))}
-        unverifiedCount={data.unverified.length}
-        unstableCount={data.unstable?.length ?? 0}
-        resultCount={draftCount}
-        onApply={applyDraft}
-        onExpandGroups={expandGroups}
-        onCollapseGroups={collapseGroups}
-        onReset={resetDraft}
-      />
+      </>
+      )}
       <QrDialog
         request={qr}
         onOpenChange={(open) => {
@@ -772,7 +593,7 @@ function CountryHeader({
       <span className="grid w-6 shrink-0 place-items-center text-xl leading-none" aria-hidden>
         {flag || <Globe className="size-5 text-muted-foreground" />}
       </span>
-      <span className="min-w-0 flex-1 truncate text-[15px] font-medium">{group.name}</span>
+      <span className="min-w-0 flex-1 truncate text-[17px] font-semibold">{group.name}</span>
       <Badge variant="secondary">{formatCount(group.count)}</Badge>
       <LatencyRange min={group.min} max={group.max} />
     </button>
@@ -899,14 +720,14 @@ function ConfigRow({
           {flag || <Globe className="size-5 text-muted-foreground" />}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-2 text-[15px] font-medium sm:text-[16px]">
+          <span className="flex min-w-0 items-center gap-2 text-[17px] font-semibold">
             <StatusDot status={config.status} />
             <span className="truncate">
               {title}
               {config.country_code ? ` ${config.country_code}` : ''}
             </span>
           </span>
-          <span className="block truncate text-[12px] text-muted-foreground sm:text-[13px]">{meta}</span>
+          <span className="block truncate text-[14px] text-foreground/80">{meta}</span>
         </span>
       </button>
       <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>

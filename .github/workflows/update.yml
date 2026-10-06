@@ -4,6 +4,7 @@ on:
   schedule:
     # Every 15 minutes, off the hour. A full run is a few minutes, so the next
     # one starts after the previous has published. Queued runs wait, they are not cancelled.
+    # GitHub often drops a 15-minute cron. The rearm job below keeps the cadence.
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
@@ -135,3 +136,36 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  # GitHub's scheduler skips most of a */15 cron: recent runs landed hours apart,
+  # and skipped events never appear in the run list. This job waits until 15
+  # minutes after the current run started, then dispatches the next one.
+  # The concurrency group stays held during the wait, so two probes do not overlap.
+  rearm:
+    needs: [check, build]
+    if: >-
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Queue the next run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          created=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq .run_started_at)
+          start=$(date -d "$created" +%s)
+          now=$(date -u +%s)
+          wait=$((start + 900 - now))
+          if [ "$wait" -gt 0 ]; then
+            echo "waiting ${wait}s so the next probe starts 15 minutes after this one"
+            sleep "$wait"
+          fi
+          queued=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/update.yml/runs?event=workflow_dispatch&status=queued&per_page=10" --jq '[.workflow_runs[] | select(.id != '"${GITHUB_RUN_ID}"')] | length')
+          if [ "$queued" != "0" ]; then
+            echo "a run is already queued"
+            exit 0
+          fi
+          gh workflow run update.yml --ref main

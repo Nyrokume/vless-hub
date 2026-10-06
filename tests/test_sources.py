@@ -24,9 +24,15 @@ def test_starter_sources_are_editable_yaml():
     assert settings.vantage_checks >= 100
     assert settings.vantage_budget_sec >= 60
     enabled = [source for source in sources if source.enabled]
-    assert len(enabled) >= 45
+    assert len(enabled) >= 35
     subs = [source for source in enabled if source.type == "subscription" and source.kind != "telegram-proxy"]
-    assert len(subs) >= 30
+    assert len(subs) >= 24
+    assert "pawdroid-sub" in names
+    assert "barry-far-sub1" in names
+    disabled = {source.name for source in sources if not source.enabled}
+    assert "coldwater-mix" in disabled
+    assert "kwinshadow-mix" in disabled
+    assert "argh94-socks5" in disabled
     assert normalize_country_code("de") == "DE"
     assert normalize_country_code("CLOUDFLARE") == ""
     assert normalize_country_code("FASTLY") == ""

@@ -96,6 +96,35 @@ export type ReachTarget = {
   protocol?: string
 }
 
+export const MIN_READY = 5
+export const CORE_PASSES = 3
+
+export function passStreak(bits: string | null | undefined): number {
+  const value = bits || ''
+  let streak = 0
+  for (let index = value.length - 1; index >= 0; index -= 1) {
+    if (value[index] !== '1') break
+    streak += 1
+  }
+  return streak
+}
+
+export function isCore(bits: string | null | undefined): boolean {
+  return passStreak(bits) >= CORE_PASSES
+}
+
+/** Browser-checkable configs, stable core first, then the quicker measured ones. */
+export function orderForProbe(configs: ConfigRecord[]): ConfigRecord[] {
+  return configs
+    .filter((config) => config.host && config.port && browserCanProbe(config.protocol))
+    .slice()
+    .sort((left, right) => {
+      const core = Number(isCore(right.bits)) - Number(isCore(left.bits))
+      if (core !== 0) return core
+      return (left.latency_ms ?? 9_999_999) - (right.latency_ms ?? 9_999_999)
+    })
+}
+
 export function targetsFrom(configs: ConfigRecord[]): ReachTarget[] {
   const seen = new Set<string>()
   const targets: ReachTarget[] = []

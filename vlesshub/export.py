@@ -13,7 +13,7 @@ from vlesshub.countries import country_name
 from vlesshub.models import Settings, SourceReport, VlessConfig
 from vlesshub.parser import build_uri
 from vlesshub.rank import rank_published
-from vlesshub.stages import REASONS
+from vlesshub.stages import REASONS, is_core
 from vlesshub.tgparse import TgProxy, https_link, tg_link
 
 _FAST_MS = 300
@@ -976,6 +976,7 @@ def _public_proxy(proxy: TgProxy) -> dict:
         "checks_ok": proxy.checks_ok,
         "checks_fail": proxy.checks_fail,
         "bits": proxy.bits,
+        "core": is_core(proxy.bits),
         "tg": tg_link(proxy),
         "https": https_link(proxy),
         "sources": proxy.sources,

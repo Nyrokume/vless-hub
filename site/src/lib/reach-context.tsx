@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
-import { toast } from 'sonner'
 import {
-  browserCanProbe,
   emptyBook,
   endpointKey,
   loadReach,
+  MIN_READY,
+  orderForProbe,
   probeEndpoint,
   REACH_CONCURRENCY,
   saveReach,
@@ -12,7 +12,6 @@ import {
   type ReachBook,
   type ReachHit,
 } from '@/lib/reach'
-import { ru } from '@/lib/ru'
 import type { ConfigRecord } from '@/lib/types'
 
 type ReachProgress = {
@@ -24,9 +23,13 @@ type ReachProgress = {
   skipped: number
 }
 
+export type GatePhase = 'idle' | 'scan' | 'ready' | 'short'
+
 type ReachContextValue = {
   book: ReachBook
   progress: ReachProgress
+  gate: GatePhase
+  openCount: number
   setTargets: (configs: ConfigRecord[]) => void
   run: () => Promise<void>
   remember: (hits: Record<string, ReachHit>) => void
@@ -35,6 +38,7 @@ type ReachContextValue = {
 const ReachContext = createContext<ReachContextValue | null>(null)
 
 const idle: ReachProgress = { running: false, done: 0, total: 0, open: 0, closed: 0, skipped: 0 }
+const MIN_VISIBLE_MS = 700
 
 async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
   let cursor = 0
@@ -53,8 +57,10 @@ async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promis
 export function ReachProvider({ children }: { children: ReactNode }) {
   const [book, setBook] = useState<ReachBook>(() => (typeof localStorage === 'undefined' ? emptyBook() : loadReach()))
   const [progress, setProgress] = useState<ReachProgress>(idle)
+  const [gate, setGate] = useState<GatePhase>('scan')
+  const [openCount, setOpenCount] = useState(0)
   const targets = useRef<ConfigRecord[]>([])
-  const running = useRef(false)
+  const generation = useRef(0)
   const bookRef = useRef(book)
   bookRef.current = book
 
@@ -74,64 +80,65 @@ export function ReachProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const run = useCallback(async () => {
-    if (running.current) return
-    const configs = targets.current.filter((config) => config.host && config.port)
-    const planned = targetsFrom(configs)
+    const ticket = (generation.current += 1)
+    const planned = targetsFrom(orderForProbe(targets.current))
     if (planned.length === 0) {
-      toast(ru.reachNone)
+      setGate('short')
+      setOpenCount(0)
+      setProgress(idle)
       return
     }
-    running.current = true
-    const nextBook: ReachBook = {
-      at: Date.now(),
-      byEndpoint: { ...bookRef.current.byEndpoint },
-    }
-    const shareCount = new Map<string, number>()
-    for (const config of configs) {
-      const key = endpointKey(config.host, config.port)
-      shareCount.set(key, (shareCount.get(key) ?? 0) + 1)
-    }
+    setGate('scan')
+    const started = performance.now()
+    const nextBook: ReachBook = { at: Date.now(), byEndpoint: {} }
     let done = 0
     let open = 0
     let closed = 0
-    let skipped = 0
+    let revealed = false
     const publish = () => {
+      if (ticket !== generation.current) return
       const snapshot: ReachBook = { at: nextBook.at, byEndpoint: { ...nextBook.byEndpoint } }
       bookRef.current = snapshot
       setBook(snapshot)
-      setProgress({ running: true, done, total: configs.length, open, closed, skipped })
+      setOpenCount(open)
+      setProgress({ running: true, done, total: planned.length, open, closed, skipped: 0 })
+    }
+    const reveal = async () => {
+      if (revealed || ticket !== generation.current) return
+      revealed = true
+      const wait = MIN_VISIBLE_MS - (performance.now() - started)
+      if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait))
+      if (ticket !== generation.current) return
+      setGate('ready')
     }
     publish()
     try {
       await runPool(planned, REACH_CONCURRENCY, async (target) => {
+        if (ticket !== generation.current) return
         const key = endpointKey(target.host, target.port)
-        let hit: ReachHit
-        const share = shareCount.get(key) ?? 1
-        if (!browserCanProbe(target.protocol)) {
-          hit = { status: 'skip', ms: null, at: Date.now() }
-          skipped += share
-        } else {
-          hit = await probeEndpoint(target.host, target.port)
-          if (hit.status === 'open') open += share
-          else closed += share
-        }
+        const hit = await probeEndpoint(target.host, target.port)
+        if (ticket !== generation.current) return
+        if (hit.status === 'open') open += 1
+        else closed += 1
         nextBook.byEndpoint[key] = hit
-        done += share
+        done += 1
         publish()
+        if (open >= MIN_READY) void reveal()
       })
+      if (ticket !== generation.current) return
       nextBook.at = Date.now()
       saveReach(nextBook)
       bookRef.current = nextBook
-      setBook(nextBook)
-      toast(ru.reachSummary(open, configs.length), { duration: 3200 })
+      setBook({ ...nextBook })
+      if (open >= MIN_READY) await reveal()
+      else setGate('short')
     } finally {
-      running.current = false
-      setProgress((current) => ({ ...current, running: false }))
+      if (ticket === generation.current) setProgress((current) => ({ ...current, running: false }))
     }
   }, [])
 
   return (
-    <ReachContext.Provider value={{ book, progress, setTargets, run, remember }}>
+    <ReachContext.Provider value={{ book, progress, gate, openCount, setTargets, run, remember }}>
       {children}
     </ReachContext.Provider>
   )

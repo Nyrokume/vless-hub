@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
+from vlesshub.stages import is_core
 
 CARRY_MAX_AGE_SEC = 6 * 3600
 
@@ -204,12 +205,13 @@ def mix_proxy_targets(
 
 
 def rank_published(configs: list[VlessConfig]) -> list[VlessConfig]:
-    """Proxy-verified first, then measured ping. The full list is returned."""
+    """Stable core first, then the rest of this run's verified list, by ping."""
 
     def key(cfg: VlessConfig) -> tuple:
         latency = cfg.latency_ms if cfg.latency_ms is not None else 9_999_999
         verified_bonus = 0 if cfg.verified == "proxy" else 1
         vantage = {"multi": 0, "ru": 1}.get(cfg.vantage, 2)
-        return (verified_bonus, latency, vantage, -cfg.uptime, cfg.fingerprint)
+        core = 0 if is_core(cfg.bits) else 1
+        return (core, verified_bonus, latency, vantage, -cfg.uptime, cfg.fingerprint)
 
     return sorted(configs, key=key)

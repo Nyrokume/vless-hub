@@ -59,6 +59,8 @@ def test_mtproto_forms_normalize_and_dedup():
     authed = next(item for item in socks if item.user == "alice")
     assert authed.password == "s3cret"
     assert https_link(authed).startswith("https://t.me/socks?")
+    assert tg_link(authed).startswith("tg://socks?")
+    assert tg_link(plain).startswith("tg://proxy?")
     merged = dedup(parse_many(text, source="beta") + parsed)
     plain_merged = next(item for item in merged if item.secret == SECRET)
     assert plain_merged.sources == ["beta", "alpha"]

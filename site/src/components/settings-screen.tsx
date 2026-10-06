@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react'
 import { useTheme } from 'next-themes'
 import {
   Activity,
-  ArrowUpDown,
   BookOpen,
   Check,
   ChevronRight,
@@ -39,11 +38,6 @@ import { formatCount } from '@/lib/plural'
 import { phoneCommands, probeLabel, reasonLabel, ru } from '@/lib/ru'
 import {
   DEFAULT_PUBLIC_BASE,
-  SORTS,
-  sortLabel,
-  THRESHOLDS,
-  thresholdKey,
-  thresholdLabel,
   useSettings,
 } from '@/lib/settings'
 import type { HubData } from '@/lib/types'
@@ -197,7 +191,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
   const { settings, update } = useSettings()
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme !== 'light'
-  const [picker, setPicker] = useState<'sort' | 'threshold' | 'client' | 'base' | null>(null)
+  const [picker, setPicker] = useState<'client' | 'base' | null>(null)
   const [baseDraft, setBaseDraft] = useState(settings.publicBase)
   const latency = data ? displayedLatencyBounds(data.configs) : { min: null, max: null }
 
@@ -224,34 +218,6 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
             onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
           />
         </div>
-        <Separator />
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 px-4 py-3 text-left"
-          onClick={() => setPicker('sort')}
-        >
-          <IconTile>
-            <ArrowUpDown className="size-4" />
-          </IconTile>
-          <span className="flex-1 text-[17px]">Сортировка</span>
-          <span className="text-[15px] text-muted-foreground">{sortLabel(settings.sort)}</span>
-          <ChevronRight className="size-4 text-muted-foreground/80" />
-        </button>
-        <Separator />
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 px-4 py-3 text-left"
-          onClick={() => setPicker('threshold')}
-        >
-          <IconTile>
-            <Gauge className="size-4" />
-          </IconTile>
-          <span className="flex-1 text-[17px]">Максимальный пинг</span>
-          <span className="text-[15px] text-muted-foreground">
-            {thresholdLabel(settings.latencyThreshold)}
-          </span>
-          <ChevronRight className="size-4 text-muted-foreground/80" />
-        </button>
       </Group>
 
       <Group title="Клиент">
@@ -403,22 +369,6 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
         </div>
       </Group>
 
-      <ChoiceSheet
-        open={picker === 'sort'}
-        title="Сортировка"
-        value={settings.sort}
-        choices={SORTS}
-        onOpenChange={(open) => setPicker(open ? 'sort' : null)}
-        onChange={(value) => update({ sort: value })}
-      />
-      <ChoiceSheet
-        open={picker === 'threshold'}
-        title="Максимальный пинг"
-        value={thresholdKey(settings.latencyThreshold)}
-        choices={THRESHOLDS}
-        onOpenChange={(open) => setPicker(open ? 'threshold' : null)}
-        onChange={(value) => update({ latencyThreshold: value === 'all' ? null : Number(value) })}
-      />
       <ChoiceSheet
         open={picker === 'client'}
         title="Приложение"

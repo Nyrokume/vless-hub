@@ -10,10 +10,20 @@ from vlesshub.stages import (
     dropped_after,
     exit_leaks,
     majority,
+    is_core,
     median_ms,
     note_bits,
+    pass_streak,
     status_of,
 )
+
+
+def test_pass_streak_counts_only_a_trailing_run_of_passes():
+    assert pass_streak("110111") == 3
+    assert pass_streak("1110") == 0
+    assert pass_streak("") == 0
+    assert is_core("111")
+    assert not is_core("11")
 
 
 def test_stage_reasons_cover_tcp_handshake_http_and_exit():

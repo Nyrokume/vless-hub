@@ -123,6 +123,23 @@ def fail_streak(bits: str) -> int:
     return streak
 
 
+CORE_PASSES = 3
+
+
+def pass_streak(bits: str) -> int:
+    """How many checks in a row ended with a pass. The newest bit is last."""
+    streak = 0
+    for char in reversed(bits or ""):
+        if char != "1":
+            break
+        streak += 1
+    return streak
+
+
+def is_core(bits: str, need: int = CORE_PASSES) -> bool:
+    return pass_streak(bits) >= need
+
+
 def dropped_after(bits: str, limit: int) -> bool:
     return limit > 0 and fail_streak(bits) >= limit
 

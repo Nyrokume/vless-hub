@@ -21,6 +21,8 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     cfg.verified = "proxy"
     cfg.uptime = 1
     cfg.checks_ok = 3
+    cfg.bits = "111"
+    cfg.core = "xray"
     cfg.remark = "🚀 hello 😀"
     tcp_only = parse_vless(
         "vless://22222222-2222-4222-8222-222222222222@104.21.0.1:443?type=ws&security=tls&sni=cdn.example#edge"
@@ -90,6 +92,8 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     assert hub["probe"] == "xray-http"
     assert hub["configs"][0]["country_code"] == "DE"
     assert hub["configs"][0]["verified"] == "proxy"
+    assert hub["configs"][0]["bits"] == "111"
+    assert hub["configs"][0]["core"] == "xray"
     assert hub["unverified"][0]["latency_ms"] is None
     assert hub["stats"]["published"] == 1
     legacy = (out / "data" / "subs" / "all.txt").read_text(encoding="utf-8")

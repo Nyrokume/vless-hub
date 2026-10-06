@@ -21,7 +21,7 @@ from vlesshub.parser import exported_config
 from vlesshub.probe import ProbeResult, _proxy_probe_singbox, failure_reason, proxy_probe, tcp_probe
 from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
 from vlesshub.stability import Stability
-from vlesshub.stages import CLIENT_URL_TIMEOUT_MS, client_url_timeout, dropped_after, status_of
+from vlesshub.stages import CLIENT_URL_TIMEOUT_MS, client_url_timeout, dropped_after, is_core, status_of
 from vlesshub.tgcollect import collect_proxies, select_proxies
 from vlesshub.tgparse import TgProxy
 from vlesshub.tgprobe import probe_many
@@ -295,8 +295,9 @@ def run_pipeline(
 
     tg_history = History.load(state_dir / "tg_history.json")
     tg_published, tg_unstable, tg_tested = _probe_telegram(
-        settings, tg_found, tg_history, cache, mmdb, stability, rejections
+        settings, tg_found, tg_history, cache, mmdb, stability, rejections, tg_reports, health
     )
+    save_health(state_dir / "source_health.json", health)
     tg_history.prune(settings.drop_after_failures)
     tg_history.save(state_dir / "tg_history.json")
     cache.save(state_dir / "geo_cache.json")
@@ -494,6 +495,8 @@ def _probe_telegram(
     mmdb,
     stability: Stability,
     rejections: dict[str, int],
+    reports,
+    health: dict,
 ) -> tuple[list[TgProxy], list[TgProxy], int]:
     if not found:
         return [], [], 0
@@ -509,6 +512,7 @@ def _probe_telegram(
     results = probe_many(targets, settings.tg_timeout_sec, settings.tg_concurrency) if targets else {}
     tested = {proxy.fingerprint for proxy in targets}
     working: list[TgProxy] = []
+    evaluated: list[tuple[TgProxy, bool]] = []
 
     def _remember(proxy: TgProxy, ok: bool) -> None:
         bits = stability.note(proxy.fingerprint, ok, telegram=True)
@@ -527,6 +531,7 @@ def _probe_telegram(
             history.record(proxy.fingerprint, ok=True, latency_ms=result.latency_ms)
             _remember(proxy, True)
             working.append(proxy)
+            evaluated.append((proxy, True))
         else:
             proxy.latency_ms = None
             proxy.status = "dead"
@@ -535,6 +540,8 @@ def _probe_telegram(
             _remember(proxy, False)
             reason = (result.reason if result else "") or "handshake_fail"
             rejections[reason] = rejections.get(reason, 0) + 1
+            evaluated.append((proxy, False))
+    apply_source_health(reports, evaluated, health)
     passed = list(working)
     enrich(passed, cache, mmdb, settings.user_agent)
     passed_ids = {proxy.fingerprint for proxy in passed}
@@ -557,6 +564,7 @@ def _probe_telegram(
         return sorted(
             items,
             key=lambda proxy: (
+                0 if is_core(proxy.bits) else 1,
                 proxy.latency_ms if proxy.latency_ms is not None else 9_999_999,
                 -(proxy.stability or 0),
                 proxy.fingerprint,

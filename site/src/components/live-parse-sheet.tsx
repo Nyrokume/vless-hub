@@ -31,8 +31,6 @@ import { ru } from '@/lib/ru'
 import type { ConfigRecord } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-type View = 'new' | 'all'
-
 function pingOf(item: LiveItem, catalog: Map<string, ConfigRecord>): number | null {
   const record = catalog.get(endpointIdentity(item.host, item.port, item.uuid))
   return record?.latency_ms ?? null
@@ -114,7 +112,6 @@ export function LiveParseSheet({
   const [total, setTotal] = useState(0)
   const [items, setItems] = useState<LiveItem[]>([])
   const [lines, setLines] = useState<LiveLine[]>([])
-  const [view, setView] = useState<View>('new')
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<ConfigRecord | null>(null)
   const [qr, setQr] = useState<QrRequest | null>(null)
@@ -158,8 +155,7 @@ export function LiveParseSheet({
     setAborted(false)
     setItems([])
     setLines([])
-    setView('new')
-      setSelected(null)
+    setSelected(null)
     setOpenGroups(new Set())
     setStage('download')
     setDone(0)
@@ -212,13 +208,16 @@ export function LiveParseSheet({
     }
     return map
   }, [data?.configs])
-  const shown = useMemo(() => (view === 'new' ? items.filter((item) => item.fresh) : items), [items, view])
+  const shown = useMemo(
+    () =>
+      items.filter((item) => {
+        const record = catalog.get(endpointIdentity(item.host, item.port, item.uuid))
+        if (!record) return false
+        return book.byEndpoint[endpointKey(item.host, item.port)]?.status === 'open'
+      }),
+    [book.byEndpoint, catalog, items],
+  )
   const groups = useMemo(() => groupLive(shown, (item) => pingOf(item, catalog)), [shown, catalog])
-  const freshCount = items.filter((item) => item.fresh).length
-  const openCount = items.filter((item) => {
-    const record = catalog.get(endpointIdentity(item.host, item.port, item.uuid))
-    return Boolean(record) && book.byEndpoint[endpointKey(item.host, item.port)]?.status === 'open'
-  }).length
   const status = runLine(run, limited)
   const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : stage === 'parse' ? 100 : 0
   const stageLabel =
@@ -235,11 +234,9 @@ export function LiveParseSheet({
   const fetchFailed = lines.length > 0 && lines.every((line) => !line.ok)
   const emptyText = aborted && items.length === 0
     ? ru.live.emptyCancelled
-    : items.length > 0 && freshCount === 0
-      ? ru.live.emptyNew
-      : fetchFailed
-        ? ru.live.emptyFail
-        : ru.live.emptyNone
+    : fetchFailed
+      ? ru.live.emptyFail
+      : ru.live.emptyReach
   const showEmpty = searched && !running && shown.length === 0
   const showSummary = searched && !running && items.length > 0
 
@@ -277,37 +274,8 @@ export function LiveParseSheet({
               <p className="mt-3 text-[13px] text-muted-foreground">{status}</p>
             )}
 
-            {showSummary && (
-              <p className="mt-4 text-[15px] leading-5">{ru.live.summary(items.length, freshCount, openCount)}</p>
-            )}
-
-            {searched && !running && items.length > 0 && (
-              <div className="mt-3 grid grid-cols-2 rounded-xl bg-muted p-1" role="tablist" aria-label={ru.live.title}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={view === 'new'}
-                  className={cn(
-                    'h-9 rounded-lg text-[14px]',
-                    view === 'new' ? 'bg-background text-foreground' : 'text-foreground/70',
-                  )}
-                  onClick={() => setView('new')}
-                >
-                  {ru.live.segmentNew}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={view === 'all'}
-                  className={cn(
-                    'h-9 rounded-lg text-[14px]',
-                    view === 'all' ? 'bg-background text-foreground' : 'text-foreground/70',
-                  )}
-                  onClick={() => setView('all')}
-                >
-                  {ru.live.segmentAll}
-                </button>
-              </div>
+            {showSummary && shown.length > 0 && (
+              <p className="mt-4 text-[17px] leading-5 font-semibold">{ru.gateFound(shown.length)}</p>
             )}
 
             {showEmpty && <EmptyState text={emptyText} />}

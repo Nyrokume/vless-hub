@@ -25,6 +25,19 @@ def test_select_prefers_stable_and_keeps_fresh_quota():
     assert len(chosen) == 2
 
 
+def test_rank_puts_a_stable_core_ahead_of_a_faster_newcomer():
+    core = _cfg("core.example")
+    fresh = _cfg("fresh.example")
+    core.verified = "proxy"
+    core.latency_ms = 400
+    core.bits = "111"
+    fresh.verified = "proxy"
+    fresh.latency_ms = 40
+    fresh.bits = "1"
+    ordered = rank_published([fresh, core])
+    assert ordered[0] is core
+
+
 def test_rank_sorts_verified_configs_by_ping():
     fast = _cfg("a.example")
     slow = _cfg("b.example")

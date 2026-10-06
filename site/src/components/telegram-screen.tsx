@@ -17,17 +17,13 @@ import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
 import { displayedLatencyBounds, flagEmoji, formatStamp, latencyClass, latencyText, stabilityText } from '@/lib/format'
-import { formatCount } from '@/lib/plural'
+import { isCore } from '@/lib/reach'
 import { kindLabel, ru, statusLabel } from '@/lib/ru'
-import { openExternal } from '@/lib/clients'
 import type { HubData, ProxyRecord } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 export function TelegramScreen({ data }: { data: HubData }) {
   const [query, setQuery] = useState('')
-  const [kind, setKind] = useState<'all' | 'mtproto' | 'socks'>('all')
-  const [country, setCountry] = useState('')
-  const [showUnstable, setShowUnstable] = useState(false)
   const [qr, setQr] = useState<QrRequest | null>(null)
   const [selected, setSelected] = useState<ProxyRecord | null>(null)
   const stats = data.stats.telegram
@@ -36,30 +32,22 @@ export function TelegramScreen({ data }: { data: HubData }) {
     : null
   const sheetProxy = liveSelected ?? selected
   const sheetMissing = Boolean(selected) && !liveSelected
-  const pool = showUnstable ? [...data.proxies, ...(data.unstable_proxies ?? [])] : data.proxies
-
-  const countries = useMemo(() => {
-    const codes = new Set<string>()
-    for (const proxy of pool) {
-      if (proxy.country) codes.add(proxy.country)
-    }
-    return [...codes].sort()
-  }, [pool])
-
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return pool
+    return data.proxies
       .filter((proxy) => {
-        if (kind !== 'all' && proxy.kind !== kind) return false
-        if (country && proxy.country !== country) return false
         if (!needle) return true
         return [proxy.host, proxy.country, proxy.country_name, proxy.kind, String(proxy.port)]
           .join(' ')
           .toLowerCase()
           .includes(needle)
       })
-      .sort((left, right) => (left.latency_ms ?? 9_999_999) - (right.latency_ms ?? 9_999_999))
-  }, [country, kind, pool, query])
+      .sort((left, right) => {
+        const core = Number(isCore(right.bits)) - Number(isCore(left.bits))
+        if (core !== 0) return core
+        return (left.latency_ms ?? 9_999_999) - (right.latency_ms ?? 9_999_999)
+      })
+  }, [data.proxies, query])
 
   const best = filtered[0]
   const latency = displayedLatencyBounds(data.proxies)
@@ -76,51 +64,13 @@ export function TelegramScreen({ data }: { data: HubData }) {
         <LatencyRange min={latency.min} max={latency.max} />
       </p>
       {best && (
-        <Button className="mb-4 w-full" onClick={() => openExternal(best.tg)}>
-          <Send />
-          {ru.bestInTelegram(best.country_name || best.country || best.host, latencyText(best.latency_ms))}
+        <Button asChild className="mb-4 h-12 w-full text-[16px]">
+          <a href={best.tg}>
+            <Send />
+            {ru.bestInTelegram(best.country_name || best.country || best.host, latencyText(best.latency_ms))}
+          </a>
         </Button>
       )}
-      <div className="mb-3 flex flex-wrap gap-2">
-        {(data.unstable_proxies?.length ?? 0) > 0 && (
-          <button
-            type="button"
-            className={cn(
-              'rounded-full px-3 py-1.5 text-[13px]',
-              showUnstable ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-            )}
-            onClick={() => setShowUnstable((value) => !value)}
-          >
-            {ru.showUnstable} · {formatCount(data.unstable_proxies?.length ?? 0)}
-          </button>
-        )}
-        {(['all', 'mtproto', 'socks'] as const).map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={cn(
-              'rounded-full px-3 py-1.5 text-[13px]',
-              kind === item ? 'bg-primary text-primary-foreground' : 'bg-card text-muted-foreground',
-            )}
-            onClick={() => setKind(item)}
-          >
-            {item === 'all' ? ru.kinds.all : kindLabel(item)}
-          </button>
-        ))}
-        <select
-          aria-label={ru.country}
-          className="h-9 rounded-full bg-card px-3 text-[13px]"
-          value={country}
-          onChange={(event) => setCountry(event.target.value)}
-        >
-          <option value="">{ru.allCountries}</option>
-          {countries.map((code) => (
-            <option key={code} value={code}>
-              {flagEmoji(code)} {code}
-            </option>
-          ))}
-        </select>
-      </div>
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -135,15 +85,6 @@ export function TelegramScreen({ data }: { data: HubData }) {
         {filtered.length === 0 ? (
           <EmptyState
             text={ru.nothingFound}
-            action={{
-              label: ru.resetFilters,
-              onClick: () => {
-                setQuery('')
-                setKind('all')
-                setCountry('')
-                setShowUnstable(false)
-              },
-            }}
           />
         ) : (
           filtered.map((proxy, index) => (
@@ -250,9 +191,11 @@ function ProxySheet({
                 <QrCode />
                 {ru.qr}
               </Button>
-              <Button variant="secondary" onClick={() => openExternal(proxy.tg)}>
-                <Send />
-                {ru.inTelegram}
+              <Button asChild variant="secondary">
+                <a href={proxy.tg}>
+                  <Send />
+                  {ru.inTelegram}
+                </a>
               </Button>
             </div>
             <div className="mx-4 mb-6 overflow-hidden rounded-2xl bg-secondary/60">
@@ -287,7 +230,7 @@ function ProxyRow({
       {divided && <Separator />}
       <div className="flex items-center gap-2 px-4 py-3">
         <button type="button" className="min-w-0 flex-1 text-left" onClick={onOpen}>
-          <p className="flex min-w-0 items-center gap-2 truncate text-[16px] font-medium">
+          <p className="flex min-w-0 items-center gap-2 truncate text-[17px] font-semibold">
             {proxy.status === 'working' || proxy.status === 'unstable' ? (
               <span
                 className={cn(
@@ -309,9 +252,10 @@ function ProxyRow({
         <span className={cn('text-[14px] font-semibold tabular-nums', latencyClass(proxy.latency_ms))}>
           {latencyText(proxy.latency_ms)}
         </span>
-        <Button size="sm" className="shrink-0 px-2 sm:px-3" aria-label={ru.openInTelegram(title)} onClick={() => openExternal(proxy.tg)}>
-          <Send className="sm:hidden" />
-          <span className="hidden sm:inline">{ru.inTelegram}</span>
+        <Button asChild size="sm" className="h-10 shrink-0 px-3 text-[15px]">
+          <a href={proxy.tg} aria-label={ru.openInTelegram(title)}>
+            {ru.inTelegram}
+          </a>
         </Button>
         <Button
           variant="ghost"

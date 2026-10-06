@@ -75,17 +75,17 @@ sources:
 
   - name: tg-vlessconfig
     type: telegram
-    enabled: true
+    enabled: false
     channel: vlessconfig
 
   - name: tg-vlessvpnfree
     type: telegram
-    enabled: true
+    enabled: false
     channel: VlessVpnFree
 
   - name: tg-vlesstrojan
     type: telegram
-    enabled: true
+    enabled: false
     channel: vlesstrojan
 
   - name: epodonios-ss
@@ -155,7 +155,7 @@ sources:
 
   - name: radikal-trojan
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/0xRadikal/Free-v2ray-Configs/main/protocols/trojan.txt
 
   - name: radikal-hysteria2
@@ -175,7 +175,7 @@ sources:
 
   - name: kwinshadow-mix
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/Kwinshadow/TelegramV2rayCollector/main/sublinks/mix.txt
 
   - name: surfboard-converted
@@ -195,12 +195,12 @@ sources:
 
   - name: sevcator-vless
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/sevcator/5ubscrpt10n/main/protocols/vl.txt
 
   - name: sevcator-trojan
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/sevcator/5ubscrpt10n/main/protocols/tr.txt
 
   - name: sevcator-ss
@@ -215,22 +215,37 @@ sources:
 
   - name: coldwater-mix
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/coldwater-10/V2ray-Config/main/All_Configs_Sub.txt
 
   - name: coldwater-hysteria2
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/coldwater-10/V2ray-Config/main/Splitted-By-Protocol/hysteria2.txt
+
+  - name: pawdroid-sub
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub
+
+  - name: ripaojiedian-sub
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/ripaojiedian/freenode/main/sub
+
+  - name: barry-far-sub1
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub1.txt
 
   - name: tg-v2ray-configs
     type: telegram
-    enabled: true
+    enabled: false
     channel: v2ray_configs
 
   - name: tg-outlinev2ray
     type: telegram
-    enabled: true
+    enabled: false
     channel: outlinev2ray
 
   - name: tg-v2raycollector
@@ -240,7 +255,7 @@ sources:
 
   - name: tg-privatevpns
     type: telegram
-    enabled: true
+    enabled: false
     channel: PrivateVPNs
 
 # kind: telegram-proxy — публичные MTProto (tg://proxy, t.me/proxy, секреты ee/dd)
@@ -265,10 +280,11 @@ sources:
     enabled: true
     url: https://raw.githubusercontent.com/Argh94/Proxy-List/main/MTProto.txt
 
+  # Generic SOCKS5, not Telegram. The tunnel opens and then drops the MTProto handshake.
   - name: argh94-socks5
     kind: telegram-proxy
     type: subscription
-    enabled: true
+    enabled: false
     limit: 80
     url: https://raw.githubusercontent.com/Argh94/Proxy-List/main/SOCKS5.txt
 
@@ -299,5 +315,5 @@ sources:
   - name: tg-proxy-mtg
     kind: telegram-proxy
     type: telegram
-    enabled: true
+    enabled: false
     channel: proxy_mtg
