@@ -168,4 +168,4 @@ jobs:
             echo "a run is already queued"
             exit 0
           fi
-          gh workflow run update.yml --ref main
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/update.yml/dispatches" -f ref=main
