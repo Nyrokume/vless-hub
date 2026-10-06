@@ -211,8 +211,12 @@ try {
     report.shotProbes = shotProbes.length
     report.shotSplash = shotText.includes('Ищу доступные')
     report.shotList = shotText.includes('США') && shotText.includes('Германия')
-    await mkdir('/opt/cursor/artifacts', { recursive: true })
-    await shot.screenshot({ path: '/opt/cursor/artifacts/configs-412-cache-dark.png' })
+    try {
+      await mkdir('/opt/cursor/artifacts', { recursive: true })
+      await shot.screenshot({ path: '/opt/cursor/artifacts/configs-412-cache-dark.png' })
+    } catch {
+      // The picture is only evidence. A missing folder must not fail the check.
+    }
     await shotContext.close()
   }
 

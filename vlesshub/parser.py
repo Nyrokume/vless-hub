@@ -467,6 +467,72 @@ def _fp_rank(value: str) -> int:
     return _FP_RANK.get(key, 50)
 
 
+# Clients that still ship with v2rayNG, Happ, Streisand, V2Box and FoXray.
+_POPULAR_NETS = {"tcp", "ws", "grpc", "h2", "httpupgrade"}
+_POPULAR_FP = {"chrome", "firefox", "edge", "safari", "ios", "android", "random"}
+_RARE_FP = {"qq", "360", "randomized"}
+_HOST_NETS = {"ws", "httpupgrade", "h2", "xhttp"}
+
+
+def prepare_share(cfg: VlessConfig) -> None:
+    """Make the stored fields the same bytes the share link will carry.
+
+    Empty Reality fingerprint is probed as chrome, so the link must say chrome.
+    ``xtls-rprx-vision-udp443`` is gone from current cores. A WebSocket or HTTP
+    transport without Host fails in clients that do not copy SNI themselves.
+    """
+    if (cfg.flow or "").lower() == "xtls-rprx-vision-udp443":
+        cfg.flow = "xtls-rprx-vision"
+    fp = (cfg.fp or "").strip().lower()
+    if cfg.security == "reality" and (not fp or fp in _RARE_FP):
+        cfg.fp = "chrome"
+    elif fp:
+        cfg.fp = fp
+    if cfg.network in _HOST_NETS and not cfg.host_header and _plausible_name(cfg.sni):
+        cfg.host_header = cfg.sni
+
+
+def share_type(cfg: VlessConfig) -> str:
+    """HTTP/2 is ``type=http`` in the share link. ``h2`` is kept only inside the hub."""
+    network = cfg.network or "tcp"
+    if network == "h2":
+        return "http"
+    return network
+
+
+def fits_popular_clients(cfg: VlessConfig) -> bool:
+    """True when a VLESS, Trojan, or Shadowsocks link is safe for the shared list.
+
+    XHTTP, kcp, quic, post-quantum encryption, Reality without pbk/sid/fp/sni,
+    and Reality TCP without vision stay out. Hysteria2 and TUIC are decided by
+    the sing-box and Mihomo probes, not here.
+    """
+    if cfg.protocol in {"hysteria2", "tuic"}:
+        return True
+    if cfg.protocol == "shadowsocks":
+        return cfg.network in {"", "tcp"}
+    if cfg.network not in _POPULAR_NETS:
+        return False
+    if cfg.protocol == "trojan":
+        return True
+    if cfg.protocol != "vless":
+        return False
+    if (cfg.encryption or "none").lower() != "none":
+        return False
+    if cfg.flow and cfg.flow != "xtls-rprx-vision":
+        return False
+    if cfg.security == "reality":
+        if not cfg.pbk or not cfg.sid or not cfg.fp or not _plausible_name(cfg.sni):
+            return False
+        if cfg.fp not in _POPULAR_FP:
+            return False
+        if cfg.network == "tcp" and cfg.flow != "xtls-rprx-vision":
+            return False
+    if cfg.fp and cfg.fp not in _POPULAR_FP:
+        return False
+    return True
+
+
 def build_uri(cfg: VlessConfig, remark: str | None = None) -> str:
     if cfg.protocol == "shadowsocks":
         return _build_ss_uri(cfg, remark)
@@ -479,7 +545,7 @@ def build_uri(cfg: VlessConfig, remark: str | None = None) -> str:
     params: list[tuple[str, str]] = [("encryption", cfg.encryption or "none")]
     if cfg.flow:
         params.append(("flow", cfg.flow))
-    params.append(("type", cfg.network or "tcp"))
+    params.append(("type", share_type(cfg)))
     params.append(("security", cfg.security or "none"))
     if cfg.sni:
         params.append(("sni", cfg.sni))
@@ -705,6 +771,7 @@ def _finish(cfg: VlessConfig) -> None:
         cfg.header_type = ""
     cfg.sni = cfg.sni.strip()
     cfg.extra = canonical_extra(cfg.extra)
+    prepare_share(cfg)
     cfg.remark_country = extract_flag_code(cfg.remark)
     cfg.fingerprint = fingerprint(cfg)
 

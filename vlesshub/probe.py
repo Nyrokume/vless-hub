@@ -48,6 +48,8 @@ class ProbeResult:
     exit_ip: str = ""
     # False when the phase budget ended before this config was tested.
     evaluated: bool = True
+    # The server accepted one tunnel and refused the next one immediately.
+    slot_limit: bool = False
 
 
 def tcp_probe(configs: list[VlessConfig], timeout: float, concurrency: int) -> dict[str, ProbeResult]:
@@ -599,7 +601,7 @@ def _probe_through_core(cfg: VlessConfig, port: int, per_request: float, runner_
         )
 
     exit_sample = once(EXIT_URL, read_body=True)
-    return _from_assessment(
+    result = _from_assessment(
         assess_proxy(
             security=cfg.security,
             warmup=warmup,
@@ -610,6 +612,54 @@ def _probe_through_core(cfg: VlessConfig, port: int, per_request: float, runner_
             runner_ip=runner_ip,
         )
     )
+    if result.ok:
+        result.slot_limit = _extra_slot_refused(port)
+    return result
+
+
+def _curl_exit(port: int, timeout: float = 2.0) -> tuple[int, float]:
+    """Return curl's exit code and how long the dial took."""
+    url = HTTP_TARGETS[0].url
+    command = [
+        "curl",
+        "-sS",
+        "-o",
+        os.devnull,
+        "--connect-timeout",
+        "1",
+        "--max-time",
+        f"{timeout:.1f}",
+        "--retry",
+        "0",
+        "--socks5-hostname",
+        f"127.0.0.1:{port}",
+        url,
+    ]
+    started = time.perf_counter()
+    try:
+        proc = subprocess.run(command, capture_output=True, text=True, timeout=timeout + 1)
+    except subprocess.TimeoutExpired:
+        return 28, timeout
+    return proc.returncode, time.perf_counter() - started
+
+
+def _extra_slot_refused(port: int) -> bool:
+    """True only when a second dial is refused at once and a later one still works.
+
+    A timeout or a dead proxy is not a device limit. Those stay in the list.
+    """
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            codes = [future.result() for future in (pool.submit(_curl_exit, port), pool.submit(_curl_exit, port))]
+    except Exception:  # noqa: BLE001
+        return False
+    if any(code != 7 or elapsed >= 1.2 for code, elapsed in codes):
+        return False
+    try:
+        follow, _elapsed = _curl_exit(port)
+    except Exception:  # noqa: BLE001
+        return False
+    return follow == 0
 
 
 def _from_assessment(assessment) -> ProbeResult:
@@ -899,7 +949,13 @@ def _singbox_transport(cfg: VlessConfig) -> dict | None:
     if cfg.network == "h2":
         return {"type": "http", "path": cfg.path or "/"}
     if cfg.network == "xhttp":
-        return {"type": "xhttp", "path": cfg.path or "/", "mode": cfg.mode or "auto"}
+        transport = {"type": "xhttp", "path": cfg.path or "/", "mode": cfg.mode or "auto"}
+        if cfg.host_header:
+            transport["host"] = cfg.host_header
+        extra = _json_object(cfg.extra)
+        if extra is not None:
+            transport["extra"] = extra
+        return transport
     if cfg.network == "httpupgrade":
         return {"type": "httpupgrade", "path": cfg.path or "/"}
     return None
@@ -1003,6 +1059,180 @@ def _run_singbox_batch(
     finally:
         for port in ports:
             _release_port(port)
+
+
+def build_mihomo_batch(pairs: list[tuple[VlessConfig, int]]) -> dict:
+    """One SOCKS listener per config, using the same Clash fields the site exports."""
+    from vlesshub.export import _clash_proxy
+
+    proxies: list[dict] = []
+    listeners: list[dict] = []
+    for index, (cfg, port) in enumerate(pairs):
+        item = _clash_proxy(cfg, index + 1)
+        name = f"p{index}"
+        item["name"] = name
+        proxies.append(item)
+        listeners.append(
+            {
+                "name": f"in-{index}",
+                "type": "socks",
+                "listen": "127.0.0.1",
+                "port": port,
+                "proxy": name,
+            }
+        )
+    return {
+        "allow-lan": False,
+        "mode": "rule",
+        "log-level": "silent",
+        "ipv6": False,
+        "proxies": proxies,
+        "listeners": listeners,
+        "rules": ["MATCH,DIRECT"],
+    }
+
+
+def _proxy_probe_mihomo(
+    configs: list[VlessConfig],
+    mihomo_bin: Path,
+    timeout: float,
+    speed_timeout: float,
+    concurrency: int,
+    batch_size: int,
+    runner_ip: str = "",
+) -> dict[str, ProbeResult]:
+    results: dict[str, ProbeResult] = {}
+    if not _curl_available():
+        return _handshake_results(configs, "curl missing")
+    size = max(1, min(batch_size, 8))
+    batches = [configs[offset : offset + size] for offset in range(0, len(configs), size)]
+    workers = max(1, min(concurrency, len(batches)))
+    budget = _wave_budget(len(batches), workers)
+    log(f"mihomo batches {len(batches)} size<={size} parallel={workers} wave={budget:.0f}s")
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {
+            pool.submit(
+                _run_mihomo_batch,
+                batch,
+                mihomo_bin,
+                timeout,
+                speed_timeout,
+                runner_ip,
+                allow_split=True,
+            ): batch
+            for batch in batches
+        }
+        try:
+            for future in as_completed(futures, timeout=budget):
+                batch = futures[future]
+                try:
+                    results.update(future.result())
+                except Exception as exc:  # noqa: BLE001
+                    results.update(_handshake_results(batch, str(exc)))
+        except TimeoutError:
+            log("mihomo phase hit its time budget; untested configs are left unevaluated")
+    for cfg in configs:
+        results.setdefault(cfg.fingerprint, ProbeResult(False, error="budget", evaluated=False))
+    ok_count = sum(1 for cfg in configs if results[cfg.fingerprint].ok)
+    log(f"mihomo verified {ok_count}/{len(configs)}")
+    return results
+
+
+def _run_mihomo_batch(
+    configs: list[VlessConfig],
+    mihomo_bin: Path,
+    timeout: float,
+    speed_timeout: float,
+    runner_ip: str = "",
+    *,
+    allow_split: bool,
+) -> dict[str, ProbeResult]:
+    if not configs:
+        return {}
+    import yaml
+
+    ports: list[int] = []
+    try:
+        ports = [_alloc_port() for _ in configs]
+        with tempfile.TemporaryDirectory(prefix="vlesshub-mihomo-") as tmp:
+            config_path = Path(tmp) / "config.yaml"
+            log_path = Path(tmp) / "mihomo.log"
+            pairs = list(zip(configs, ports, strict=True))
+            config_path.write_text(
+                yaml.safe_dump(build_mihomo_batch(pairs), allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+            log_handle = log_path.open("w", encoding="utf-8")
+            proc = subprocess.Popen(
+                [str(mihomo_bin), "-d", tmp, "-f", str(config_path)],
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                cwd=tmp,
+            )
+            try:
+                ready = _wait_ports(ports, proc, 8.0)
+                if not ready:
+                    exited = proc.poll() is not None
+                    if allow_split and exited and len(configs) > 1:
+                        _kill(proc)
+                        log_handle.close()
+                        for port in ports:
+                            _release_port(port)
+                        ports = []
+                        mid = len(configs) // 2
+                        left = _run_mihomo_batch(
+                            configs[:mid],
+                            mihomo_bin,
+                            timeout,
+                            speed_timeout,
+                            runner_ip,
+                            allow_split=False,
+                        )
+                        right = _run_mihomo_batch(
+                            configs[mid:],
+                            mihomo_bin,
+                            timeout,
+                            speed_timeout,
+                            runner_ip,
+                            allow_split=False,
+                        )
+                        return {**left, **right}
+                    error = _tail(log_path) or ("mihomo exited" if exited else "mihomo not listening")
+                    return _handshake_results(configs, error)
+                return _curl_batch(pairs, timeout, speed_timeout, runner_ip)
+            finally:
+                log_handle.close()
+                _kill(proc)
+    finally:
+        for port in ports:
+            _release_port(port)
+
+
+def check_share_files(clash_path: Path, singbox_path: Path, mihomo_bin: Path | None, singbox_bin: Path | None) -> list[str]:
+    """Ask the real binaries whether the published Clash and sing-box files parse."""
+    errors: list[str] = []
+    if singbox_bin is not None and singbox_path.is_file():
+        proc = subprocess.run(
+            [str(singbox_bin), "check", "-c", str(singbox_path)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            detail = " ".join((proc.stderr or proc.stdout or "").split())[:240]
+            errors.append(f"sing-box check failed: {detail or proc.returncode}")
+    if mihomo_bin is not None and clash_path.is_file():
+        proc = subprocess.run(
+            [str(mihomo_bin), "-t", "-f", str(clash_path)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if proc.returncode != 0:
+            detail = " ".join((proc.stderr or proc.stdout or "").split())[:240]
+            errors.append(f"mihomo -t failed: {detail or proc.returncode}")
+    return errors
 
 
 def _tail(path: Path, limit: int = 300) -> str:

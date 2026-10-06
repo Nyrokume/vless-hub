@@ -60,7 +60,7 @@ def test_http_obfuscation_empty_fields_case_and_spam():
     assert http.header_type == "http"
     assert http.host_header == "dl.google.com,speedtest.net,play.google.com"
     empty_fp = parse_any(_line(21))
-    assert empty_fp is not None and empty_fp.fp == ""
+    assert empty_fp is not None and empty_fp.fp == "chrome"
     empty_header = parse_any(_line(4))
     assert empty_header is not None and empty_header.header_type == ""
     leading = parse_any(_line(6))

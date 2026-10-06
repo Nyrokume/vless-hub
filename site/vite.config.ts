@@ -59,6 +59,9 @@ function collectorData(): Plugin {
 
 export default defineConfig({
   base: '/vless-hub/',
+  build: {
+    target: ['chrome80', 'safari13', 'firefox78', 'edge88'],
+  },
   plugins: [react(), tailwindcss(), collectorData()],
   resolve: {
     alias: {

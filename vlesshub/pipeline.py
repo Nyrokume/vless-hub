@@ -17,15 +17,23 @@ from vlesshub.health import (
 )
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
-from vlesshub.parser import exported_config
-from vlesshub.probe import ProbeResult, _proxy_probe_singbox, failure_reason, proxy_probe, tcp_probe
+from vlesshub.parser import exported_config, fits_popular_clients
+from vlesshub.probe import (
+    ProbeResult,
+    _proxy_probe_mihomo,
+    _proxy_probe_singbox,
+    check_share_files,
+    failure_reason,
+    proxy_probe,
+    tcp_probe,
+)
 from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
 from vlesshub.stability import Stability
 from vlesshub.stages import CLIENT_URL_TIMEOUT_MS, client_url_timeout, dropped_after, is_core, kept_after_handshake, status_of
 from vlesshub.tgcollect import collect_proxies, select_proxies
 from vlesshub.tgparse import TgProxy
 from vlesshub.tgprobe import probe_many
-from vlesshub.tools import ensure_geoip, ensure_singbox, ensure_xray
+from vlesshub.tools import ensure_geoip, ensure_mihomo, ensure_singbox, ensure_xray
 from vlesshub.util import env_flag, env_int, log, utcnow
 from vlesshub.vantage import VantageScan, annotate_vantage
 
@@ -131,6 +139,9 @@ def run_pipeline(
 
     proxy_results: dict[str, ProbeResult] = {}
     proxy_targets: list[VlessConfig] = []
+    cores_missing = False
+    singbox_bin = None
+    mihomo_bin = None
     if settings.max_proxy_tests > 0 and (tcp_ok or hy2_pool) and not skip_download:
         proxy_targets = mix_proxy_targets(
             tcp_ok,
@@ -152,6 +163,15 @@ def run_pipeline(
         )
         xray = ensure_xray(root / "bin") if needs_xray else None
         singbox = ensure_singbox(root / "bin") if needs_singbox else None
+        mihomo = ensure_mihomo(root / "bin") if ready else None
+        singbox_bin = singbox
+        mihomo_bin = mihomo
+        if needs_singbox and singbox is None:
+            log("sing-box is unavailable; refusing to publish configs that were not checked in sing-box")
+            cores_missing = True
+        if ready and mihomo is None:
+            log("mihomo is unavailable; refusing to publish configs that were not checked in Mihomo")
+            cores_missing = True
         if needs_xray and xray is None and not any(cfg.protocol in {"hysteria2", "tuic"} for cfg in ready):
             log("proxy tests skipped because Xray is unavailable")
             proxy_targets = mismatched
@@ -182,7 +202,9 @@ def run_pipeline(
                     history,
                     blocked,
                 )
-                _note_cores(proxy_targets, proxy_results, settings, singbox)
+                if not cores_missing and not _note_cores(proxy_targets, proxy_results, settings, singbox, mihomo):
+                    log("mihomo rejected every config; site left unchanged")
+                    cores_missing = True
     elif settings.max_proxy_tests > 0 and skip_download:
         log("proxy tests skipped (--skip-download)")
 
@@ -215,6 +237,7 @@ def run_pipeline(
         cfg.speed_kbps = result.speed_kbps
         cfg.exit_ip = result.exit_ip
         cfg.verified = "proxy"
+        cfg.slot_limit = bool(result.slot_limit)
         _seed(cfg)
         recorded = history.record(cfg.fingerprint, ok=True, latency_ms=result.latency_ms)
         cfg.tested_at = str(recorded.get("last_ok") or "")
@@ -292,6 +315,9 @@ def run_pipeline(
 
     history.prune(settings.drop_after_failures)
     history.save(state_dir / "history.json")
+    if cores_missing:
+        log("a client core is unavailable; site left unchanged")
+        return 1
 
     tg_history = History.load(state_dir / "tg_history.json")
     tg_published, tg_unstable, tg_tested = _probe_telegram(
@@ -324,13 +350,20 @@ def run_pipeline(
             before = len(working)
             working = [cfg for cfg in working if (cfg.host, cfg.port) not in scan.closed_endpoints]
             log(f"dropped {before - len(working)} closed from Russia")
-    published = rank_published(working)
+    universal = [cfg for cfg in working if _is_universal(cfg)]
+    universal_ids = {id(cfg) for cfg in universal}
+    limited = [cfg for cfg in working if id(cfg) not in universal_ids]
+    published = rank_published(universal)
+    limited_ranked = rank_published(limited)
+    vless_seen = sum(1 for cfg in working if (cfg.protocol or "vless") == "vless")
+    vless_all = sum(1 for cfg in published if (cfg.protocol or "vless") == "vless")
     proxy_ok = len(published)
     log(
-        f"publish {len(published)} working from {len(configs)} unique; "
+        f"publish {len(published)} shared ({vless_all} vless of {vless_seen}) "
+        f"and {len(limited_ranked)} extra from {len(configs)} unique; "
         f"proxy tested {len(proxy_targets)}; rejected {rejections}"
     )
-    if not published and had_success:
+    if not published and not limited_ranked and had_success:
         log("no proxy-verified configs left for this run; history was saved, site was left unchanged")
         return 2
 
@@ -362,7 +395,22 @@ def run_pipeline(
             "closed_from_russia": scan.closed,
             "unknown": scan.unknown,
         },
+        limited=limited_ranked,
     )
+    share_errors = (
+        check_share_files(
+            out_dir / "sub" / "clash.yaml",
+            out_dir / "sub" / "singbox.json",
+            mihomo_bin,
+            singbox_bin,
+        )
+        if published
+        else []
+    )
+    if share_errors:
+        for item in share_errors:
+            log(f"client file: {item}")
+        return 1
     stability.save(out_dir / "data" / "stability.json")
     mismatches = check_publish(out_dir)
     if mismatches:
@@ -456,7 +504,27 @@ def _rescue_previous(alive, proven_before, proxy_targets, results, settings, xra
         log(f"warning: {len(still)} working after retest; publishing only verified ones")
 
 
-def _note_cores(configs, results: dict[str, ProbeResult], settings, singbox) -> None:
+def _core_label(xray: bool, sing: bool, mihomo: bool) -> str:
+    parts: list[str] = []
+    if xray:
+        parts.append("xray")
+    if sing:
+        parts.append("sing-box")
+    if mihomo:
+        parts.append("mihomo")
+    return "+".join(parts)
+
+
+def _is_universal(cfg: VlessConfig) -> bool:
+    """Shared list: every popular core, and a link those clients can import."""
+    if cfg.slot_limit:
+        return False
+    if cfg.protocol in _UDP:
+        return cfg.core == "sing-box+mihomo"
+    return fits_popular_clients(cfg) and cfg.core == "xray+sing-box+mihomo"
+
+
+def _note_cores(configs, results: dict[str, ProbeResult], settings, singbox, mihomo) -> bool:
     passed = [
         cfg
         for cfg in configs
@@ -464,6 +532,11 @@ def _note_cores(configs, results: dict[str, ProbeResult], settings, singbox) -> 
         and cfg.network in _SINGBOX_NETS
         and (hit := results.get(cfg.fingerprint))
         and hit.ok
+    ]
+    udp = [
+        cfg
+        for cfg in configs
+        if cfg.protocol in _UDP and (hit := results.get(cfg.fingerprint)) and hit.ok
     ]
     second: dict[str, ProbeResult] = {}
     if passed and singbox is not None:
@@ -476,15 +549,35 @@ def _note_cores(configs, results: dict[str, ProbeResult], settings, singbox) -> 
             settings.proxy_concurrency,
             min(8, settings.proxy_batch_size),
         )
+    third: dict[str, ProbeResult] = {}
+    mihomo_targets = list(passed) + list(udp)
+    if mihomo_targets and mihomo is not None:
+        log(f"mihomo check on {len(mihomo_targets)}")
+        third = _proxy_probe_mihomo(
+            mihomo_targets,
+            mihomo,
+            settings.proxy_timeout_sec,
+            0.0,
+            settings.proxy_concurrency,
+            min(8, settings.proxy_batch_size),
+        )
+        passed_mihomo = sum(1 for cfg in mihomo_targets if (hit := third.get(cfg.fingerprint)) and hit.ok)
+        if len(mihomo_targets) >= 8 and passed_mihomo == 0:
+            return False
     for cfg in configs:
         hit = results.get(cfg.fingerprint)
         if not hit or not hit.ok:
             continue
+        mihomo_ok = bool((other := third.get(cfg.fingerprint)) and other.ok)
         if cfg.protocol in _UDP:
-            cfg.core = "sing-box"
+            cfg.core = _core_label(False, True, mihomo_ok)
             continue
-        other = second.get(cfg.fingerprint)
-        cfg.core = "xray+sing-box" if other and other.ok else "xray"
+        if cfg.network not in _SINGBOX_NETS:
+            cfg.core = "xray"
+            continue
+        sing_ok = bool((other := second.get(cfg.fingerprint)) and other.ok)
+        cfg.core = _core_label(True, sing_ok, mihomo_ok)
+    return True
 
 
 def _probe_telegram(

@@ -64,8 +64,10 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     assert "0.3ms" not in unverified
     assert "ms" not in unverified.split("vless://", 1)[-1]
     decoded = base64.b64decode((out / "sub" / "base64" / "all.txt").read_text()).decode()
-    assert decoded.startswith("vless://")
-    assert "profile-title" not in decoded
+    assert decoded.startswith("#profile-title: V2Hub\n")
+    assert "vless://" in decoded
+    assert "\r" not in decoded
+    assert "\r" not in plain
     assert (out / "sub" / "country" / "DE.txt").is_file()
     assert (out / "sub" / "security" / "reality.txt").is_file()
     assert (out / "sub" / "transport" / "tcp.txt").is_file()

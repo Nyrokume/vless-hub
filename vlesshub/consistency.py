@@ -39,7 +39,18 @@ def check_publish(out_dir: Path) -> list[str]:
     config_set = set(config_uris)
     if len(config_set) != len(config_uris):
         errors.append("configs.json repeats a uri")
-    allowed_config = set(config_uris)
+    limited_rows = hub.get("limited") or []
+    if not isinstance(limited_rows, list):
+        errors.append("data/configs.json limited is not a list")
+        limited_rows = []
+    limited_uris = [_bare(str(item.get("uri") or "")) for item in limited_rows if isinstance(item, dict)]
+    limited_set = set(limited_uris)
+    if len(limited_set) != len(limited_uris):
+        errors.append("configs.json repeats a limited uri")
+    overlap = config_set & limited_set
+    if overlap:
+        errors.append("a config is both in the shared list and the extra list")
+    allowed_config = set(config_uris) | limited_set
     tg_links = [_bare(str(item.get("tg") or "")) for item in proxies if isinstance(item, dict)]
     https_links = [_bare(str(item.get("https") or "")) for item in proxies if isinstance(item, dict)]
     allowed = allowed_config | set(tg_links) | set(https_links)
@@ -69,6 +80,7 @@ def check_publish(out_dir: Path) -> list[str]:
 
     errors.extend(_exact("sub/all.txt", out_dir, config_set))
     errors.extend(_exact("data/subs/all.txt", out_dir, config_set))
+    errors.extend(_exact("sub/xray.txt", out_dir, limited_set))
     errors.extend(_exact("tg/all.txt", out_dir, set(tg_links)))
     errors.extend(_exact("tg/https.txt", out_dir, set(https_links)))
     api = out_dir / "api" / "configs.json"

@@ -118,6 +118,8 @@ class VlessConfig:
     tested_at: str = ""
     core: str = ""
     vantage: str = ""
+    # A panel closed a second connection while the first still worked.
+    slot_limit: bool = False
 
     def __post_init__(self) -> None:
         if not self.fingerprint:

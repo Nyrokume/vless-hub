@@ -41,6 +41,10 @@ _UNVERIFIED_HEADER = (
     "#profile-title: V2Hub — непроверенные (только открытый порт)\n"
     "#profile-update-interval: 1\n"
 )
+_EXTRA_HEADER = (
+    "#profile-title: V2Hub — не для всех приложений\n"
+    "#profile-update-interval: 1\n"
+)
 
 
 def publish(
@@ -67,6 +71,7 @@ def publish(
     unique: int | None = None,
     rejections: dict[str, int] | None = None,
     vantage: dict | None = None,
+    limited: list[VlessConfig] | None = None,
 ) -> None:
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -83,8 +88,18 @@ def publish(
         cfg.speed_kbps = None
         cfg.verified = "tcp"
 
+    limited = list(limited or [])
     catalog: list[dict] = []
     _write_pair(out_dir, "sub/all.txt", configs, catalog, kind="all")
+    _write_pair(
+        out_dir,
+        "sub/xray.txt",
+        limited,
+        catalog,
+        kind="xray",
+        header=_EXTRA_HEADER,
+        listed=bool(limited),
+    )
     _write_pair(
         out_dir,
         "sub/with-unstable.txt",
@@ -232,6 +247,7 @@ def publish(
         generated_at=generated_at,
         duration_sec=duration_sec,
         clash_count=len(clash_configs),
+        limited=limited,
     )
 
 
@@ -359,6 +375,7 @@ def _write_site_payload(
     generated_at: str,
     duration_sec: float,
     clash_count: int,
+    limited: list[VlessConfig] | None = None,
 ) -> None:
     subs_dir = out_dir / "data" / "subs"
     subs_dir.mkdir(parents=True, exist_ok=True)
@@ -448,6 +465,7 @@ def _write_site_payload(
         "subscriptions": subscriptions,
         "catalog": [item for item in catalog if item.get("format") != "base64"],
         "configs": [_hub_config(cfg, generated_at) for cfg in configs],
+        "limited": [_hub_config(cfg, generated_at) for cfg in (limited or [])],
         "unstable": [_hub_config(cfg, generated_at) for cfg in unstable],
         "unverified": [_hub_config(cfg, generated_at) for cfg in unverified],
         "proxies": [_public_proxy(proxy) for proxy in proxies],
@@ -461,6 +479,16 @@ def _write_site_payload(
         json.dumps({"generated_at": generated_at}, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+
+
+def _json_object_export(value: str) -> dict | None:
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _write_pair(
@@ -481,8 +509,11 @@ def _write_pair(
     plain_path = out_dir / relative
     plain_path.parent.mkdir(parents=True, exist_ok=True)
     body = _plain_body(configs, header=False)
-    plain_path.write_text((header or _HEADER) + body, encoding="utf-8")
-    encoded = base64.b64encode(body.encode("utf-8")).decode("ascii")
+    plain = (header or _HEADER) + body
+    # LF only. v2rayNG trims CR, and a CRLF file counts as a blank line in some importers.
+    plain_path.write_bytes(plain.encode("utf-8"))
+    # The title lines sit inside the base64 body too, so a base64 subscription still names itself.
+    encoded = base64.b64encode(plain.encode("utf-8")).decode("ascii")
     b64_relative = "sub/base64/" + relative[len("sub/") :]
     b64_path = out_dir / b64_relative
     b64_path.parent.mkdir(parents=True, exist_ok=True)
@@ -903,6 +934,9 @@ def _singbox_transport(cfg: VlessConfig) -> dict | None:
         transport = {"type": "xhttp", "path": cfg.path or "/", "mode": cfg.mode or "auto"}
         if cfg.host_header:
             transport["host"] = cfg.host_header
+        extra = _json_object_export(cfg.extra)
+        if extra is not None:
+            transport["extra"] = extra
         return transport
     if cfg.network == "httpupgrade":
         transport = {"type": "httpupgrade", "path": cfg.path or "/"}

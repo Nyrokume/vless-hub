@@ -254,6 +254,16 @@ export async function parseVless(uri: string): Promise<ParsedVless | null> {
   if (parsed.headerType.toLowerCase() === 'none' || parsed.headerType === '') parsed.headerType = ''
   if (parsed.fp) parsed.fp = parsed.fp.toLowerCase()
   parsed.extra = canonicalExtra(parsed.extra)
+  parsed.sni = parsed.sni.trim()
+  if (parsed.flow.toLowerCase() === 'xtls-rprx-vision-udp443') parsed.flow = 'xtls-rprx-vision'
+  const rareFp = new Set(['qq', '360', 'randomized'])
+  const fp = parsed.fp.toLowerCase()
+  if (parsed.security === 'reality' && (!fp || rareFp.has(fp))) parsed.fp = 'chrome'
+  else if (fp) parsed.fp = fp
+  const hostNets = new Set(['ws', 'httpupgrade', 'h2', 'xhttp'])
+  if (hostNets.has(parsed.network) && !parsed.hostHeader && plausibleName(parsed.sni)) {
+    parsed.hostHeader = parsed.sni
+  }
   parsed.extras = extras
   const extraQuery = Object.keys(extras)
     .sort()

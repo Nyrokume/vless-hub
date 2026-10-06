@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import platform
@@ -128,6 +129,96 @@ def _extract_singbox(archive: Path) -> bytes:
             if data:
                 return data
     raise RuntimeError("sing-box binary not found in the archive")
+
+
+def ensure_mihomo(bin_dir: Path) -> Path | None:
+    override = os.environ.get("MIHOMO_BIN", "").strip()
+    if override:
+        path = Path(override)
+        if path.is_file():
+            return path
+        log(f"MIHOMO_BIN does not exist: {override}")
+    dest = bin_dir / "mihomo"
+    if dest.is_file() and os.access(dest, os.X_OK):
+        return dest
+    name, url = _mihomo_asset()
+    if not url:
+        return None
+    archive = bin_dir / name
+    try:
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        log(f"downloading mihomo ({name})")
+        _download(url, archive, limit=40_000_000)
+        dest.write_bytes(_extract_mihomo(archive))
+        dest.chmod(dest.stat().st_mode | stat.S_IEXEC)
+    except Exception as exc:  # noqa: BLE001
+        log(f"mihomo download failed: {exc}")
+        return None
+    if not dest.is_file():
+        log("mihomo binary missing after unpack")
+        return None
+    try:
+        proc = subprocess.run([str(dest), "-v"], capture_output=True, text=True, timeout=15)
+        line = (proc.stdout or proc.stderr or "").splitlines()
+        log(line[0] if line else "mihomo version unknown")
+    except Exception as exc:  # noqa: BLE001
+        log(f"mihomo failed to start: {exc}")
+        return None
+    return dest
+
+
+def _mihomo_asset() -> tuple[str, str]:
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    if system != "linux":
+        log(f"mihomo auto-download supports linux only ({system})")
+        return "", ""
+    arch = "amd64" if machine in {"x86_64", "amd64"} else "arm64" if machine in {"aarch64", "arm64"} else ""
+    if not arch:
+        log(f"mihomo auto-download has no build for {machine}")
+        return "", ""
+    request = urllib.request.Request(
+        "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest",
+        headers={"User-Agent": _UA, "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    want = f"mihomo-linux-{arch}-v"
+    chosen = ""
+    url = ""
+    for asset in payload.get("assets") or []:
+        name = str(asset.get("name") or "")
+        if not name.startswith(want) or "compatible" in name:
+            continue
+        if not name.endswith(".gz"):
+            continue
+        link = str(asset.get("browser_download_url") or "")
+        if not link:
+            continue
+        # Prefer the plain gzip binary over a second go-version build.
+        if chosen.endswith(".tar.gz") or not chosen:
+            chosen, url = name, link
+        if name.endswith(".gz") and not name.endswith(".tar.gz"):
+            return name, link
+    return chosen, url
+
+
+def _extract_mihomo(archive: Path) -> bytes:
+    if archive.name.endswith(".tar.gz"):
+        with tarfile.open(archive, "r:gz") as bundle:
+            for member in bundle.getmembers():
+                name = member.name.replace("\\", "/")
+                if name.endswith("/mihomo") or name == "mihomo":
+                    if ".." in name.split("/"):
+                        continue
+                    handle = bundle.extractfile(member)
+                    if handle is None:
+                        continue
+                    data = handle.read()
+                    if data:
+                        return data
+        raise RuntimeError("mihomo binary not found in the archive")
+    return gzip.decompress(archive.read_bytes())
 
 
 def ensure_geoip(dest: Path) -> Path | None:
