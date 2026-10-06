@@ -23,6 +23,8 @@ const cases = [
   [ru.listSummary(673, 41), '673 конфига · 41 страна'],
   [ru.listSummary(1, 12), '1 конфиг · 12 стран'],
   [ru.telegramCounts(1, 4), '1 MTProto · 4 SOCKS'],
+  [ru.tgScan(12, 40, 3), 'Проверено 12 из 40 · найдено 3'],
+  [ru.tgScan(1200, 6000, 48), `Проверено 1${nb}200 из 6${nb}000 · найдено 48`],
   [ru.settings.collected(57037), `Собрано 57${nb}037 ссылок`],
   [ru.settings.collected(1), 'Собрано 1 ссылка'],
   [ru.settings.unique(1), '1 уникальная ссылка'],

@@ -44,6 +44,15 @@ export const LIVE_SOURCES: LiveSource[] = [
   { name: 'tg-proxy-pub', skip: ru.live.skipTelegram },
   { name: 'tg-mtpro-xyz', skip: ru.live.skipTelegram },
   { name: 'tg-mtproto-proxy', skip: ru.live.skipTelegram },
+  { name: 'tg-proxytelegram', skip: ru.live.skipTelegram },
+  { name: 'tg-mtproxy-official', skip: ru.live.skipTelegram },
+  { name: 'tg-free-proxy-mtproto', skip: ru.live.skipTelegram },
+  { name: 'tg-irproxy', skip: ru.live.skipTelegram },
+  { name: 'tg-socksproxy', skip: ru.live.skipTelegram },
+  { name: 'tg-tgsocks', skip: ru.live.skipTelegram },
+  { name: 'tg-proxymtproto-ru', skip: ru.live.skipTelegram },
+  { name: 'tg-proxymtproto-tel', skip: ru.live.skipTelegram },
+  { name: 'tg-mtproto-proxy-list', skip: ru.live.skipTelegram },
 ]
 
 export const CHECK_WORKFLOW_URL = 'https://github.com/Nyrokume/vless-hub/actions/workflows/update.yml'

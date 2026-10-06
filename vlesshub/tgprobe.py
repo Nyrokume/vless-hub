@@ -5,8 +5,10 @@ padded-intermediate transport. Success is a resPQ that echoes our nonce.
 ee secrets: a fake-TLS ClientHello (HMAC over the secret), a matching
 ServerHello, then the same MTProto exchange inside TLS application records.
 
-SOCKS5: greeting and CONNECT to Telegram DC 149.154.167.51:443, then the same
-unauthenticated obfuscated2 probe through that tunnel.
+SOCKS5: greeting and CONNECT to Telegram DC 149.154.167.51:5222, then the
+same unencrypted padded-intermediate req_pq a direct client sends. Port 443
+on that datacenter is an HTTP front and does not complete MTProto. Success is
+a resPQ that echoes our nonce.
 """
 
 from __future__ import annotations
@@ -27,6 +29,8 @@ from vlesshub.util import log
 
 DC_HOST = "149.154.167.51"
 DC_PORT = 443
+# Direct clients reach this datacenter on 5222. Port 443 there speaks HTTP.
+DC_DIRECT_PORT = 5222
 DC_ID = 2
 _REQ_PQ_MULTI = 0xBE7E8EF1
 _RES_PQ = 0x05162463
@@ -153,10 +157,39 @@ def _obfuscated_with_fallback(proxy: TgProxy, timeout: float) -> None:
 def _socks_then_mtproto(proxy: TgProxy, timeout: float) -> None:
     sock = _connect(proxy.host, proxy.port, timeout)
     try:
-        _socks5(sock, DC_HOST, DC_PORT, proxy.user, proxy.password)
-        _mtproto_exchange(sock, b"", _TAG_DD, timeout)
+        _socks5(sock, DC_HOST, DC_DIRECT_PORT, proxy.user, proxy.password)
+        direct_exchange(sock, timeout)
     finally:
         sock.close()
+
+
+def direct_exchange(sock: socket.socket, timeout: float) -> None:
+    """Padded-intermediate req_pq_multi, as a client speaks to a datacenter."""
+    nonce = os.urandom(16)
+    body = struct.pack("<I", _REQ_PQ_MULTI) + nonce
+    payload = b"\x00" * 8 + struct.pack("<QI", _message_id(), len(body)) + body
+    pad = (-len(payload)) % 16
+    blob = payload + (os.urandom(pad) if pad else b"")
+    try:
+        sock.sendall(_TAG_DD + struct.pack("<I", len(blob)) + blob)
+        sock.settimeout(timeout)
+        length = struct.unpack("<I", _recvall(sock, 4))[0]
+        if length < 40 or length > 1024:
+            raise MtprotoError(f"unexpected frame {length}")
+        frame = _recvall(sock, length)
+    except MtprotoError:
+        raise
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        raise MtprotoError(str(exc) or "mtproto") from exc
+    if len(frame) < 24:
+        raise MtprotoError("short mtproto frame")
+    msg_len = struct.unpack_from("<I", frame, 16)[0]
+    if msg_len < 20 or 20 + msg_len > len(frame):
+        raise MtprotoError("bad message length")
+    tl = frame[20 : 20 + msg_len]
+    ctor = struct.unpack_from("<I", tl, 0)[0]
+    if ctor != _RES_PQ or tl[4:20] != nonce:
+        raise MtprotoError(f"not resPQ ({ctor:#x})")
 
 
 def _obfuscated(host: str, port: int, secret: bytes, tag: bytes, timeout: float, proxy: TgProxy | None) -> None:

@@ -2,7 +2,10 @@ import socket
 import threading
 import time
 
+from vlesshub.history import History
+from vlesshub.tgcollect import select_proxies
 from vlesshub.tgparse import (
+    TgProxy,
     canonical_secret,
     decode_secret,
     dedup,
@@ -13,6 +16,7 @@ from vlesshub.tgparse import (
 )
 from vlesshub.tgprobe import (
     AesCtr,
+    DC_DIRECT_PORT,
     build_client_hello,
     frame_message,
     obfuscated_client_init,
@@ -60,6 +64,13 @@ def test_mtproto_forms_normalize_and_dedup():
     assert authed.password == "s3cret"
     assert https_link(authed).startswith("https://t.me/socks?")
     assert tg_link(authed).startswith("tg://socks?")
+    assert "server=10.0.0.8" in tg_link(authed)
+    assert "port=1080" in tg_link(authed)
+    assert "user=alice" in tg_link(authed)
+    assert "pass=s3cret" in tg_link(authed)
+    opened = parse_link(tg_link(plain))
+    assert opened is not None
+    assert opened.host == plain.host and opened.port == plain.port and opened.secret == plain.secret
     assert tg_link(plain).startswith("tg://proxy?")
     merged = dedup(parse_many(text, source="beta") + parsed)
     plain_merged = next(item for item in merged if item.secret == SECRET)
@@ -168,16 +179,33 @@ def _recvall(sock: socket.socket, n: int) -> bytes:
 
 
 def test_socks_tunnel_reaches_a_local_datacenter():
-    secret = b""
-    dc = _serve(secret)
-    port = _serve_socks(dc)
-    proxy = parse_link(f"tg://socks?server=127.0.0.1&port={port}")
+    seen: list[int] = []
+    dc = _serve_direct()
+    port = _serve_socks(dc, seen)
+    proxy = parse_link(f"tg://socks?server=127.0.0.1&port={port}&user=alice&pass=s3cret")
     assert proxy is not None and proxy.kind == "socks"
+    link = tg_link(proxy)
+    assert link.startswith("tg://socks?")
+    assert "server=127.0.0.1" in link
+    assert "port=" + str(port) in link
+    assert "user=alice" in link
+    assert "pass=s3cret" in link
+    again = parse_link(link)
+    assert again is not None and again.user == "alice" and again.password == "s3cret"
     result = probe_one(proxy, timeout=3)
+    assert seen == [DC_DIRECT_PORT]
     assert result.ok, result.error
 
 
-def _serve_socks(dc_port: int) -> int:
+def test_large_budget_checks_every_mtproto_and_socks():
+    mt = [TgProxy(kind="mtproto", host=f"m{i}.example", port=443, secret=SECRET) for i in range(10)]
+    socks = [TgProxy(kind="socks", host=f"s{i}.example", port=1080) for i in range(6)]
+    chosen = select_proxies(mt + socks, History(), 6000, 4)
+    assert len(chosen) == 16
+    assert sum(item.kind == "socks" for item in chosen) == 6
+
+
+def _serve_direct() -> int:
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
@@ -187,13 +215,39 @@ def _serve_socks(dc_port: int) -> int:
         conn, _addr = listener.accept()
         listener.close()
         try:
-            _recvall(conn, 2)
-            nmethods = _recvall(conn, 1)[0]
-            _recvall(conn, nmethods)
+            assert _recvall(conn, 4) == b"\xdd\xdd\xdd\xdd"
+            length = int.from_bytes(_recvall(conn, 4), "little")
+            blob = _recvall(conn, length)
+            nonce = blob[24:40]
+            body = (0x05162463).to_bytes(4, "little") + nonce
+            msg_id = int(time.time()) << 32
+            message = b"\x00" * 8 + msg_id.to_bytes(8, "little") + len(body).to_bytes(4, "little") + body
+            conn.sendall(len(message).to_bytes(4, "little") + message)
+        finally:
+            conn.close()
+
+    threading.Thread(target=run, daemon=True).start()
+    return port
+
+
+def _serve_socks(dc_port: int, seen: list[int] | None = None) -> int:
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    port = listener.getsockname()[1]
+
+    def run() -> None:
+        conn, _addr = listener.accept()
+        listener.close()
+        try:
+            greeting = _recvall(conn, 2)
+            _recvall(conn, greeting[1])
             conn.sendall(b"\x05\x00")
             head = _recvall(conn, 4)
             if head[3] == 1:
-                _recvall(conn, 6)
+                addr = _recvall(conn, 6)
+                if seen is not None:
+                    seen.append(int.from_bytes(addr[4:6], "big"))
             elif head[3] == 3:
                 ln = _recvall(conn, 1)[0]
                 _recvall(conn, ln + 2)

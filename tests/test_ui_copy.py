@@ -71,6 +71,14 @@ def _strip_comments(source: str) -> str:
     return re.sub(r"//.*?$", "", source, flags=re.M)
 
 
+def test_telegram_buttons_open_tg_links():
+    source = (ROOT / "site/src/components/telegram-screen.tsx").read_text(encoding="utf-8")
+    assert "href={proxy.tg}" in source
+    assert "href={best.tg}" in source
+    assert "probeEndpoint" in source
+    assert "run()" not in source
+
+
 def test_ui_components_do_not_render_raw_reason_keys():
     files = list(COMPONENTS.rglob("*.tsx")) + [APP]
     leaks: list[str] = []

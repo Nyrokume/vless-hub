@@ -19,13 +19,13 @@ class Settings:
     fetch_timeout_sec: float = 30.0
     fetch_concurrency: int = 6
     max_bytes_per_source: int = 8_000_000
-    telegram_pages: int = 2
+    telegram_pages: int = 3
     top_sizes: list[int] = field(default_factory=lambda: [20, 50, 100])
     clash_limit: int = 0
-    max_tg_tests: int = 160
+    max_tg_tests: int = 6000
     tg_timeout_sec: float = 8.0
-    tg_concurrency: int = 40
-    max_tg_links_per_source: int = 500
+    tg_concurrency: int = 64
+    max_tg_links_per_source: int = 2000
     tg_top_sizes: list[int] = field(default_factory=lambda: [20, 50])
     user_agent: str = "vless-hub/1.0 (+https://github.com/Nyrokume/vless-hub)"
     # Extra full probes after the first pass. 2 means three passes, all must succeed.

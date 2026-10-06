@@ -18,7 +18,15 @@ def test_starter_sources_are_editable_yaml():
     tg = [source for source in sources if source.enabled and source.kind == "telegram-proxy"]
     assert any(source.type == "subscription" and "proxy" in source.url for source in tg)
     assert any(source.type == "telegram" and source.channel for source in tg)
-    assert settings.max_tg_tests >= 40
+    assert settings.max_tg_tests >= 1000
+    assert settings.tg_concurrency >= 64
+    assert settings.max_tg_links_per_source >= 2000
+    assert "kort-mtproto" in names
+    assert "zakky8-mtproto" in names
+    assert "kort-socks5" in names
+    assert "proxygenerator-socks" in names
+    assert "tg-proxytelegram" in names
+    assert "tg-irproxy" in names
     assert settings.confirm_rounds >= 2
     assert settings.min_working >= 40
     assert settings.vantage_checks >= 100

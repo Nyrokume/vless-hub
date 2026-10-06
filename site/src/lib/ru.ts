@@ -100,6 +100,8 @@ export const ru = {
   gateFound: (count: number) => `найдено ${formatCount(count)}`,
   gateProgress: (done: number, total: number, found: number, need: number) =>
     `Проверено ${formatCount(done)} из ${formatCount(total)} · найдено ${formatCount(found)} из ${formatCount(need)}`,
+  tgScan: (done: number, total: number, found: number) =>
+    `Проверено ${formatCount(done)} из ${formatCount(total)} · найдено ${formatCount(found)}`,
   gateShortTitle: 'Меньше пяти серверов',
   gateShort: 'С вашей сети не набралось пяти доступных адресов.',
   gateUdp: 'Hysteria2 и TUIC браузер не проверяет, поэтому их нет в этом списке.',

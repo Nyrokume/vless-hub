@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, QrCode, Search, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,16 +17,88 @@ import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
 import { displayedLatencyBounds, flagEmoji, formatStamp, latencyClass, latencyText, stabilityText } from '@/lib/format'
-import { isCore } from '@/lib/reach'
+import { endpointKey, isCore, probeEndpoint, REACH_CONCURRENCY, type ReachHit } from '@/lib/reach'
+import { useReach } from '@/lib/reach-context'
 import { kindLabel, ru, statusLabel } from '@/lib/ru'
 import type { HubData, ProxyRecord } from '@/lib/types'
 import { cn } from '@/lib/utils'
+
+async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+  if (items.length === 0) return
+  let cursor = 0
+  const lanes = Math.max(1, Math.min(limit, items.length))
+  async function lane(): Promise<void> {
+    for (;;) {
+      const index = cursor
+      cursor += 1
+      if (index >= items.length) return
+      await worker(items[index])
+    }
+  }
+  await Promise.all(Array.from({ length: lanes }, () => lane()))
+}
+
+function userPing(hit: ReachHit | undefined, serverMs: number | null): string {
+  if (hit && hit.status === 'open' && hit.ms != null) return latencyText(hit.ms)
+  return latencyText(serverMs)
+}
 
 export function TelegramScreen({ data }: { data: HubData }) {
   const [query, setQuery] = useState('')
   const [qr, setQr] = useState<QrRequest | null>(null)
   const [selected, setSelected] = useState<ProxyRecord | null>(null)
+  const [hits, setHits] = useState<Record<string, ReachHit>>({})
+  const [scan, setScan] = useState({ done: 0, total: 0, found: 0 })
+  const { book, remember } = useReach()
+  const bookRef = useRef(book)
+  bookRef.current = book
   const stats = data.stats.telegram
+  const roster = useMemo(() => {
+    const seen = new Set<string>()
+    const targets: { host: string; port: number }[] = []
+    for (const proxy of data.proxies) {
+      if (!proxy.host || !proxy.port) continue
+      const key = endpointKey(proxy.host, proxy.port)
+      if (seen.has(key)) continue
+      seen.add(key)
+      targets.push({ host: proxy.host, port: proxy.port })
+    }
+    return targets
+  }, [data.proxies])
+  const rosterKey = roster.map((item) => endpointKey(item.host, item.port)).join('\n')
+
+  useEffect(() => {
+    let cancelled = false
+    const known = bookRef.current.byEndpoint
+    const seeded: Record<string, ReachHit> = {}
+    let found = 0
+    for (const target of roster) {
+      const key = endpointKey(target.host, target.port)
+      const hit = known[key]
+      if (!hit || hit.status === 'skip') continue
+      seeded[key] = hit
+      if (hit.status === 'open') found += 1
+    }
+    setHits(seeded)
+    const pending = roster.filter((target) => !seeded[endpointKey(target.host, target.port)])
+    let done = Object.keys(seeded).length
+    setScan({ done, total: roster.length, found })
+    void runPool(pending, REACH_CONCURRENCY, async (target) => {
+      if (cancelled) return
+      const key = endpointKey(target.host, target.port)
+      const hit = await probeEndpoint(target.host, target.port)
+      if (cancelled) return
+      setHits((current) => ({ ...current, [key]: hit }))
+      remember({ [key]: hit })
+      done += 1
+      if (hit.status === 'open') found += 1
+      setScan({ done, total: roster.length, found })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [roster, rosterKey, remember])
+
   const liveSelected = selected
     ? ([...data.proxies, ...(data.unstable_proxies ?? [])].find((item) => item.id === selected.id) ?? null)
     : null
@@ -43,31 +115,39 @@ export function TelegramScreen({ data }: { data: HubData }) {
           .includes(needle)
       })
       .sort((left, right) => {
+        const leftHit = hits[endpointKey(left.host, left.port)]
+        const rightHit = hits[endpointKey(right.host, right.port)]
+        const leftOpen = leftHit?.status === 'open'
+        const rightOpen = rightHit?.status === 'open'
+        if (leftOpen !== rightOpen) return leftOpen ? -1 : 1
+        if (leftOpen && rightOpen) return (leftHit?.ms ?? 9_999_999) - (rightHit?.ms ?? 9_999_999)
         const core = Number(isCore(right.bits)) - Number(isCore(left.bits))
         if (core !== 0) return core
         return (left.latency_ms ?? 9_999_999) - (right.latency_ms ?? 9_999_999)
       })
-  }, [data.proxies, query])
+  }, [data.proxies, hits, query])
 
   const best = filtered[0]
+  const bestHit = best ? hits[endpointKey(best.host, best.port)] : undefined
   const latency = displayedLatencyBounds(data.proxies)
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
       <SiteHeader updated={formatStamp(data.generated_at)} />
-      <p className="text-[13px] text-muted-foreground">
+      <p className="text-[16px] text-foreground">
         {ru.telegramCounts(stats?.mtproto ?? 0, stats?.socks ?? 0)}
         {' · '}
         <Freshness iso={data.generated_at} />
       </p>
+      {scan.total > 0 && <p className="mt-1 text-[16px] font-medium text-foreground">{ru.tgScan(scan.done, scan.total, scan.found)}</p>}
       <p className="mb-3 mt-1">
-        <LatencyRange min={latency.min} max={latency.max} />
+        <LatencyRange min={latency.min} max={latency.max} className="text-[16px]" />
       </p>
       {best && (
         <Button asChild className="mb-4 h-12 w-full text-[16px]">
           <a href={best.tg}>
             <Send />
-            {ru.bestInTelegram(best.country_name || best.country || best.host, latencyText(best.latency_ms))}
+            {ru.bestInTelegram(best.country_name || best.country || best.host, userPing(bestHit, best.latency_ms))}
           </a>
         </Button>
       )}
@@ -91,6 +171,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
             <ProxyRow
               key={proxy.id}
               proxy={proxy}
+              hit={hits[endpointKey(proxy.host, proxy.port)]}
               divided={index > 0}
               onOpen={() => setSelected(proxy)}
               onQr={() =>
@@ -106,6 +187,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
       </div>
       <ProxySheet
         proxy={sheetProxy}
+        hit={sheetProxy ? hits[endpointKey(sheetProxy.host, sheetProxy.port)] : undefined}
         missing={sheetMissing}
         onOpenChange={(open) => {
           if (!open) setSelected(null)
@@ -134,11 +216,13 @@ function Field({ label, value }: { label: string; value: string }) {
 
 function ProxySheet({
   proxy,
+  hit,
   missing = false,
   onOpenChange,
   onQr,
 }: {
   proxy: ProxyRecord | null
+  hit?: ReachHit
   missing?: boolean
   onOpenChange: (open: boolean) => void
   onQr: (proxy: ProxyRecord) => void
@@ -159,6 +243,7 @@ function ProxySheet({
               : '',
         ],
         [ru.fields.stability, stabilityText(proxy.stability)],
+        [ru.fields.yours, hit?.status === 'open' ? ru.reachOpen : hit?.status === 'closed' ? ru.reachClosed : ''],
       ].filter(([, value]) => value)
     : []
 
@@ -176,8 +261,8 @@ function ProxySheet({
               </SheetTitle>
               <SheetDescription className="flex items-center justify-between gap-3 text-[14px] text-foreground/75">
                 <span>{kindLabel(proxy.kind)}</span>
-                <span className={cn('shrink-0 text-[15px] font-semibold tabular-nums', latencyClass(proxy.latency_ms))}>
-                  {latencyText(proxy.latency_ms)}
+                <span className={cn('shrink-0 text-[16px] font-semibold tabular-nums', latencyClass(hit && hit.status === 'open' ? hit.ms : proxy.latency_ms))}>
+                  {userPing(hit, proxy.latency_ms)}
                 </span>
               </SheetDescription>
             </SheetHeader>
@@ -215,16 +300,20 @@ function ProxySheet({
 
 function ProxyRow({
   proxy,
+  hit,
   divided,
   onOpen,
   onQr,
 }: {
   proxy: ProxyRecord
+  hit?: ReachHit
   divided: boolean
   onOpen: () => void
   onQr: () => void
 }) {
   const title = proxy.country_name || proxy.country || proxy.host
+  const reach = hit?.status === 'open' ? ru.reachOpen : hit?.status === 'closed' ? ru.reachClosed : ''
+  const stable = stabilityText(proxy.stability)
   return (
     <div>
       {divided && <Separator />}
@@ -244,13 +333,14 @@ function ProxyRow({
               {flagEmoji(proxy.country)} {title}
             </span>
           </p>
-          <p className="truncate text-[13px] text-foreground/75">
+          <p className="truncate text-[15px] text-foreground/80">
             {kindLabel(proxy.kind)} · {proxy.host}:{proxy.port}
-            {stabilityText(proxy.stability) ? ` · ${stabilityText(proxy.stability)}` : ''}
+            {stable ? ` · ${stable}` : ''}
+            {reach ? ` · ${reach}` : ''}
           </p>
         </button>
-        <span className={cn('text-[14px] font-semibold tabular-nums', latencyClass(proxy.latency_ms))}>
-          {latencyText(proxy.latency_ms)}
+        <span className={cn('text-[16px] font-semibold tabular-nums', latencyClass(hit && hit.status === 'open' ? hit.ms : proxy.latency_ms))}>
+          {userPing(hit, proxy.latency_ms)}
         </span>
         <Button asChild size="sm" className="h-10 shrink-0 px-3 text-[15px]">
           <a href={proxy.tg} aria-label={ru.openInTelegram(title)}>

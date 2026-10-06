@@ -23,14 +23,15 @@ settings:
   fetch_timeout_sec: 30
   fetch_concurrency: 6
   max_bytes_per_source: 8000000
-  telegram_pages: 2
+  telegram_pages: 3
   top_sizes: [20, 50, 100]
   clash_limit: 0
   # Telegram MTProto / SOCKS. The check is a real handshake (resPQ), not a TCP ping.
-  max_tg_tests: 160
+  # 6000 targets at 64 workers is about 13 minutes if every probe uses the full timeout.
+  max_tg_tests: 6000
   tg_timeout_sec: 8
-  tg_concurrency: 40
-  max_tg_links_per_source: 500
+  tg_concurrency: 64
+  max_tg_links_per_source: 2000
   tg_top_sizes: [20, 50]
   user_agent: "vless-hub/1.0 (+https://github.com/Nyrokume/vless-hub)"
   # Two extra full passes after the first. A config is published only if every pass succeeds.
@@ -317,3 +318,81 @@ sources:
     type: telegram
     enabled: false
     channel: proxy_mtg
+
+  - name: kort-mtproto
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/proxy_all.txt
+
+  - name: zakky8-mtproto
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    url: https://zakky8.github.io/mtproto-proxy-pro/all_proxies.txt
+
+  - name: kort-socks5
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/kort0881/telegram-proxy-collector/main/verified/socks5_proxies.txt
+
+  - name: proxygenerator-socks
+    kind: telegram-proxy
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/proxygenerator1/ProxyGenerator/main/telegramProxys.txt
+
+  - name: tg-proxytelegram
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: proxytelegram
+
+  - name: tg-mtproxy-official
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: MTProxy_Official
+
+  - name: tg-free-proxy-mtproto
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: free_proxy_mtproto
+
+  - name: tg-irproxy
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: irproxy
+
+  - name: tg-socksproxy
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: socksproxy
+
+  - name: tg-tgsocks
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: TgSocks
+
+  - name: tg-proxymtproto-ru
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: ProxyMTProtoRU
+
+  - name: tg-proxymtproto-tel
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: ProxyMTProto_tel
+
+  - name: tg-mtproto-proxy-list
+    kind: telegram-proxy
+    type: telegram
+    enabled: true
+    channel: mtproto_proxy_list
