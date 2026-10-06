@@ -307,10 +307,11 @@ sources:
     enabled: true
     channel: mtpro_xyz
 
+  # В прогоне 2026-10-06 ссылки были, рукопожатие не прошло ни у одной.
   - name: tg-mtproto-proxy
     kind: telegram-proxy
     type: telegram
-    enabled: true
+    enabled: false
     channel: mtproto_proxy
 
   - name: tg-proxy-mtg
@@ -349,16 +350,17 @@ sources:
     enabled: true
     channel: proxytelegram
 
+  # В прогоне 2026-10-06 ссылки были, рукопожатие не прошло ни у одной.
   - name: tg-mtproxy-official
     kind: telegram-proxy
     type: telegram
-    enabled: true
+    enabled: false
     channel: MTProxy_Official
 
   - name: tg-free-proxy-mtproto
     kind: telegram-proxy
     type: telegram
-    enabled: true
+    enabled: false
     channel: free_proxy_mtproto
 
   - name: tg-irproxy
@@ -367,22 +369,23 @@ sources:
     enabled: true
     channel: irproxy
 
+  # В прогоне 2026-10-06 ссылки были, рукопожатие не прошло ни у одной.
   - name: tg-socksproxy
     kind: telegram-proxy
     type: telegram
-    enabled: true
+    enabled: false
     channel: socksproxy
 
   - name: tg-tgsocks
     kind: telegram-proxy
     type: telegram
-    enabled: true
+    enabled: false
     channel: TgSocks
 
   - name: tg-proxymtproto-ru
     kind: telegram-proxy
     type: telegram
-    enabled: true
+    enabled: false
     channel: ProxyMTProtoRU
 
   - name: tg-proxymtproto-tel
@@ -391,8 +394,9 @@ sources:
     enabled: true
     channel: ProxyMTProto_tel
 
+  # В прогоне 2026-10-06 ссылки были, рукопожатие не прошло ни у одной.
   - name: tg-mtproto-proxy-list
     kind: telegram-proxy
     type: telegram
-    enabled: true
+    enabled: false
     channel: mtproto_proxy_list

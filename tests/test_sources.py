@@ -41,6 +41,17 @@ def test_starter_sources_are_editable_yaml():
     assert "coldwater-mix" in disabled
     assert "kwinshadow-mix" in disabled
     assert "argh94-socks5" in disabled
+    assert "tg-proxy-mtg" in disabled
+    for name in (
+        "tg-mtproto-proxy",
+        "tg-mtproxy-official",
+        "tg-free-proxy-mtproto",
+        "tg-socksproxy",
+        "tg-tgsocks",
+        "tg-proxymtproto-ru",
+        "tg-mtproto-proxy-list",
+    ):
+        assert name in disabled
     assert normalize_country_code("de") == "DE"
     assert normalize_country_code("CLOUDFLARE") == ""
     assert normalize_country_code("FASTLY") == ""
