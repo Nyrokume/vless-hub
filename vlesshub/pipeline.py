@@ -21,7 +21,7 @@ from vlesshub.parser import exported_config
 from vlesshub.probe import ProbeResult, _proxy_probe_singbox, failure_reason, proxy_probe, tcp_probe
 from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
 from vlesshub.stability import Stability
-from vlesshub.stages import CLIENT_URL_TIMEOUT_MS, client_url_timeout, dropped_after, is_core, status_of
+from vlesshub.stages import CLIENT_URL_TIMEOUT_MS, client_url_timeout, dropped_after, is_core, kept_after_handshake, status_of
 from vlesshub.tgcollect import collect_proxies, select_proxies
 from vlesshub.tgparse import TgProxy
 from vlesshub.tgprobe import probe_many
@@ -524,7 +524,7 @@ def _probe_telegram(
 
     for proxy in targets:
         result = results.get(proxy.fingerprint)
-        if result and result.ok:
+        if result and kept_after_handshake(result.ok, result.latency_ms):
             proxy.latency_ms = result.latency_ms
             proxy.verified = proxy.kind
             stability.seed(proxy.fingerprint, str((history.get(proxy.fingerprint) or {}).get("bits") or ""), telegram=True)
@@ -538,7 +538,7 @@ def _probe_telegram(
             stability.seed(proxy.fingerprint, str((history.get(proxy.fingerprint) or {}).get("bits") or ""), telegram=True)
             history.record(proxy.fingerprint, ok=False, latency_ms=None)
             _remember(proxy, False)
-            reason = (result.reason if result else "") or "handshake_fail"
+            reason = "timeout" if result and result.ok else ((result.reason if result else "") or "handshake_fail")
             rejections[reason] = rejections.get(reason, 0) + 1
             evaluated.append((proxy, False))
     apply_source_health(reports, evaluated, health)

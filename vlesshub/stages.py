@@ -103,6 +103,11 @@ def client_url_timeout(latency_ms: float | None) -> bool:
     return float(latency_ms) > CLIENT_URL_TIMEOUT_MS
 
 
+def kept_after_handshake(ok: bool, latency_ms: float | None) -> bool:
+    """A finished handshake slower than the client url-test is not published."""
+    return bool(ok) and not client_url_timeout(latency_ms)
+
+
 def status_of(passed_now: bool, bits: str, *, min_rate: float = STABILITY_MIN_RATE) -> str:
     """A config is working only when this run passed. History does not keep a failure."""
     del bits, min_rate

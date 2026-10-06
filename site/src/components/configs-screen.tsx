@@ -710,7 +710,7 @@ function ConfigRow({
   const hit = useRowHit(config)
   const meta = rowMeta(config, hit)
   return (
-    <div className="flex h-[72px] items-center gap-2 border-t border-border px-3 sm:gap-3 sm:px-4">
+    <div className="flex h-[72px] items-center gap-2 overflow-hidden border-t border-border px-3 sm:gap-3 sm:px-4">
       {selecting && (
         <input
           type="checkbox"
@@ -720,7 +720,7 @@ function ConfigRow({
           onChange={onToggle}
         />
       )}
-      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left sm:gap-3" {...press}>
+      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left sm:gap-3" {...press}>
         <span className="grid w-6 shrink-0 place-items-center text-xl leading-none" aria-hidden>
           {flag || <Globe className="size-5 text-muted-foreground" />}
         </span>
@@ -781,7 +781,7 @@ function CompactRow({
   const hit = useRowHit(config)
   const meta = rowMeta(config, hit)
   return (
-    <div className="flex h-11 items-center gap-2 border-t border-border px-3">
+    <div className="flex h-11 items-center gap-2 overflow-hidden border-t border-border px-3">
       {selecting && (
         <input
           type="checkbox"
@@ -791,7 +791,7 @@ function CompactRow({
           onChange={onToggle}
         />
       )}
-      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" {...press}>
+      <button type="button" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left" {...press}>
         <span className="w-5 shrink-0 text-center text-[16px] leading-none" aria-hidden>
           {flag || <Globe className="size-4 text-muted-foreground" />}
         </span>
@@ -846,7 +846,7 @@ function CardRow({
             onChange={onToggle}
           />
         )}
-        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 text-left" {...press}>
+        <button type="button" className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left" {...press}>
           <span className="grid w-6 shrink-0 place-items-center text-xl leading-none" aria-hidden>
             {flag || <Globe className="size-5 text-muted-foreground" />}
           </span>

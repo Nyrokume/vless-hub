@@ -47,6 +47,15 @@ def test_http_majority_needs_more_than_half():
     assert not majority(0, 3)
 
 
+def test_slow_handshake_is_not_published():
+    from vlesshub.stages import kept_after_handshake
+
+    assert kept_after_handshake(True, 5000) is True
+    assert kept_after_handshake(True, 5000.1) is False
+    assert kept_after_handshake(True, 23559) is False
+    assert kept_after_handshake(False, 200) is False
+
+
 def test_client_url_timeout_follows_the_shortest_default():
     assert CLIENT_URL_TIMEOUT_MS == 5000
     assert client_url_timeout(5000) is False

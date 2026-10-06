@@ -16,7 +16,7 @@ import { LatencyRange } from '@/components/latency-range'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
 import { SiteHeader } from '@/components/site-header'
 import { copyText } from '@/lib/copy'
-import { displayedLatencyBounds, flagEmoji, formatStamp, latencyClass, latencyText, stabilityText } from '@/lib/format'
+import { displayedLatencyBounds, flagEmoji, formatStamp, latencyClass, latencyText, shownPing, stabilityText } from '@/lib/format'
 import { endpointKey, isCore, probeEndpoint, REACH_CONCURRENCY, type ReachHit } from '@/lib/reach'
 import { useReach } from '@/lib/reach-context'
 import { kindLabel, ru, statusLabel } from '@/lib/ru'
@@ -43,6 +43,12 @@ function userPing(hit: ReachHit | undefined, serverMs: number | null): string {
   return latencyText(serverMs)
 }
 
+function reachRank(hit: ReachHit | undefined): number {
+  if (hit?.status === 'open') return 0
+  if (!hit) return 1
+  return 2
+}
+
 export function TelegramScreen({ data }: { data: HubData }) {
   const [query, setQuery] = useState('')
   const [qr, setQr] = useState<QrRequest | null>(null)
@@ -52,11 +58,16 @@ export function TelegramScreen({ data }: { data: HubData }) {
   const { book, remember } = useReach()
   const bookRef = useRef(book)
   bookRef.current = book
-  const stats = data.stats.telegram
+  const proxies = useMemo(
+    () => data.proxies.filter((proxy) => shownPing(proxy.latency_ms) != null),
+    [data.proxies],
+  )
+  const mtprotoCount = proxies.filter((proxy) => proxy.kind === 'mtproto').length
+  const socksCount = proxies.filter((proxy) => proxy.kind === 'socks').length
   const roster = useMemo(() => {
     const seen = new Set<string>()
     const targets: { host: string; port: number }[] = []
-    for (const proxy of data.proxies) {
+    for (const proxy of proxies) {
       if (!proxy.host || !proxy.port) continue
       const key = endpointKey(proxy.host, proxy.port)
       if (seen.has(key)) continue
@@ -64,7 +75,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
       targets.push({ host: proxy.host, port: proxy.port })
     }
     return targets
-  }, [data.proxies])
+  }, [proxies])
   const rosterKey = roster.map((item) => endpointKey(item.host, item.port)).join('\n')
 
   useEffect(() => {
@@ -106,7 +117,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
   const sheetMissing = Boolean(selected) && !liveSelected
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return data.proxies
+    return proxies
       .filter((proxy) => {
         if (!needle) return true
         return [proxy.host, proxy.country, proxy.country_name, proxy.kind, String(proxy.port)]
@@ -117,25 +128,26 @@ export function TelegramScreen({ data }: { data: HubData }) {
       .sort((left, right) => {
         const leftHit = hits[endpointKey(left.host, left.port)]
         const rightHit = hits[endpointKey(right.host, right.port)]
-        const leftOpen = leftHit?.status === 'open'
-        const rightOpen = rightHit?.status === 'open'
-        if (leftOpen !== rightOpen) return leftOpen ? -1 : 1
-        if (leftOpen && rightOpen) return (leftHit?.ms ?? 9_999_999) - (rightHit?.ms ?? 9_999_999)
+        const rank = reachRank(leftHit) - reachRank(rightHit)
+        if (rank !== 0) return rank
+        if (leftHit?.status === 'open' && rightHit?.status === 'open') {
+          return (leftHit.ms ?? 9_999_999) - (rightHit.ms ?? 9_999_999)
+        }
         const core = Number(isCore(right.bits)) - Number(isCore(left.bits))
         if (core !== 0) return core
         return (left.latency_ms ?? 9_999_999) - (right.latency_ms ?? 9_999_999)
       })
-  }, [data.proxies, hits, query])
+  }, [proxies, hits, query])
 
   const best = filtered[0]
   const bestHit = best ? hits[endpointKey(best.host, best.port)] : undefined
-  const latency = displayedLatencyBounds(data.proxies)
+  const latency = displayedLatencyBounds(proxies)
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pt-4">
       <SiteHeader updated={formatStamp(data.generated_at)} />
       <p className="text-[16px] text-foreground">
-        {ru.telegramCounts(stats?.mtproto ?? 0, stats?.socks ?? 0)}
+        {ru.telegramCounts(mtprotoCount, socksCount)}
         {' · '}
         <Freshness iso={data.generated_at} />
       </p>
@@ -144,10 +156,12 @@ export function TelegramScreen({ data }: { data: HubData }) {
         <LatencyRange min={latency.min} max={latency.max} className="text-[16px]" />
       </p>
       {best && (
-        <Button asChild className="mb-4 h-12 w-full text-[16px]">
+        <Button asChild className="mb-4 h-12 w-full max-w-full overflow-hidden text-[16px]">
           <a href={best.tg}>
             <Send />
-            {ru.bestInTelegram(best.country_name || best.country || best.host, userPing(bestHit, best.latency_ms))}
+            <span className="min-w-0 truncate">
+              {ru.bestInTelegram(best.country_name || best.country || best.host, userPing(bestHit, best.latency_ms))}
+            </span>
           </a>
         </Button>
       )}
@@ -314,50 +328,58 @@ function ProxyRow({
   const title = proxy.country_name || proxy.country || proxy.host
   const reach = hit?.status === 'open' ? ru.reachOpen : hit?.status === 'closed' ? ru.reachClosed : ''
   const stable = stabilityText(proxy.stability)
+  const pingMs = hit && hit.status === 'open' && hit.ms != null ? hit.ms : proxy.latency_ms
   return (
     <div>
       {divided && <Separator />}
-      <div className="flex items-center gap-2 px-4 py-3">
-        <button type="button" className="min-w-0 flex-1 text-left" onClick={onOpen}>
-          <p className="flex min-w-0 items-center gap-2 truncate text-[17px] font-semibold">
-            {proxy.status === 'working' || proxy.status === 'unstable' ? (
-              <span
-                className={cn(
-                  'inline-block size-2 shrink-0 rounded-full',
-                  proxy.status === 'unstable' ? 'border border-foreground' : 'bg-foreground',
-                )}
-                aria-label={statusLabel(proxy.status)}
-              />
-            ) : null}
-            <span className="truncate">
-              {flagEmoji(proxy.country)} {title}
+      <div className="px-4 py-3">
+        <button type="button" className="block w-full text-left" onClick={onOpen}>
+          <span className="flex items-start justify-between gap-3">
+            <span className="flex min-w-0 flex-1 items-start gap-2 text-[17px] leading-6 font-semibold break-words">
+              {proxy.status === 'working' || proxy.status === 'unstable' ? (
+                <span
+                  className={cn(
+                    'mt-2 inline-block size-2 shrink-0 rounded-full',
+                    proxy.status === 'unstable' ? 'border border-foreground' : 'bg-foreground',
+                  )}
+                  aria-label={statusLabel(proxy.status)}
+                />
+              ) : null}
+              <span className="min-w-0 break-words">
+                {flagEmoji(proxy.country)} {title}
+              </span>
             </span>
-          </p>
-          <p className="text-[15px] leading-5 text-foreground/80">
-            {kindLabel(proxy.kind)} · {proxy.host}:{proxy.port}
+            <span data-ping className={cn('shrink-0 pt-0.5 text-[16px] font-semibold tabular-nums', latencyClass(pingMs))}>
+              {userPing(hit, proxy.latency_ms)}
+            </span>
+          </span>
+          <span className="mt-1 block text-[15px] leading-5 text-foreground/80">
+            {kindLabel(proxy.kind)}
             {stable ? ` · ${stable}` : ''}
-          </p>
-          {reach ? <p className="text-[15px] leading-5 font-medium text-foreground">{reach}</p> : null}
+          </span>
+          <span data-address className="block text-[15px] leading-5 break-all text-foreground">
+            {proxy.host}:{proxy.port}
+          </span>
+          {reach ? <span data-status className="mt-0.5 block text-[15px] leading-5 font-medium text-foreground">{reach}</span> : null}
         </button>
-        <span className={cn('text-[16px] font-semibold tabular-nums', latencyClass(hit && hit.status === 'open' ? hit.ms : proxy.latency_ms))}>
-          {userPing(hit, proxy.latency_ms)}
-        </span>
-        <Button asChild size="sm" className="h-10 shrink-0 px-3 text-[15px]">
-          <a href={proxy.tg} aria-label={ru.openInTelegram(title)}>
-            {ru.inTelegram}
-          </a>
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={ru.copyHttps}
-          onClick={() => void copyText(proxy.https, ru.httpsCopied)}
-        >
-          <Copy />
-        </Button>
-        <Button variant="ghost" size="icon-sm" aria-label={ru.qrProxy} onClick={onQr}>
-          <QrCode />
-        </Button>
+        <div data-actions className="mt-2 flex flex-wrap items-center gap-1">
+          <Button asChild size="sm" className="h-10 px-3 text-[15px]">
+            <a href={proxy.tg} aria-label={ru.openInTelegram(title)}>
+              {ru.inTelegram}
+            </a>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={ru.copyHttps}
+            onClick={() => void copyText(proxy.https, ru.httpsCopied)}
+          >
+            <Copy />
+          </Button>
+          <Button variant="ghost" size="icon-sm" aria-label={ru.qrProxy} onClick={onQr}>
+            <QrCode />
+          </Button>
+        </div>
       </div>
     </div>
   )

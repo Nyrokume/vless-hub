@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_redundant_transport_is_not_repeated():
     script = r"""
-import { distinctTransport, latencyBounds, latencyRange, protocolLabel, protocolLine, transportLabel } from './site/src/lib/format.ts'
+import { distinctTransport, latencyBounds, latencyRange, protocolLabel, protocolLine, shownPing, transportLabel } from './site/src/lib/format.ts'
 import { groupLive, splitFresh, verifiedUris } from './site/src/lib/live-collect.ts'
 import { parseProxy } from './site/src/lib/parse-proxy.ts'
 
@@ -32,6 +32,8 @@ if (protocolLabel('hysteria2') !== 'Hysteria2') process.exit(1)
 if (transportLabel('hysteria2') !== 'Hysteria2') process.exit(1)
 if (protocolLine('hysteria2', 'hysteria2').includes('/')) process.exit(1)
 
+if (shownPing(23559) !== null || shownPing(5000.1) !== null) process.exit(1)
+if (shownPing(5000) !== 5000 || shownPing(202) !== 202) process.exit(1)
 const bounds = latencyBounds([1805.4, null, 289.2, Number.NaN])
 if (Math.round(bounds.min) !== 289 || Math.round(bounds.max) !== 1805) process.exit(1)
 const one = latencyRange(319.9, 319.9)
