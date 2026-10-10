@@ -9,6 +9,9 @@ export type LiveSource = {
 
 /** Subscription files that allow browser fetches, plus channel pages that do not. */
 export const LIVE_SOURCES: LiveSource[] = [
+  { name: 'igareck-vless-mobile', url: 'https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS_mobile.txt' },
+  { name: 'igareck-white-mobile', url: 'https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt' },
+  { name: 'igareck-white-checked', url: 'https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-checked.txt' },
   { name: 'epodonios-vless', url: 'https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt' },
   { name: 'barry-far-vless', url: 'https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/vless.txt' },
   { name: 'ebrasha-vless', url: 'https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/vless_configs.txt' },

@@ -44,6 +44,23 @@ settings:
   vantage_budget_sec: 240
 
 sources:
+  # Короткие списки, которые уже отбирают для России. Полные файлы на тысячи строк не берём:
+  # их всё равно режет проверка, а эти успевают пройти первыми.
+  - name: igareck-vless-mobile
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/BLACK_VLESS_RUS_mobile.txt
+
+  - name: igareck-white-mobile
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/Vless-Reality-White-Lists-Rus-Mobile.txt
+
+  - name: igareck-white-checked
+    type: subscription
+    enabled: true
+    url: https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-checked.txt
+
   - name: epodonios-vless
     type: subscription
     enabled: true

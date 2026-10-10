@@ -37,6 +37,9 @@ def test_starter_sources_are_editable_yaml():
     assert len(subs) >= 24
     assert "pawdroid-sub" in names
     assert "barry-far-sub1" in names
+    assert "igareck-vless-mobile" in names
+    assert "igareck-white-mobile" in names
+    assert "igareck-white-checked" in names
     disabled = {source.name for source in sources if not source.enabled}
     assert "coldwater-mix" in disabled
     assert "kwinshadow-mix" in disabled
