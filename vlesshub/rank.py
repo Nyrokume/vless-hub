@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 from vlesshub.history import History
 from vlesshub.models import VlessConfig
+from vlesshub.parser import build_uri, parse_any
 from vlesshub.stages import is_core
 
 CARRY_MAX_AGE_SEC = 6 * 3600
+BEST_LIMIT = 12
+_BROWSER_SKIP = {"hysteria2", "hy2", "tuic"}
+_READY_SECURITY = {"reality", "tls"}
+_RU_VANTAGE = {"ru", "multi"}
 
 
 def select_candidates(
@@ -204,14 +211,159 @@ def mix_proxy_targets(
     return hy2_chosen + rest
 
 
+def _probeable(cfg: VlessConfig) -> bool:
+    return (cfg.protocol or "vless").lower() not in _BROWSER_SKIP
+
+
+def _from_russia(cfg: VlessConfig) -> bool:
+    return cfg.port == 443 and (cfg.security or "") in _READY_SECURITY and cfg.vantage in _RU_VANTAGE
+
+
+def _tls_443(cfg: VlessConfig) -> bool:
+    return cfg.port == 443 and (cfg.security or "") in _READY_SECURITY
+
+
 def rank_published(configs: list[VlessConfig]) -> list[VlessConfig]:
-    """Stable core first, then the rest of this run's verified list, by ping."""
+    """Port 443 with Reality or TLS that opened from Russia, then the stable core, then ping."""
 
     def key(cfg: VlessConfig) -> tuple:
         latency = cfg.latency_ms if cfg.latency_ms is not None else 9_999_999
         verified_bonus = 0 if cfg.verified == "proxy" else 1
         vantage = {"multi": 0, "ru": 1}.get(cfg.vantage, 2)
         core = 0 if is_core(cfg.bits) else 1
-        return (core, verified_bonus, latency, vantage, -cfg.uptime, cfg.fingerprint)
+        ready = 0 if _from_russia(cfg) else 1
+        return (ready, core, verified_bonus, latency, vantage, -cfg.uptime, cfg.fingerprint)
 
     return sorted(configs, key=key)
+
+
+def select_best(configs: list[VlessConfig], limit: int = BEST_LIMIT) -> list[VlessConfig]:
+    """A short list the browser and a phone can try first.
+
+    Prefer different hosts on port 443 with Reality or TLS that opened from Russia.
+    If this run has any browser-checkable config, the list is never empty.
+    """
+    if limit <= 0:
+        return []
+    pool = [cfg for cfg in configs if _probeable(cfg)]
+    if not pool:
+        return []
+    preferred = [cfg for cfg in pool if _from_russia(cfg)]
+    if not preferred:
+        preferred = [cfg for cfg in pool if _tls_443(cfg)]
+    if not preferred:
+        preferred = pool
+
+    def key(cfg: VlessConfig) -> tuple:
+        latency = cfg.latency_ms if cfg.latency_ms is not None else 9_999_999
+        vantage = {"multi": 0, "ru": 1}.get(cfg.vantage, 2)
+        core = 0 if is_core(cfg.bits) else 1
+        return (core, vantage, latency, cfg.fingerprint)
+
+    ordered = sorted(preferred, key=key)
+    chosen: list[VlessConfig] = []
+    hosts: set[str] = set()
+    for cfg in ordered:
+        if len(chosen) >= limit:
+            break
+        host = cfg.host.lower()
+        if host in hosts:
+            continue
+        hosts.add(host)
+        chosen.append(cfg)
+    if len(chosen) < limit:
+        for cfg in ordered:
+            if len(chosen) >= limit:
+                break
+            if any(cfg.fingerprint == item.fingerprint for item in chosen):
+                continue
+            chosen.append(cfg)
+    return chosen
+
+
+def save_best(path: Path, configs: list[VlessConfig], saved_at: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for cfg in configs:
+        rows.append(
+            {
+                "uri": build_uri(cfg),
+                "latency_ms": cfg.latency_ms,
+                "bits": cfg.bits,
+                "vantage": cfg.vantage,
+                "country": cfg.country,
+                "country_name": cfg.country_name,
+                "verified": cfg.verified or "proxy",
+                "core": cfg.core,
+                "uptime": cfg.uptime,
+            }
+        )
+    path.write_text(
+        json.dumps({"saved_at": saved_at, "configs": rows}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def load_best(path: Path, closed: set[tuple[str, int]] | None = None) -> list[VlessConfig]:
+    """Last short list, without addresses Russia has since refused."""
+    if not path.is_file():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = payload.get("configs") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return []
+    blocked = closed or set()
+    restored: list[VlessConfig] = []
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        cfg = parse_any(str(row.get("uri") or ""))
+        if cfg is None or (cfg.host, cfg.port) in blocked or cfg.fingerprint in seen:
+            continue
+        seen.add(cfg.fingerprint)
+        latency = row.get("latency_ms")
+        cfg.latency_ms = float(latency) if isinstance(latency, (int, float)) else None
+        cfg.bits = str(row.get("bits") or "")
+        cfg.vantage = str(row.get("vantage") or "")
+        cfg.country = str(row.get("country") or cfg.country)
+        cfg.country_name = str(row.get("country_name") or cfg.country_name)
+        cfg.verified = str(row.get("verified") or "proxy")
+        cfg.core = str(row.get("core") or "")
+        try:
+            cfg.uptime = float(row.get("uptime") or 0)
+        except (TypeError, ValueError):
+            cfg.uptime = 0
+        restored.append(cfg)
+    return restored
+
+
+def apply_best(
+    published: list[VlessConfig],
+    path: Path,
+    closed: set[tuple[str, int]],
+    saved_at: str,
+    limit: int = BEST_LIMIT,
+) -> tuple[list[VlessConfig], list[VlessConfig]]:
+    """Return the shared list and the short list.
+
+    When this run has no browser-checkable config, the previous short list is
+    appended so the site and the subscription are not empty. A refusal from
+    Russia is not brought back. An empty result does not erase the saved file.
+    """
+    best = select_best(published, limit)
+    if best:
+        save_best(path, best, saved_at)
+        return published, best
+    restored = load_best(path, closed)
+    if not restored:
+        return published, []
+    have = {cfg.fingerprint for cfg in published}
+    extra = [cfg for cfg in restored if cfg.fingerprint not in have]
+    merged = rank_published(list(published) + extra) if extra else list(published)
+    best = select_best(merged, limit) or restored[:limit]
+    save_best(path, best, saved_at)
+    return merged, best

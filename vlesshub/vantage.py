@@ -10,6 +10,7 @@ import urllib.request
 from dataclasses import dataclass, field
 
 from vlesshub.models import VlessConfig
+from vlesshub.stages import is_core
 from vlesshub.util import log
 
 _API = "https://check-host.net/check-tcp"
@@ -155,13 +156,37 @@ def annotate_vantage(
     return scan
 
 
+def _worth_checking_first(cfg: VlessConfig) -> bool:
+    """Port 443 with Reality or TLS is what a phone in Russia is most likely to open."""
+    return cfg.port == 443 and (cfg.security or "") in {"reality", "tls"}
+
+
 def _sample(configs: list[VlessConfig], limit: int) -> list[VlessConfig]:
+    """Spend the time budget on 443 Reality/TLS first, one address per country at a time."""
+    if limit <= 0:
+        return []
+    seen: set[tuple[str, int]] = set()
+    preferred = [cfg for cfg in configs if _worth_checking_first(cfg)]
+    rest = [cfg for cfg in configs if not _worth_checking_first(cfg)]
+    picked = _round_robin(preferred, limit, seen)
+    if len(picked) < limit:
+        picked.extend(_round_robin(rest, limit - len(picked), seen))
+    return picked
+
+
+def _round_robin(
+    configs: list[VlessConfig],
+    limit: int,
+    seen: set[tuple[str, int]],
+) -> list[VlessConfig]:
     groups: dict[str, list[VlessConfig]] = {}
     for cfg in configs:
         groups.setdefault(cfg.country or "ZZ", []).append(cfg)
-    pools = [list(items) for items in groups.values()]
+    pools: list[list[VlessConfig]] = []
+    for items in groups.values():
+        items.sort(key=lambda cfg: (0 if is_core(cfg.bits) else 1, cfg.host, cfg.port))
+        pools.append(items)
     picked: list[VlessConfig] = []
-    seen: set[tuple[str, int]] = set()
     while len(picked) < limit and any(pools):
         for pool in pools:
             if not pool or len(picked) >= limit:

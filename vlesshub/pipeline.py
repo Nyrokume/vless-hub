@@ -27,7 +27,7 @@ from vlesshub.probe import (
     proxy_probe,
     tcp_probe,
 )
-from vlesshub.rank import mix_proxy_targets, rank_published, select_candidates
+from vlesshub.rank import apply_best, mix_proxy_targets, rank_published, select_candidates
 from vlesshub.stability import Stability
 from vlesshub.stages import CLIENT_URL_TIMEOUT_MS, client_url_timeout, dropped_after, is_core, kept_after_handshake, status_of
 from vlesshub.tgcollect import collect_proxies, select_proxies
@@ -355,12 +355,18 @@ def run_pipeline(
     limited = [cfg for cfg in working if id(cfg) not in universal_ids]
     published = rank_published(universal)
     limited_ranked = rank_published(limited)
+    published, best = apply_best(
+        published,
+        state_dir / "best.json",
+        scan.closed_endpoints,
+        utcnow(),
+    )
     vless_seen = sum(1 for cfg in working if (cfg.protocol or "vless") == "vless")
     vless_all = sum(1 for cfg in published if (cfg.protocol or "vless") == "vless")
     proxy_ok = len(published)
     log(
         f"publish {len(published)} shared ({vless_all} vless of {vless_seen}) "
-        f"and {len(limited_ranked)} extra from {len(configs)} unique; "
+        f"best {len(best)} and {len(limited_ranked)} extra from {len(configs)} unique; "
         f"proxy tested {len(proxy_targets)}; rejected {rejections}"
     )
     if not published and not limited_ranked and had_success:
@@ -396,6 +402,7 @@ def run_pipeline(
             "unknown": scan.unknown,
         },
         limited=limited_ranked,
+        best=best,
     )
     share_errors = (
         check_share_files(

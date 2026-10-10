@@ -12,7 +12,7 @@ import yaml
 from vlesshub.countries import country_name
 from vlesshub.models import Settings, SourceReport, VlessConfig
 from vlesshub.parser import build_uri
-from vlesshub.rank import rank_published
+from vlesshub.rank import rank_published, select_best
 from vlesshub.stages import REASONS, is_core
 from vlesshub.tgparse import TgProxy, https_link, tg_link
 
@@ -45,6 +45,10 @@ _EXTRA_HEADER = (
     "#profile-title: V2Hub — не для всех приложений\n"
     "#profile-update-interval: 1\n"
 )
+_BEST_HEADER = (
+    "#profile-title: V2Hub — лучшие\n"
+    "#profile-update-interval: 1\n"
+)
 
 
 def publish(
@@ -72,6 +76,7 @@ def publish(
     rejections: dict[str, int] | None = None,
     vantage: dict | None = None,
     limited: list[VlessConfig] | None = None,
+    best: list[VlessConfig] | None = None,
 ) -> None:
     if out_dir.exists():
         shutil.rmtree(out_dir)
@@ -89,7 +94,17 @@ def publish(
         cfg.verified = "tcp"
 
     limited = list(limited or [])
+    # None means "pick from this run". An explicit list, even empty, is kept.
+    best_list = select_best(configs) if best is None else list(best)
     catalog: list[dict] = []
+    _write_pair(
+        out_dir,
+        "sub/best.txt",
+        best_list,
+        catalog,
+        kind="best",
+        header=_BEST_HEADER,
+    )
     _write_pair(out_dir, "sub/all.txt", configs, catalog, kind="all")
     _write_pair(
         out_dir,

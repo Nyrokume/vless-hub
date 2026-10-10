@@ -48,6 +48,10 @@ def test_publish_writes_subs_and_metadata(tmp_path):
     )
     plain = (out / "sub" / "all.txt").read_text(encoding="utf-8")
     assert plain.startswith("#profile-title: V2Hub")
+    best_file = (out / "sub" / "best.txt").read_text(encoding="utf-8")
+    assert best_file.startswith("#profile-title: V2Hub — лучшие\n")
+    assert "de.example" in best_file
+    assert "\r" not in best_file
     assert "vless://" in plain
     assert "VLESS" in plain
     assert "hello" not in plain
