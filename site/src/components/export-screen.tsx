@@ -19,7 +19,7 @@ import { ru } from '@/lib/ru'
 import { useSettings } from '@/lib/settings'
 import type { CatalogEntry, HubData } from '@/lib/types'
 
-const SLICE_ORDER = ['all', 'unstable', 'top', 'clash', 'singbox', 'unverified']
+const SLICE_ORDER = ['best', 'all', 'xray', 'unstable', 'top', 'clash', 'singbox', 'unverified']
 
 export function ExportScreen({ data }: { data: HubData }) {
   const { settings } = useSettings()
@@ -51,6 +51,8 @@ export function ExportScreen({ data }: { data: HubData }) {
     .sort((left, right) => left.kind.localeCompare(right.kind) || right.count - left.count)
 
   function titleOf(entry: CatalogEntry): string {
+    if (entry.kind === 'best') return 'Лучшие'
+    if (entry.kind === 'xray') return 'Не для всех приложений'
     if (entry.kind === 'all') return 'Все проверенные'
     if (entry.kind === 'unstable') return 'Вместе с нестабильными'
     if (entry.kind === 'unverified') return 'Только открытый порт'

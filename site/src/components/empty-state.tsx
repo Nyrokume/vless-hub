@@ -22,19 +22,33 @@ export function EmptyState({
   title,
   text,
   action,
+  link,
+  secondary,
 }: {
   title?: string
   text: string
   action?: { label: string; onClick: () => void }
+  link?: { href: string; label: string }
+  secondary?: { label: string; onClick: () => void }
 }) {
   return (
     <div className="flex flex-col items-center gap-3 px-6 py-8 text-center">
       <EmptyMascot className="size-24 text-foreground" />
-      {title ? <p className="text-[17px] font-medium">{title}</p> : null}
-      <p className="max-w-xs text-[15px] text-foreground/75">{text}</p>
+      {title ? <p className="text-[22px] leading-snug font-semibold">{title}</p> : null}
+      <p className="max-w-sm text-[18px] leading-snug text-foreground">{text}</p>
+      {link ? (
+        <a href={link.href} className="text-[18px] font-semibold underline">
+          {link.label}
+        </a>
+      ) : null}
       {action ? (
-        <Button variant="secondary" onClick={action.onClick}>
+        <Button className="h-11 px-4 text-[16px]" onClick={action.onClick}>
           {action.label}
+        </Button>
+      ) : null}
+      {secondary ? (
+        <Button variant="secondary" className="h-11 px-4 text-[16px]" onClick={secondary.onClick}>
+          {secondary.label}
         </Button>
       ) : null}
     </div>

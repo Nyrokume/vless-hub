@@ -337,14 +337,36 @@ export function isCore(bits: string | null | undefined): boolean {
   return passStreak(bits) >= CORE_PASSES
 }
 
-/** Browser-checkable configs, stable core first, then the quicker measured ones. */
+function probeRank(config: ConfigRecord): number {
+  const security = (config.security || '').toLowerCase()
+  const vantage = (config.vantage || '').toLowerCase()
+  const tls = security === 'reality' || security === 'tls'
+  const fromRussia = vantage === 'ru' || vantage === 'multi'
+  if (config.port === 443 && tls && fromRussia) return 0
+  if (config.port === 443 && tls) return 1
+  if (config.port === 443) return 2
+  return 3
+}
+
+function vantageRank(config: ConfigRecord): number {
+  const vantage = (config.vantage || '').toLowerCase()
+  if (vantage === 'multi') return 0
+  if (vantage === 'ru') return 1
+  return 2
+}
+
+/** Browser-checkable configs. Port 443 with Reality or TLS from Russia goes first. */
 export function orderForProbe(configs: ConfigRecord[]): ConfigRecord[] {
   return configs
     .filter((config) => config.host && config.port && browserCanProbe(config.protocol))
     .slice()
     .sort((left, right) => {
+      const ready = probeRank(left) - probeRank(right)
+      if (ready !== 0) return ready
       const core = Number(isCore(right.bits)) - Number(isCore(left.bits))
       if (core !== 0) return core
+      const vantage = vantageRank(left) - vantageRank(right)
+      if (vantage !== 0) return vantage
       return (left.latency_ms ?? 9_999_999) - (right.latency_ms ?? 9_999_999)
     })
 }

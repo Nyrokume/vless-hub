@@ -28,6 +28,7 @@ import {
   downloadText,
 } from '@/lib/bundle'
 import { copyText } from '@/lib/copy'
+import { publicFileUrl } from '@/lib/data'
 import {
   LIST_STORAGE_KEY,
   defaultListState,
@@ -449,7 +450,12 @@ export function ConfigsScreen({ data }: { data: HubData }) {
         <EmptyState
           title={ru.gateShortTitle}
           text={`${ru.gateShort} ${ru.gateUdp}`}
-          action={{ label: ru.retry, onClick: () => void run(true) }}
+          link={{ href: publicFileUrl(settings.publicBase, 'sub/best.txt', data.generated_at), label: ru.gateBest }}
+          action={{
+            label: ru.gateBestCopy,
+            onClick: () => void copyText(publicFileUrl(settings.publicBase, 'sub/best.txt', data.generated_at), ru.linkCopied),
+          }}
+          secondary={{ label: ru.retry, onClick: () => void run(true) }}
         />
       ) : gate === 'idle' ? null : (
       <>
