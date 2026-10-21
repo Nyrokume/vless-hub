@@ -113,7 +113,7 @@ export function TelegramScreen({ data }: { data: HubData }) {
   const latency = displayedLatencyBounds(proxies)
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4 lg:max-w-5xl lg:px-10 lg:pt-8">
       <SiteHeader updated={formatStamp(data.generated_at)} />
       <p className="text-[16px] text-foreground">
         {ru.telegramCounts(mtprotoCount, socksCount)}

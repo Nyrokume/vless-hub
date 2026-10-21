@@ -17,7 +17,6 @@ import { Freshness } from '@/components/freshness'
 import { LatencyRange } from '@/components/latency-range'
 import { LiveParseSheet } from '@/components/live-parse-sheet'
 import { QrDialog, type QrRequest } from '@/components/qr-dialog'
-import { SearchSplash } from '@/components/search-splash'
 import { SiteHeader } from '@/components/site-header'
 import { configImportActions } from '@/lib/clients'
 import {
@@ -28,7 +27,6 @@ import {
   downloadText,
 } from '@/lib/bundle'
 import { copyText } from '@/lib/copy'
-import { publicFileUrl } from '@/lib/data'
 import {
   LIST_STORAGE_KEY,
   defaultListState,
@@ -44,16 +42,17 @@ import {
   displayedLatencyBounds,
   flagEmoji,
   formatStamp,
-  latencyClass,
   latencyText,
   protocolLine,
   speedText,
   stabilityText,
 } from '@/lib/format'
 import { formatCount } from '@/lib/plural'
-import { browserCanProbe, endpointKey, MIN_READY, reachLine, type ReachBook, type ReachHit } from '@/lib/reach'
+import { serverStatus, speedRank, type ReachBook, type ServerStatus } from '@/lib/reach'
+import { checkedAge } from '@/lib/format'
+import { Switch } from '@/components/ui/switch'
 import { useReach } from '@/lib/reach-context'
-import { ru, statusLabel } from '@/lib/ru'
+import { ru } from '@/lib/ru'
 import { STORAGE_KEY, useSettings, type SortKey, type ViewMode } from '@/lib/settings'
 import type { ConfigRecord, HubData } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -123,12 +122,30 @@ function latencyRank(ms: number | null, desc = false): number {
   return ms
 }
 
-function reachRank(config: ConfigRecord, book: ReachBook): number {
-  const hit = book.byEndpoint[endpointKey(config.host, config.port)]
-  if (!hit) return 2_000_000
-  if (hit.status === 'open') return hit.ms ?? 100_000
-  if (hit.status === 'skip') return 3_000_000
-  return 4_000_000
+function reachRank(config: ConfigRecord, _book?: ReachBook): number {
+  return speedRank(serverStatus(config))
+}
+
+type StatusView = { order: 'speed' | 'country'; hideDead: boolean }
+const STATUS_VIEW_KEY = 'vless-hub-status-view'
+
+function readStatusView(): StatusView {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STATUS_VIEW_KEY) || 'null') as Partial<StatusView> | null
+    return { order: raw?.order === 'country' ? 'country' : 'speed', hideDead: raw?.hideDead !== false }
+  } catch {
+    return { order: 'speed', hideDead: true }
+  }
+}
+
+function latestCheck(configs: ConfigRecord[], fallback: string): string {
+  let best = 0
+  for (const config of configs) {
+    const at = serverStatus(config).checkedAt
+    const time = at ? new Date(at).getTime() : NaN
+    if (Number.isFinite(time) && time > best) best = time
+  }
+  return best > 0 ? new Date(best).toISOString() : fallback
 }
 
 function compareConfigs(sort: SortKey, left: ConfigRecord, right: ConfigRecord, book: ReachBook): number {
@@ -200,7 +217,15 @@ function lowerBound(prefix: number[], target: number): number {
 
 export function ConfigsScreen({ data }: { data: HubData }) {
   const { settings } = useSettings()
-  const { book, gate, progress, setTargets, run } = useReach()
+  const { book, setTargets } = useReach()
+  const [view, setView] = useState<StatusView>(readStatusView)
+  useEffect(() => {
+    try {
+      localStorage.setItem(STATUS_VIEW_KEY, JSON.stringify(view))
+    } catch {
+      // Storage can be blocked; the choice still holds for this visit.
+    }
+  }, [view])
   const [list, setList] = useState<ListState>(readListState)
   const [selectedId, setSelectedId] = useState<ConfigRecord | null>(null)
   const [liveOpen, setLiveOpen] = useState(false)
@@ -256,8 +281,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   const filtered = useMemo(() => {
     const needle = safeList.query.trim().toLowerCase()
     const matched = data.configs.filter((config) => {
-      if (!browserCanProbe(config.protocol)) return false
-      if (book.byEndpoint[endpointKey(config.host, config.port)]?.status !== 'open') return false
+      if (view.hideDead && !serverStatus(config).alive) return false
       if (!needle) return true
       return [config.host, config.country, config.country_code, config.remark, configTitle(config), String(config.port)]
         .join(' ')
@@ -266,17 +290,23 @@ export function ConfigsScreen({ data }: { data: HubData }) {
     })
     matched.sort((left, right) => reachRank(left, book) - reachRank(right, book) || left.id.localeCompare(right.id))
     return matched
-  }, [book, data.configs, safeList.query])
+  }, [data.configs, safeList.query, view.hideDead])
+
+  const deadCount = useMemo(() => data.configs.filter((config) => !serverStatus(config).alive).length, [data.configs])
+  const checkedIso = useMemo(() => latestCheck(data.configs, data.generated_at), [data.configs, data.generated_at])
 
   useEffect(() => {
     setTargets(data.configs)
-    void run()
-  }, [data.configs, data.generated_at, run, setTargets])
+  }, [data.configs, data.generated_at, setTargets])
 
   const groups = useMemo(() => groupByCountry(filtered, 'reach', book), [book, filtered])
 
   const rows = useMemo(() => {
     const next: ListRow[] = []
+    if (view.order === 'speed') {
+      for (const config of filtered) next.push({ kind: 'config', key: config.id, config })
+      return next
+    }
     for (const group of groups) {
       const open = openGroups.has(group.code)
       next.push({ kind: 'group', key: `g:${group.code}`, group, open })
@@ -284,7 +314,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
       for (const config of group.configs) next.push({ kind: 'config', key: config.id, config })
     }
     return next
-  }, [groups, openGroups])
+  }, [filtered, groups, openGroups, view.order])
 
   const prefix = useMemo(() => {
     const next = new Array<number>(rows.length + 1)
@@ -425,46 +455,20 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   )
 
   return (
-    <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', selecting && chosen.length > 0 && 'pb-36')}>
+    <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4 lg:max-w-5xl lg:px-10 lg:pt-8', selecting && chosen.length > 0 && 'pb-36')}>
       <SiteHeader updated={formatStamp(data.generated_at)} menu={menu} />
       <LiveParseSheet
         open={liveOpen}
         known={knownIds}
         onOpenChange={setLiveOpen}
       />
-      {gate === 'scan' ? (
-        <div data-reach-gate className="flex min-h-[70dvh] flex-col items-center justify-center gap-5 px-6 text-foreground" role="status">
-          <SearchSplash className="size-40 text-foreground" />
-          <div className="h-2.5 w-full max-w-xs overflow-hidden rounded-full bg-foreground/15" aria-hidden>
-            <div
-              className="v2-search-bar h-full rounded-full bg-foreground"
-              style={{ width: `${progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0}%` }}
-            />
-          </div>
-          <p className="text-center text-[22px] leading-snug font-semibold tabular-nums">
-            {ru.gateProgress(progress.done, progress.total, progress.open, MIN_READY)}
-          </p>
-          {progress.label ? <p className="text-center text-[18px] text-foreground/80">{progress.label}</p> : null}
-        </div>
-      ) : gate === 'short' ? (
-        <EmptyState
-          title={ru.gateShortTitle}
-          text={`${ru.gateShort} ${ru.gateUdp}`}
-          link={{ href: publicFileUrl(settings.publicBase, 'sub/best.txt', data.generated_at), label: ru.gateBest }}
-          action={{
-            label: ru.gateBestCopy,
-            onClick: () => void copyText(publicFileUrl(settings.publicBase, 'sub/best.txt', data.generated_at), ru.linkCopied),
-          }}
-          secondary={{ label: ru.retry, onClick: () => void run(true) }}
-        />
-      ) : gate === 'idle' ? null : (
+      {(
       <>
       <p className="mb-3 text-[15px] text-foreground/80">
         {statsLine}
         {' · '}
-        <Freshness iso={data.generated_at} />
+        <CheckedAgo iso={checkedIso} />
       </p>
-      <p className="mb-3 text-[15px] leading-snug">{ru.gateUdp}</p>
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -474,6 +478,33 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           aria-label={ru.searchConfigs}
           className="h-12 rounded-xl border-0 bg-card pl-9 text-[16px]"
         />
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div role="radiogroup" aria-label="Порядок" className="inline-flex rounded-lg bg-card p-1">
+          {(['speed', 'country'] as const).map((order) => (
+            <button
+              key={order}
+              type="button"
+              role="radio"
+              aria-checked={view.order === order}
+              onClick={() => setView((current) => ({ ...current, order }))}
+              className={cn(
+                'h-8 rounded-md px-3 text-[14px] font-medium text-muted-foreground transition-colors active:scale-[0.98]',
+                view.order === order && 'bg-background text-foreground shadow-sm',
+              )}
+            >
+              {order === 'speed' ? 'По скорости' : 'По странам'}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-2 text-[14px]">
+          <Switch
+            checked={view.hideDead}
+            onCheckedChange={(hideDead) => setView((current) => ({ ...current, hideDead }))}
+          />
+          <span>Скрыть неработающие{deadCount > 0 ? ` (${formatCount(deadCount)})` : ''}</span>
+        </label>
       </div>
 
       <div className="overflow-hidden rounded-2xl bg-card">
@@ -490,7 +521,9 @@ export function ConfigsScreen({ data }: { data: HubData }) {
           </div>
         )}
         {filtered.length === 0 ? (
-          <EmptyState text={ru.nothingFound} />
+          <EmptyState
+            text={view.hideDead && deadCount > 0 && !safeList.query.trim() ? 'Сейчас все серверы из списка не работают. Проверка повторяется каждые 15 минут.' : ru.nothingFound}
+          />
         ) : (
           <div ref={listRef} style={{ height: totalHeight, position: 'relative' }}>
             <div style={{ height: prefix[start] ?? 0 }} />
@@ -505,7 +538,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
               ) : (
                 <ConfigItem
                   key={row.key}
-                  view="country"
+                  view={view.order === 'speed' ? 'flat' : 'country'}
                   config={row.config}
                   selecting={selecting}
                   checked={picked.has(row.config.id)}
@@ -530,7 +563,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
 
       {selecting && chosen.length > 0 && (
         <div className="fixed inset-x-0 bottom-[4.6rem] z-30 border-t border-border bg-background/95 px-3 py-2 backdrop-blur-md">
-          <div className="mx-auto flex max-w-3xl flex-col gap-2">
+          <div className="mx-auto flex max-w-3xl flex-col gap-2 lg:max-w-5xl">
             <div className="flex items-center justify-between text-[13px]">
               <span>{ru.selected(chosen.length)}</span>
               <button type="button" className="text-muted-foreground" onClick={exitSelect}>
@@ -611,30 +644,50 @@ function CountryHeader({
   )
 }
 
-function StatusDot({ status }: { status?: string }) {
-  if (status !== 'working' && status !== 'unstable') return null
-  const unstable = status === 'unstable'
+function useRowHit(config: ConfigRecord): ServerStatus {
+  return useMemo(() => serverStatus(config), [config])
+}
+
+function CheckedAgo({ iso }: { iso: string }) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+  const age = checkedAge(iso, now)
+  if (!age) return <Freshness iso={iso} />
+  return <span>{age === 'только что' ? 'проверено только что' : `проверено ${age}`}</span>
+}
+
+const TIER_CLASS: Record<ServerStatus['tier'], string> = {
+  fast: 'text-latency-fast',
+  ok: 'text-latency-mid',
+  slow: 'text-latency-slow',
+  up: 'text-foreground',
+  down: 'text-muted-foreground',
+  unknown: 'text-muted-foreground',
+}
+
+function Latency({ status, size = 'text-[14px]' }: { status: ServerStatus; size?: string }) {
+  const text = status.ms != null ? latencyText(status.ms) : '—'
   return (
-    <span
-      className={cn(
-        'inline-block size-2 shrink-0 rounded-full',
-        unstable ? 'border border-foreground' : 'bg-foreground',
-      )}
-      title={statusLabel(status)}
-      aria-label={statusLabel(status)}
-    />
+    <span className={cn('shrink-0 font-semibold tabular-nums', size, TIER_CLASS[status.tier])} title={status.label || undefined}
+      aria-label={status.label ? `${text}, ${status.label}` : undefined}
+      role={status.label ? 'img' : undefined}
+    >
+      {text}
+    </span>
   )
 }
 
-function useRowHit(config: ConfigRecord): ReachHit | undefined {
-  const { book } = useReach()
-  return book.byEndpoint[endpointKey(config.host, config.port)]
-}
-
-function rowMeta(config: ConfigRecord, hit: ReachHit | undefined): string {
+function rowMeta(config: ConfigRecord, status: ServerStatus): string {
   const parts: string[] = []
-  const local = reachLine(hit)
-  if (local) parts.push(local)
+  if (!status.alive) {
+    parts.push(status.label)
+    const age = checkedAge(status.checkedAt)
+    if (age) parts.push(`проверен ${age}`)
+    return parts.join(' · ')
+  }
   if (config.vantage === 'ru' || config.vantage === 'multi') parts.push(ru.fromRussia)
   parts.push(protocolLine(config.transport, config.protocol))
   const stability = stabilityText(config.stability)
@@ -732,7 +785,6 @@ function ConfigRow({
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2 text-[17px] font-semibold">
-            <StatusDot status={config.status} />
             <span className="truncate">
               {title}
               {config.country_code ? ` ${config.country_code}` : ''}
@@ -741,9 +793,7 @@ function ConfigRow({
           <span className="block truncate text-[14px] text-foreground/80">{meta}</span>
         </span>
       </button>
-      <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
-        {latencyText(config.latency_ms)}
-      </span>
+      <Latency status={hit} size="text-[14px]" />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button variant="ghost" size="icon-sm" aria-label={`QR-код ${title}`} onClick={onQr}>
@@ -754,7 +804,7 @@ function ConfigRow({
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label={`Подробности ${title}`} onClick={onOpen}>
+          <Button variant="ghost" size="icon-sm" className="max-[359px]:hidden" aria-label={`Подробности ${title}`} onClick={onOpen}>
             <Info />
           </Button>
         </TooltipTrigger>
@@ -801,16 +851,13 @@ function CompactRow({
         <span className="w-5 shrink-0 text-center text-[16px] leading-none" aria-hidden>
           {flag || <Globe className="size-4 text-muted-foreground" />}
         </span>
-        <StatusDot status={config.status} />
         <span className="min-w-0 flex-1 truncate text-[14px]">
           {title}
           {config.country_code ? ` ${config.country_code}` : ''}
           <span className="text-muted-foreground"> · {meta}</span>
         </span>
       </button>
-      <span className={cn('shrink-0 text-[13px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
-        {latencyText(config.latency_ms)}
-      </span>
+      <Latency status={hit} size="text-[13px]" />
       <Button variant="ghost" size="icon-sm" aria-label={`QR-код ${title}`} onClick={onQr}>
         <QrCode />
       </Button>
@@ -858,8 +905,7 @@ function CardRow({
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-2 text-[15px] font-medium">
-              <StatusDot status={config.status} />
-              <span className="truncate">
+                <span className="truncate">
                 {title}
                 {config.country_code ? ` ${config.country_code}` : ''}
               </span>
@@ -867,9 +913,7 @@ function CardRow({
             <span className="block truncate text-[12px] text-muted-foreground">{meta}</span>
           </span>
         </button>
-        <span className={cn('shrink-0 text-[14px] font-semibold tabular-nums', latencyClass(config.latency_ms))}>
-          {latencyText(config.latency_ms)}
-        </span>
+        <Latency status={hit} size="text-[14px]" />
         <Button variant="ghost" size="icon-sm" aria-label={`QR-код ${title}`} onClick={onQr}>
           <QrCode />
         </Button>

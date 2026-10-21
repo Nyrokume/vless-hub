@@ -25,8 +25,7 @@ import {
   stabilityText,
   uptimeText,
 } from '@/lib/format'
-import { endpointKey, reachLine } from '@/lib/reach'
-import { useReach } from '@/lib/reach-context'
+import { serverStatus } from '@/lib/reach'
 import { coreLabel, ru, statusLabel } from '@/lib/ru'
 import type { ConfigRecord, SourceReport } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -55,10 +54,11 @@ export function ConfigSheet({
   onOpenChange: (open: boolean) => void
   onQr: (request: QrRequest) => void
 }) {
-  const { book } = useReach()
   const title = config ? configTitle(config) : ''
   const flag = config ? flagEmoji(config.country_code) : ''
-  const localReach = config ? reachLine(book.byEndpoint[endpointKey(config.host, config.port)]) : ''
+  const status = config ? serverStatus(config) : null
+  const age = status ? checkedAge(status.checkedAt) : ''
+  const localReach = status ? [status.hint, age ? `Проверен ${age}.` : ''].filter(Boolean).join(' ') : ''
   const sourceName = sources.find((item) => item.id === config?.source)?.name ?? config?.source
   const deepLink = config ? configDeepLink(client, config.uri) : null
   const rows = config

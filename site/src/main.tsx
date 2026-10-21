@@ -8,12 +8,14 @@ import { ReachProvider } from '@/lib/reach-context'
 import { forgetStoredActionsToken } from '@/lib/server-check'
 import { SettingsProvider } from '@/lib/settings'
 import App from '@/App.tsx'
+import { AppErrorBoundary } from '@/components/app-error'
 import '@/index.css'
 
 forgetStoredActionsToken()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    <AppErrorBoundary>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="v2hub-theme">
       <TooltipProvider>
         <SettingsProvider>
@@ -26,5 +28,6 @@ createRoot(document.getElementById('root')!).render(
         </SettingsProvider>
       </TooltipProvider>
     </ThemeProvider>
+    </AppErrorBoundary>
   </StrictMode>,
 )

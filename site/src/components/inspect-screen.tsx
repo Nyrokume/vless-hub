@@ -42,7 +42,7 @@ export function InspectScreen({ embedded = false }: { embedded?: boolean }) {
   }
 
   return (
-    <div className={embedded ? 'mb-2' : 'mx-auto w-full max-w-3xl px-4 pt-4'}>
+    <div className={embedded ? 'mb-2' : 'mx-auto w-full max-w-3xl px-4 pt-4 lg:max-w-5xl lg:px-10 lg:pt-8'}>
       {!embedded && <h1 className="mb-3 text-[28px] leading-none font-bold tracking-tight">{ru.inspect.title}</h1>}
       <p className="mb-3 text-[14px] text-muted-foreground">{ru.inspect.hint}</p>
       <textarea

@@ -201,7 +201,7 @@ export function SettingsScreen({ data }: { data: HubData | null }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4 lg:max-w-5xl lg:px-10 lg:pt-8">
       <SiteHeader updated={data ? formatStamp(data.generated_at) : undefined} />
 
       <Group>
