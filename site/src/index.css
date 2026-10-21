@@ -209,3 +209,23 @@
     transition: none;
   }
 }
+/* Tactile press: every button gives under the finger, mouse or touch. */
+button, [role="tab"], a.v2-press {
+  transition: transform 160ms cubic-bezier(.2,.8,.2,1), background-color 160ms, color 160ms;
+}
+button:not(:disabled):active, [role="tab"]:active, .v2-press:active {
+  transform: scale(0.97);
+}
+button, a { overflow-wrap: anywhere; }
+
+@keyframes v2-arc { 0%, 15% { opacity: .15 } 45%, 100% { opacity: 1 } }
+@keyframes v2-dot { 0% { transform: scale(.6) } 40%, 100% { transform: scale(1) } }
+@keyframes v2-skel { 0%, 100% { opacity: .55 } 50% { opacity: 1 } }
+.v2-mark-dot { transform-box: fill-box; transform-origin: center; animation: v2-dot 1.6s ease-out infinite alternate; }
+.v2-mark-arc { animation: v2-arc 1.6s ease-in-out infinite alternate; }
+.v2-mark-arc-2 { animation-delay: .3s; }
+.v2-skel { animation: v2-skel 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .v2-mark-dot, .v2-mark-arc, .v2-skel { animation: none; }
+  button, [role="tab"] { transition: none; }
+}

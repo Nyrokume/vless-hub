@@ -425,7 +425,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
   )
 
   return (
-    <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4', selecting && chosen.length > 0 && 'pb-36')}>
+    <div className={cn('mx-auto w-full max-w-3xl px-4 pt-4 lg:max-w-5xl lg:px-10 lg:pt-8', selecting && chosen.length > 0 && 'pb-36')}>
       <SiteHeader updated={formatStamp(data.generated_at)} menu={menu} />
       <LiveParseSheet
         open={liveOpen}
@@ -530,7 +530,7 @@ export function ConfigsScreen({ data }: { data: HubData }) {
 
       {selecting && chosen.length > 0 && (
         <div className="fixed inset-x-0 bottom-[4.6rem] z-30 border-t border-border bg-background/95 px-3 py-2 backdrop-blur-md">
-          <div className="mx-auto flex max-w-3xl flex-col gap-2">
+          <div className="mx-auto flex max-w-3xl flex-col gap-2 lg:max-w-5xl">
             <div className="flex items-center justify-between text-[13px]">
               <span>{ru.selected(chosen.length)}</span>
               <button type="button" className="text-muted-foreground" onClick={exitSelect}>

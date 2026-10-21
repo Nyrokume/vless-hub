@@ -81,7 +81,7 @@ export function ExportScreen({ data }: { data: HubData }) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4 lg:max-w-5xl lg:px-10 lg:pt-8">
       <SiteHeader updated={formatStamp(data.generated_at)} />
 
       <Section title="Срезы">

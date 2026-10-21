@@ -5,6 +5,8 @@ import { SettingsScreen } from '@/components/settings-screen'
 import { TelegramScreen } from '@/components/telegram-screen'
 import { TabBar, type AppTab } from '@/components/tab-bar'
 import { EmptyState } from '@/components/empty-state'
+import { Preloader } from '@/components/preloader'
+import { SideNav } from '@/components/tab-bar'
 import { useHub } from '@/lib/hub'
 import { ru } from '@/lib/ru'
 
@@ -13,8 +15,9 @@ export default function App() {
   const { data, error, loading, refresh } = useHub()
 
   return (
-    <div className="min-h-dvh bg-background text-foreground">
-      <main className="pb-24">
+    <div className="min-h-dvh bg-background text-foreground lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <SideNav tab={tab} onChange={setTab} />
+      <main className="pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-[max(3rem,env(safe-area-inset-bottom))]">
         {tab === 'settings' ? (
           <SettingsScreen data={data} />
         ) : loading && !data ? (
@@ -35,11 +38,7 @@ export default function App() {
 }
 
 function LoadingState() {
-  return (
-    <div className="mx-auto flex min-h-[70dvh] max-w-md flex-col items-center justify-center gap-3 px-6 text-center">
-      <p className="text-sm text-muted-foreground">{ru.loading}</p>
-    </div>
-  )
+  return <Preloader />
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {

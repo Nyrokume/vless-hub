@@ -6,6 +6,7 @@ import { useHub } from '@/lib/hub'
 import { useReach } from '@/lib/reach-context'
 import { ru } from '@/lib/ru'
 import { cn } from '@/lib/utils'
+import { BrandMark } from '@/components/brand-mark'
 
 export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNode }) {
   const { resolvedTheme, setTheme } = useTheme()
@@ -14,9 +15,10 @@ export function SiteHeader({ updated, menu }: { updated?: string; menu?: ReactNo
   const busy = refreshing || progress.running
   const dark = resolvedTheme !== 'light'
   return (
-    <header className="flex items-center gap-2 pb-2">
+    <header className="flex items-center gap-3 pb-3 lg:pb-5">
+      <BrandMark className="size-8 lg:hidden" />
       <div className="min-w-0 flex-1">
-        <p className="text-[17px] leading-none font-semibold tracking-tight">{ru.brand}</p>
+        <p className="text-[17px] leading-none font-semibold tracking-tight lg:text-[26px]">{ru.brand}</p>
         {updated && <p className="mt-1 text-[13px] text-muted-foreground">{updated}</p>}
       </div>
       {menu}
