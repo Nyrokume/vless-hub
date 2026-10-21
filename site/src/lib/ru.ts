@@ -211,7 +211,7 @@ export const ru = {
     status: 'Статус',
     list: 'Список',
     checked: 'Проверено',
-    yours: 'С вашей сети',
+    yours: 'Состояние',
     core: 'Ядро',
     opened: 'Другие точки',
     publicKey: 'Ключ Reality',
