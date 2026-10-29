@@ -12,7 +12,7 @@ def test_starter_sources_are_editable_yaml():
     assert settings.proxy_timeout_sec <= 8
     assert settings.drop_after_failures >= 1
     names = {source.name for source in sources if source.enabled}
-    assert "epodonios-vless" in names
+    assert "barry-far-vless" in names
     assert any(source.type == "telegram" and source.channel for source in sources if source.enabled)
     assert any(source.type == "subscription" and source.url.startswith("https://") for source in sources)
     tg = [source for source in sources if source.enabled and source.kind == "telegram-proxy"]
@@ -42,6 +42,17 @@ def test_starter_sources_are_editable_yaml():
     assert "igareck-white-checked" in names
     disabled = {source.name for source in sources if not source.enabled}
     assert "coldwater-mix" in disabled
+    for name in (
+        "epodonios-vless",
+        "epodonios-ss",
+        "epodonios-trojan",
+        "epodonios-mix",
+        "ebrasha-vless",
+        "ebrasha-ss",
+        "ebrasha-trojan",
+        "ebrasha-hysteria2",
+    ):
+        assert name in disabled
     assert "kwinshadow-mix" in disabled
     assert "argh94-socks5" in disabled
     assert "tg-proxy-mtg" in disabled

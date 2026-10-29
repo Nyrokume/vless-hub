@@ -91,6 +91,26 @@ def test_a_live_config_is_not_replaced_by_the_saved_list(tmp_path):
     assert [cfg.host for cfg in best] == ["now.example"]
 
 
+def test_a_server_that_still_works_keeps_its_russia_mark(tmp_path):
+    kept = _cfg("kept.example", security="tls")
+    kept.vantage = "ru"
+    kept.bits = "111"
+    kept.latency_ms = 400
+    path = tmp_path / "best.json"
+    save_best(path, [kept], "2026-10-10T00:00:00Z")
+    again = load_best(path, set())[0]
+    again.vantage = ""
+    again.latency_ms = 400
+    again.bits = "111"
+    fast = _cfg("fast.example", uuid="66666666-6666-4666-8666-666666666666")
+    fast.latency_ms = 40
+    fast.bits = "111"
+    published, best = apply_best([fast, again], path, set(), "2026-10-29T00:00:00Z")
+    assert again.vantage == "ru"
+    assert best[0].host == "kept.example"
+    assert published[0].host == "kept.example"
+
+
 def test_missing_fallback_does_not_create_an_empty_file(tmp_path):
     path = tmp_path / "best.json"
     published, best = apply_best([], path, set(), "2026-10-10T00:00:00Z")

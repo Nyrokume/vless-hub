@@ -41,7 +41,8 @@ settings:
   # check-host.net TCP from Russia. A completed refusal is not published.
   # Addresses the scan does not finish stay in the list. 0 disables the scan.
   vantage_checks: 800
-  vantage_budget_sec: 240
+  # 360 seconds checks more port-443 addresses before the budget stops.
+  vantage_budget_sec: 360
 
 sources:
   # Короткие списки, которые уже отбирают для России. Полные файлы на тысячи строк не берём:
@@ -61,9 +62,10 @@ sources:
     enabled: true
     url: https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/main/WHITE-CIDR-RU-checked.txt
 
+  # 29.10.2026: репозиторий отвечает 404, файла больше нет.
   - name: epodonios-vless
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/vless.txt
 
   - name: barry-far-vless
@@ -71,9 +73,10 @@ sources:
     enabled: true
     url: https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Splitted-By-Protocol/vless.txt
 
+  # 29.10.2026: репозиторий отвечает 404, файла больше нет.
   - name: ebrasha-vless
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/vless_configs.txt
 
   - name: radikal-vless
@@ -108,12 +111,12 @@ sources:
 
   - name: epodonios-ss
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/ss.txt
 
   - name: epodonios-trojan
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/Splitted-By-Protocol/trojan.txt
 
   - name: barry-far-ss
@@ -128,17 +131,17 @@ sources:
 
   - name: ebrasha-ss
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/ss_configs.txt
 
   - name: ebrasha-trojan
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/trojan_configs.txt
 
   - name: ebrasha-hysteria2
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/ebrasha/free-v2ray-public-list/main/separated-protocols/hysteria2_configs.txt
 
   - name: matinghanbari-mix
@@ -163,7 +166,7 @@ sources:
 
   - name: epodonios-mix
     type: subscription
-    enabled: true
+    enabled: false
     url: https://raw.githubusercontent.com/Epodonios/v2ray-configs/main/All_Configs_Sub.txt
 
   - name: barry-far-mix

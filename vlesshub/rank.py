@@ -341,6 +341,21 @@ def load_best(path: Path, closed: set[tuple[str, int]] | None = None) -> list[Vl
     return restored
 
 
+def _carry_vantage(published: list[VlessConfig], previous: list[VlessConfig]) -> bool:
+    """Fill an empty Russia mark from the last short list. A fresh mark wins."""
+    marks = {cfg.fingerprint: cfg.vantage for cfg in previous if cfg.vantage in _RU_VANTAGE}
+    changed = False
+    for cfg in published:
+        if cfg.vantage:
+            continue
+        mark = marks.get(cfg.fingerprint)
+        if not mark:
+            continue
+        cfg.vantage = mark
+        changed = True
+    return changed
+
+
 def apply_best(
     published: list[VlessConfig],
     path: Path,
@@ -353,7 +368,14 @@ def apply_best(
     When this run has no browser-checkable config, the previous short list is
     appended so the site and the subscription are not empty. A refusal from
     Russia is not brought back. An empty result does not erase the saved file.
+
+    A server that is still in this run keeps its earlier Russia mark when this
+    run did not have time to check the port again. The short list is then chosen
+    again, so «Лучшие» does not forget a stable address.
     """
+    previous = load_best(path, closed)
+    if _carry_vantage(published, previous):
+        published = rank_published(published)
     best = select_best(published, limit)
     if best:
         save_best(path, best, saved_at)
